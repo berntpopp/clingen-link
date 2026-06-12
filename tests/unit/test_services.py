@@ -138,12 +138,15 @@ class TestErepoService:
 
     async def test_get_interpretation_prefers_snapshot(self, services: ClingenServices) -> None:
         # No respx mock — must be served from the snapshot without any live call.
-        result = await services.erepo.get_interpretation(caid="CA281951")
+        result, source, notice = await services.erepo.get_interpretation(caid="CA281951")
         assert result.gene == "BRAF"
+        assert source == "snapshot"
+        assert notice is None
 
     async def test_get_interpretation_by_hgvs_snapshot(self, services: ClingenServices) -> None:
-        result = await services.erepo.get_interpretation(hgvs="NM_004333.4:c.740T>C")
+        result, source, _ = await services.erepo.get_interpretation(hgvs="NM_004333.4:c.740T>C")
         assert result.caid == "CA281951"
+        assert source == "snapshot"
 
     @respx.mock
     async def test_get_interpretation_live_fallback(self, services: ClingenServices) -> None:
@@ -156,8 +159,9 @@ class TestErepoService:
                 200, json=[{"caid": "CA999999", "gene": "TP53", "assertion": "Pathogenic"}]
             )
         )
-        result = await services.erepo.get_interpretation(caid="CA999999")
+        result, source, _ = await services.erepo.get_interpretation(caid="CA999999")
         assert result.gene == "TP53"
+        assert source == "live"
         assert route.called
 
     @respx.mock
@@ -171,9 +175,67 @@ class TestErepoService:
             )
         )
         # CA281951 IS in the snapshot, but refresh=True must bypass it and call live.
-        result = await services.erepo.get_interpretation(caid="CA281951", refresh=True)
+        result, source, _ = await services.erepo.get_interpretation(caid="CA281951", refresh=True)
         assert result.assertion == "Pathogenic"
+        assert source == "live"
         assert route.called
+
+    @respx.mock
+    async def test_refresh_live_dict_gene_shape(self, services: ClingenServices) -> None:
+        # The real ERepo summary returns gene as a {label, NCBI_id} dict — the H1 ValidationError.
+        respx.get(f"{_EREPO}/api/summary/news/").mock(
+            return_value=httpx.Response(200, json={"data": [{"relatedVersion": "2.5.6"}]})
+        )
+        respx.get(f"{_EREPO}/api/classifications").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "variantInterpretations": [
+                        {
+                            "caid": "CA281951",
+                            "gene": {"label": "BRAF", "NCBI_id": "673"},
+                            "assertion": "Pathogenic",
+                            "hgvs": ["NC_000007.14:g.140753336A>T"],
+                            "publishedDate": "2021-01-01",
+                        }
+                    ]
+                },
+            )
+        )
+        result, source, _ = await services.erepo.get_interpretation(caid="CA281951", refresh=True)
+        assert result.gene == "BRAF"  # dict normalized to label — no ValidationError
+        assert source == "live"
+
+    @respx.mock
+    async def test_refresh_degrades_to_snapshot_on_upstream_error(
+        self, services: ClingenServices
+    ) -> None:
+        respx.get(f"{_EREPO}/api/summary/news/").mock(
+            return_value=httpx.Response(200, json={"data": [{"relatedVersion": "2.5.6"}]})
+        )
+        # A non-retryable upstream 4xx is a server-side fault, not bad input.
+        respx.get(f"{_EREPO}/api/classifications").mock(return_value=httpx.Response(400))
+        result, source, notice = await services.erepo.get_interpretation(
+            caid="CA281951", refresh=True
+        )
+        # CA281951 is in the snapshot → degrade rather than fail.
+        assert source == "snapshot"
+        assert result.gene == "BRAF"
+        assert notice and "degraded" in notice
+
+    @respx.mock
+    async def test_refresh_upstream_error_no_snapshot_raises_upstream(
+        self, services: ClingenServices
+    ) -> None:
+        from clingen_link.exceptions import ClingenApiError
+
+        respx.get(f"{_EREPO}/api/summary/news/").mock(
+            return_value=httpx.Response(200, json={"data": [{"relatedVersion": "2.5.6"}]})
+        )
+        respx.get(f"{_EREPO}/api/classifications").mock(return_value=httpx.Response(400))
+        # CA999999 is absent from the snapshot → no fallback → upstream fault surfaces (not bad input).
+        with pytest.raises(ClingenApiError):
+            await services.erepo.get_interpretation(caid="CA999999", refresh=True)
 
 
 class TestGeneService:

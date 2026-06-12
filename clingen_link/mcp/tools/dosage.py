@@ -108,23 +108,28 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
                     f"Gene '{gene}' is not in the ClinGen snapshot. Resolve with search_genes."
                 )
             models = await services.dosage.for_gene(symbol)
-            if not models:
-                raise DataNotFoundError(f"No ClinGen dosage record for '{symbol}'.")
-            records = [
+            # The gene resolved; an empty domain is success+0 (not not_found) — that is reserved for
+            # a gene absent from the index entirely (assessment M5).
+            shaped = [
                 _annotate(shape_record(m, domain="dosage", response_mode=response_mode))
                 for m in models
             ]
-            citation = models[0].recommended_citation
-            head = records[0]
-            headline = (
-                f"{symbol} dosage — haploinsufficiency: "
-                f"{head.get('haplo_interpretation') or 'n/a'}; triplosensitivity: "
-                f"{head.get('triplo_interpretation') or 'n/a'}."
-            )
+            # minimal omits per-record bodies (headline + counts only), like the list/summary tools.
+            records = [] if response_mode == "minimal" else shaped
+            citation = models[0].recommended_citation if models else None
+            head = shaped[0] if shaped else {}
+            if models:
+                headline = (
+                    f"{symbol} dosage — haploinsufficiency: "
+                    f"{head.get('haplo_interpretation') or 'n/a'}; triplosensitivity: "
+                    f"{head.get('triplo_interpretation') or 'n/a'}."
+                )
+            else:
+                headline = f"{symbol}: no ClinGen dosage record."
             return {
                 "headline": headline,
                 "records": records,
-                "total": len(records),
+                "total": len(models),
                 "recommended_citation": citation,
                 "_meta": build_meta(
                     data_version=data_version_for(services.meta(), "dosage"),
@@ -132,8 +137,7 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
                         cmd("get_gene_summary", gene=symbol),
                         cmd("get_gene_validity", gene=symbol),
                     ],
-                    recommended_citation=citation,
-                    record_count=len(records),
+                    record_count=len(models),
                 ),
             }
 
@@ -239,7 +243,6 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
                 "_meta": build_meta(
                     data_version=data_version_for(services.meta(), "dosage"),
                     next_commands=next_commands,
-                    recommended_citation=citation,
                     record_count=shown,
                     truncated=trunc,
                 ),

@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     dosage_ftp_base: str = "https://ftp.clinicalgenome.org"
     actionability_api_base: str = "https://actionability.clinicalgenome.org/ac"
     erepo_api_base: str = "https://erepo.clinicalgenome.org/evrepo"
+    # HGNC complete-set TSV (authoritative symbol/alias/prev-symbol/name table; ETL-only).
+    hgnc_complete_set_url: str = (
+        "https://storage.googleapis.com/public-download-files/hgnc/tsv/tsv/hgnc_complete_set.txt"
+    )
 
     # ---- Snapshot ----
     snapshot_path: str = _DEFAULT_SNAPSHOT_PATH

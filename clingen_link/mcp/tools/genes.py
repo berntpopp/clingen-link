@@ -205,7 +205,6 @@ def register_gene_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenSe
                 "_meta": build_meta(
                     data_version=cross_domain_version(meta),
                     next_commands=next_commands,
-                    recommended_citation=summary.recommended_citation,
                 ),
             }
             if response_mode != "minimal":

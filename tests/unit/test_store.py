@@ -10,6 +10,31 @@ from clingen_link.exceptions import SnapshotUnavailableError
 from clingen_link.store.db import Store
 
 
+class TestMetaRecordCount:
+    """record_count must reflect actual rows, not a stored/derived value (assessment H2)."""
+
+    def test_record_count_matches_table_count(self, store: Store) -> None:
+        meta = store.meta()
+        with store.connection() as conn:
+            for domain, table in (
+                ("validity", "validity"),
+                ("dosage", "dosage"),
+                ("actionability", "actionability"),
+                ("erepo", "erepo"),
+            ):
+                actual = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]  # noqa: S608
+                assert meta[domain]["record_count"] == actual
+
+    def test_dosage_count_is_rows_not_etag_count(self, store: Store) -> None:
+        # The fixture supplies 2 dosage ETags; the served count must be the real row count.
+        meta = store.meta()
+        with store.connection() as conn:
+            rows = conn.execute("SELECT COUNT(*) FROM dosage").fetchone()[0]
+        assert meta["dosage"]["record_count"] == rows
+        if rows != 2:  # guards against the old "len(etags)" bug coincidentally matching
+            assert meta["dosage"]["record_count"] != 2
+
+
 class TestGeneResolution:
     """Gene resolution priority: symbol → HGNC → alias → case-insensitive."""
 

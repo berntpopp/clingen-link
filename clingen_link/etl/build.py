@@ -21,7 +21,7 @@ from typing import Any
 
 from ..config import settings
 from ..exceptions import SnapshotBuildError
-from . import freshness, parse, schema
+from . import freshness, hgnc, parse, schema
 
 SNAPSHOT_VERSION = "1"
 
@@ -45,12 +45,15 @@ class Sources:
     validity_rows: list[dict[str, Any]] = field(default_factory=list)
     dosage_gene_tsv: str = ""
     dosage_region_tsv: str = ""
+    dosage_gene_tsv_grch37: str = ""
+    dosage_region_tsv_grch37: str = ""
     dosage_etags: dict[str, str] = field(default_factory=dict)
     actionability_brief: list[dict[str, Any]] = field(default_factory=list)
     erepo_tsv: str = ""
     erepo_news: list[dict[str, Any]] = field(default_factory=list)
     erepo_summary: dict[str, Any] = field(default_factory=dict)
     affiliates: list[dict[str, Any]] = field(default_factory=list)
+    hgnc_rows: list[dict[str, Any]] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -62,13 +65,14 @@ def _write_validity(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> int
     cur = conn.cursor()
     for rowid, row in enumerate(rows, start=1):
         cur.execute(
-            "INSERT INTO validity (symbol, hgnc_id, disease_name, mondo, moi, sop, "
-            "classification, expert_panel, affiliate_id, perm_id, report_id, released, "
-            "classified_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO validity (symbol, hgnc_id, disease_name, disease_obsolete, mondo, moi, "
+            "sop, classification, expert_panel, affiliate_id, perm_id, report_id, released, "
+            "classified_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 row["symbol"],
                 row["hgnc_id"],
                 row["disease_name"],
+                1 if row.get("disease_obsolete") else 0,
                 row["mondo"],
                 row["moi"],
                 row["sop"],
@@ -279,10 +283,18 @@ def populate(conn: sqlite3.Connection, sources: Sources, fetched_at: str) -> dic
     schema created.
     """
     validity = parse.parse_validity(sources.validity_rows)
-    dosage = parse.parse_dosage(sources.dosage_gene_tsv, sources.dosage_region_tsv)
+    dosage = parse.parse_dosage(
+        sources.dosage_gene_tsv,
+        sources.dosage_region_tsv,
+        gene_tsv_grch37=sources.dosage_gene_tsv_grch37 or None,
+        region_tsv_grch37=sources.dosage_region_tsv_grch37 or None,
+    )
     actionability = parse.parse_actionability(sources.actionability_brief)
     erepo = parse.parse_erepo(sources.erepo_tsv)
-    genes, aliases = parse.build_gene_index(validity, dosage, actionability, sources.erepo_summary)
+    hgnc_map = hgnc.index_by_symbol(sources.hgnc_rows) if sources.hgnc_rows else None
+    genes, aliases = parse.build_gene_index(
+        validity, dosage, actionability, sources.erepo_summary, hgnc=hgnc_map
+    )
 
     counts: dict[str, int] = {
         "validity": _write_validity(conn, validity),
@@ -295,7 +307,11 @@ def populate(conn: sqlite3.Connection, sources: Sources, fetched_at: str) -> dic
     counts["gene_alias"] = len(aliases)
 
     _write_meta(conn, "validity", freshness.validity_signal(validity), fetched_at)
-    _write_meta(conn, "dosage", freshness.dosage_signal(sources.dosage_etags), fetched_at)
+    # The ETag set is the dosage freshness signal, but record_count must be the real row count, not
+    # the number of source files (assessment H2).
+    dosage_signal = freshness.dosage_signal(sources.dosage_etags)
+    dosage_signal["record_count"] = len(dosage)
+    _write_meta(conn, "dosage", dosage_signal, fetched_at)
     _write_meta(
         conn,
         "actionability",

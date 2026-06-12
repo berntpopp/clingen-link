@@ -44,6 +44,21 @@ def test_parse_validity_count_matches() -> None:
     assert len(parse.parse_validity(rows)) == 5
 
 
+def test_parse_validity_sanitizes_html_and_flags_obsolete() -> None:
+    rows = [
+        {
+            "symbol": "TMPO",
+            "disease_name": 'dilated cardiomyopathy <span class="badge">Obsolete Term</span>',
+            "perm_id": "p1",
+        },
+        {"symbol": "BRCA1", "disease_name": "hereditary breast cancer", "perm_id": "p2"},
+    ]
+    out = parse.parse_validity(rows)
+    assert out[0]["disease_name"] == "dilated cardiomyopathy Obsolete Term"
+    assert out[0]["disease_obsolete"] is True
+    assert out[1]["disease_obsolete"] is False
+
+
 # ---------------------------------------------------------------------------
 # Dosage
 # ---------------------------------------------------------------------------
@@ -209,6 +224,26 @@ def test_build_gene_index_flags_and_aliases() -> None:
     alias_pairs = {(a["alias"], a["symbol"]) for a in aliases}
     assert ("HGNC:20", "AARS1") in alias_pairs
     assert ("hgnc:20", "AARS1") in alias_pairs
+
+
+def test_build_gene_index_applies_hgnc_name_and_alias() -> None:
+    # L2/L3: HGNC map fills the full name + adds alias rows for ClinGen-curated genes.
+    validity = [{"symbol": "BRCA2", "hgnc_id": "HGNC:1101"}]
+    hgnc_map = {
+        "BRCA2": {
+            "hgnc_id": "HGNC:1101",
+            "name": "BRCA2 DNA repair associated",
+            "aliases": ["FANCD1", "FACD"],
+        },
+        # A gene NOT in any ClinGen domain must be ignored (index stays lean).
+        "UNRELATED": {"hgnc_id": "HGNC:9999", "name": "n", "aliases": ["ZZZ"]},
+    }
+    genes, aliases = parse.build_gene_index(validity, [], [], {}, hgnc=hgnc_map)
+    by_symbol = {g["symbol"]: g for g in genes}
+    assert by_symbol["BRCA2"]["name"] == "BRCA2 DNA repair associated"
+    assert "UNRELATED" not in by_symbol
+    alias_pairs = {(a["alias"], a["symbol"]) for a in aliases}
+    assert ("FANCD1", "BRCA2") in alias_pairs
 
 
 def test_to_json_is_compact_and_deterministic() -> None:

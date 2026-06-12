@@ -22,7 +22,8 @@ class TestGetGeneValidity:
         assert rec["classification"] == "Definitive"
         assert rec["recommended_citation"].startswith("ClinGen Gene-Disease Validity")
         assert rec["permalink"].startswith("https://search.clinicalgenome.org/kb/gene-validity/")
-        assert payload["_meta"]["recommended_citation"]
+        # M4: citation lives per-record, not duplicated into _meta.
+        assert "recommended_citation" not in payload["_meta"]
 
     async def test_classification_filter(self, tool_mcp: FastMCP) -> None:
         payload = await _call(

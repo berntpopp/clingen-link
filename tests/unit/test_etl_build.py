@@ -76,6 +76,15 @@ def test_build_meta_rows_complete(sources: Sources) -> None:
         assert fetched_at == _FETCHED_AT
 
 
+def test_dosage_meta_count_is_row_count_not_etag_count(sources: Sources) -> None:
+    # H2 at source: the fixture has 10 dosage rows but only 1 ETag; the meta count must be 10.
+    conn = build_in_memory(sources, _FETCHED_AT)
+    rows = _count(conn, "dosage")
+    meta_count = conn.execute("SELECT record_count FROM meta WHERE domain='dosage'").fetchone()[0]
+    assert rows == 10
+    assert meta_count == 10
+
+
 def test_build_fts_searchable(sources: Sources) -> None:
     conn = build_in_memory(sources, _FETCHED_AT)
     rows = conn.execute(

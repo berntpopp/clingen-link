@@ -15,9 +15,11 @@ from typing import Any
 from async_lru import alru_cache
 
 from ..api.clingen_client import ClingenClient
+from ..exceptions import ClingenApiError, DataNotFoundError
 from ..models.models import VariantInterpretation
 from ..store import queries
 from ..store.db import Store
+from .erepo_live import erepo_live_to_row
 
 
 class ErepoService:
@@ -90,23 +92,43 @@ class ErepoService:
         caid: str | None = None,
         hgvs: str | None = None,
         refresh: bool = False,
-    ) -> VariantInterpretation:
-        """Return a single interpretation, preferring the snapshot.
+    ) -> tuple[VariantInterpretation, str, str | None]:
+        """Return ``(interpretation, source, notice)`` for one variant, preferring the snapshot.
 
-        Falls back to the live ERepo API when the snapshot has no row or
-        ``refresh=True``. The live path is cached with a TTL keyed to the current
-        ERepo ``news`` version so a published version bump invalidates entries.
+        ``refresh=True`` forces the live ERepo path (newest evidence-code SEPIO). The live payload
+        is normalized by :func:`erepo_live_to_row` before model construction, so a valid CAID/HGVS
+        never produces a Pydantic ``ValidationError`` (assessment H1). On *any* live-path failure
+        the call **degrades** to the snapshot row (``source="snapshot"`` + a ``notice``) when one
+        exists, and otherwise raises :class:`ClingenApiError` (``upstream_unavailable``, retryable)
+        — it never mislabels a server/upstream fault as bad input.
 
         Raises:
-            DataNotFoundError: neither snapshot nor live has a match.
+            DataNotFoundError: no snapshot row and the live lookup found nothing.
+            ClingenApiError: the live fetch failed and there is no snapshot to fall back to.
         """
-        if not refresh:
-            snapshot = self._snapshot_lookup(caid=caid, hgvs=hgvs)
+        snapshot = self._snapshot_lookup(caid=caid, hgvs=hgvs)
+        if not refresh and snapshot is not None:
+            return snapshot, "snapshot", None
+        try:
+            version = await self._current_version()
+            row = await self._live_cached(caid or "", hgvs or "", version)
+            return VariantInterpretation.from_row(row), "live", None
+        except DataNotFoundError:
             if snapshot is not None:
-                return snapshot
-        version = await self._current_version()
-        row = await self._live_cached(caid or "", hgvs or "", version)
-        return VariantInterpretation.from_row(row)
+                return (
+                    snapshot,
+                    "snapshot",
+                    "live ERepo lookup found nothing; served snapshot record",
+                )
+            raise
+        except Exception as exc:  # upstream/parse fault -> degrade or surface upstream_unavailable
+            if snapshot is not None:
+                return (
+                    snapshot,
+                    "snapshot",
+                    f"live ERepo fetch degraded ({exc.__class__.__name__}); served snapshot record",
+                )
+            raise ClingenApiError(f"live ERepo fetch failed: {exc.__class__.__name__}") from exc
 
     def _snapshot_lookup(
         self, *, caid: str | None, hgvs: str | None
@@ -121,8 +143,21 @@ class ErepoService:
         return VariantInterpretation.from_row(row) if row is not None else None
 
     async def _live_impl(self, caid: str, hgvs: str, _version: str) -> dict[str, Any]:
-        """Fetch one interpretation live (``_version`` is a cache-key salt only)."""
-        return await self._client.erepo_interpretation(caid=caid or None, hgvs=hgvs or None)
+        """Fetch + normalize one live interpretation (``_version`` is a cache-key salt only).
+
+        Fetches the classifications summary, then best-effort enriches it with the full SEPIO
+        interpretation (evidence codes Met/Not-Met) via the summary's ``uuid``. The result is the
+        normalized snapshot-row shape (:func:`erepo_live_to_row`).
+        """
+        summary = await self._client.erepo_interpretation(caid=caid or None, hgvs=hgvs or None)
+        sepio: dict[str, Any] | None = None
+        uuid = summary.get("uuid") if isinstance(summary, dict) else None
+        if uuid:
+            try:
+                sepio = await self._client.erepo_interpretation(uuid=str(uuid))
+            except Exception:  # SEPIO enrichment is best-effort; the summary still answers
+                sepio = None
+        return erepo_live_to_row(summary, sepio=sepio)
 
     async def _current_version(self) -> str:
         """Return the current ERepo ``news`` version, re-polled at most per TTL."""

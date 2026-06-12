@@ -2,8 +2,15 @@
 
 from __future__ import annotations
 
+import pytest
+
 from clingen_link.mcp.shaping import shape_record, shape_records, truncated_block
-from clingen_link.models.models import DosageRecord, ValidityAssertion
+from clingen_link.models.models import (
+    ActionabilityCuration,
+    DosageRecord,
+    ValidityAssertion,
+    VariantInterpretation,
+)
 
 
 def _validity() -> ValidityAssertion:
@@ -90,6 +97,79 @@ class TestShapeRecords:
         out = shape_records([_validity(), _validity()], domain="validity", response_mode="compact")
         assert len(out) == 2
         assert all("recommended_citation" in r for r in out)
+
+
+def _erepo(hgvs: list[str] | None = None) -> VariantInterpretation:
+    return VariantInterpretation.from_row(
+        {
+            "caid": "CA1",
+            "gene": "BRCA1",
+            "disease": "x",
+            "assertion": "Pathogenic",
+            "repo_link": "https://erepo.clinicalgenome.org/x",
+            "hgvs": hgvs if hgvs is not None else ["NM_007294.4:c.68_69del"],
+            "summary": "s",
+            "evidence_codes_met": ["PM2"],
+            "uuid": "u",
+        }
+    )
+
+
+class TestHgvsTrim:
+    """M2: the big erepo hgvs[] is trimmed in compact/minimal, whole in standard/full."""
+
+    def test_compact_trims_hgvs_and_adds_count(self) -> None:
+        big = [
+            "NC_000017.11:g.43045761A>C",
+            "NM_007294.4:c.5509T>G",
+            "NP_009225.1:p.Cys1837Gly",
+        ] + [f"NM_{i}.1:c.{i}A>G" for i in range(40)]
+        out = shape_record(_erepo(big), domain="erepo", response_mode="compact")
+        assert len(out["hgvs"]) <= 3
+        assert out["hgvs_count"] == 43
+        assert any(h.startswith("NC_000017.11") for h in out["hgvs"])
+
+    def test_full_keeps_all_hgvs(self) -> None:
+        big = [f"NM_{i}.1:c.{i}A>G" for i in range(40)]
+        out = shape_record(_erepo(big), domain="erepo", response_mode="full")
+        assert len(out["hgvs"]) == 40
+        assert "hgvs_count" not in out
+
+    def test_short_hgvs_not_counted(self) -> None:
+        out = shape_record(_erepo(["NM_1.1:c.1A>G"]), domain="erepo", response_mode="compact")
+        assert out["hgvs"] == ["NM_1.1:c.1A>G"]
+        assert "hgvs_count" not in out
+
+
+class TestResponseModeLattice:
+    """M3: minimal ⊆ compact ⊆ standard ⊆ full at the record-field level (per domain)."""
+
+    @pytest.mark.parametrize(
+        "domain,model",
+        [
+            ("validity", _validity()),
+            ("dosage", _dosage()),
+            (
+                "actionability",
+                ActionabilityCuration.from_row(
+                    {"doc_id": "AC1", "disease": "x", "adult_sepio_iri": "i", "genes": ["BRCA1"]}
+                ),
+            ),
+            ("erepo", _erepo(["a", "b", "c", "d"])),
+        ],
+    )
+    def test_subset_lattice(self, domain: str, model: object) -> None:
+        def keys(mode: str) -> set[str]:
+            shaped = shape_record(model, domain=domain, response_mode=mode)
+            # Synthetic compact-tier helpers (e.g. hgvs_count) are not data fields.
+            return {k for k in shaped if not k.endswith("_count")}
+
+        minimal, compact, standard, full = (
+            keys(m) for m in ("minimal", "compact", "standard", "full")
+        )
+        assert minimal <= compact, f"{domain}: minimal not ⊆ compact"
+        assert compact <= standard, f"{domain}: compact not ⊆ standard"
+        assert standard <= full, f"{domain}: standard not ⊆ full"
 
 
 class TestTruncatedBlock:

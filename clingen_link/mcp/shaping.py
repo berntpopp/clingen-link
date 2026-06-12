@@ -20,6 +20,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from .hgvs_select import canonical_hgvs
+
 ResponseMode = str
 
 # Per-domain fields that are verbose enough to drop in compact mode (kept in
@@ -33,6 +35,23 @@ _VERBOSE_FIELDS: dict[str, frozenset[str]] = {
         {"evidence_codes_met", "evidence_codes_not_met", "pubmed", "summary", "uuid"}
     ),
 }
+
+# Per-domain identifying array that is trimmed to a canonical few (+ a ``*_count``) in the
+# minimal/compact tiers and kept whole in standard/full (assessment M2).
+_ARRAY_TRIM: dict[str, str] = {"erepo": "hgvs"}
+
+
+def _trim_arrays(row: dict[str, Any], domain: str) -> dict[str, Any]:
+    """Replace a domain's big identifying array with a canonical few + a count (compact tiers)."""
+    field = _ARRAY_TRIM.get(domain)
+    if not field or field not in row:
+        return row
+    full = row.get(field)
+    if isinstance(full, list) and len(full) > 3:
+        row = dict(row)
+        row[f"{field}_count"] = len(full)
+        row[field] = canonical_hgvs(full)
+    return row
 
 
 def _dump(model: BaseModel | dict[str, Any]) -> dict[str, Any]:
@@ -67,8 +86,12 @@ def shape_record(
     if response_mode == "full":
         return row
     verbose = _VERBOSE_FIELDS.get(domain, frozenset())
-    if response_mode == "compact":
+    # minimal and compact share the same record projection so the verbosity tiers form a strict
+    # subset lattice (minimal ⊆ compact ⊆ standard ⊆ full). Previously ``minimal`` fell through to
+    # the standard branch and kept nulls, making it *more* verbose than compact (assessment M3).
+    if response_mode in ("compact", "minimal"):
         trimmed = {k: v for k, v in row.items() if k not in verbose}
+        trimmed = _trim_arrays(trimmed, domain)
         kept = _drop_nulls(trimmed)
         # Citation fields are load-bearing; never let _drop_nulls strip them.
         for must in ("permalink", "recommended_citation"):

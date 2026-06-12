@@ -120,7 +120,6 @@ def register_validity_tools(
                         cmd("get_gene_summary", gene=symbol),
                         cmd("get_variant_interpretations", gene=symbol),
                     ],
-                    recommended_citation=citation,
                     record_count=len(models),
                 ),
             }
@@ -221,7 +220,6 @@ def register_validity_tools(
                 "_meta": build_meta(
                     data_version=data_version_for(services.meta(), "validity"),
                     next_commands=next_commands,
-                    recommended_citation=citation,
                     record_count=shown,
                     truncated=trunc,
                 ),

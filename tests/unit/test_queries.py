@@ -2,13 +2,50 @@
 
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Iterator
 
 import pytest
 
+from clingen_link.etl import schema
 from clingen_link.store import queries as q
 from clingen_link.store.db import Store
 from clingen_link.store.search import fts_match, paginate
+
+
+def _mini_gene_conn(rows: list[tuple[str, str]]) -> sqlite3.Connection:
+    """A throwaway in-memory conn with just the gene + gene_alias tables for search_genes tests."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(schema.GENE_DDL)
+    conn.execute(schema.GENE_ALIAS_DDL)
+    for symbol, hgnc in rows:
+        conn.execute("INSERT INTO gene (symbol, hgnc_id) VALUES (?, ?)", (symbol, hgnc))
+        conn.execute("INSERT INTO gene_alias (alias, symbol) VALUES (?, ?)", (hgnc, symbol))
+    conn.commit()
+    return conn
+
+
+class TestSearchGenesHgncExactMatch:
+    def test_hgnc_id_is_exact_not_prefix(self) -> None:
+        conn = _mini_gene_conn(
+            [("BRCA1", "HGNC:1100"), ("SLC2A1", "HGNC:11005"), ("SLC30A2", "HGNC:11013")]
+        )
+        rows = q.search_genes(conn, "HGNC:1100")
+        assert {r["hgnc_id"] for r in rows} == {"HGNC:1100"}
+        assert [r["symbol"] for r in rows] == ["BRCA1"]
+
+    def test_short_hgnc_id_does_not_prefix_match(self) -> None:
+        conn = _mini_gene_conn(
+            [("BRCA1", "HGNC:1100"), ("SLC2A1", "HGNC:11005"), ("A", "HGNC:118"), ("B", "HGNC:119")]
+        )
+        # "HGNC:11" must match nothing (no gene has exactly that id), not 4 rows.
+        assert q.search_genes(conn, "HGNC:11") == []
+
+    def test_symbol_prefix_still_works(self) -> None:
+        conn = _mini_gene_conn([("BRCA1", "HGNC:1100"), ("BRCA2", "HGNC:1101")])
+        rows = q.search_genes(conn, "BRCA")
+        assert {r["symbol"] for r in rows} == {"BRCA1", "BRCA2"}
 
 
 @pytest.fixture

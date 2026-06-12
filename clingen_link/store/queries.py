@@ -17,16 +17,21 @@ stay under the 600-LOC cap; FTS query escaping and pagination helpers live in
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from typing import Any
 
 from .search import Page, fts_match, paginate
 
+# HGNC ids are unique keys, so an ``HGNC:n`` input must be matched by equality, never by a LIKE
+# prefix (which would let ``HGNC:1100`` also match ``HGNC:11005`` and ``HGNC:11`` match dozens).
+_HGNC_ID_RE = re.compile(r"^HGNC:\d+$", re.IGNORECASE)
+
 # Columns selected for each domain (kept here so the SELECT and the JSON-decode
 # map stay in sync). ``_JSON_COLS`` lists the TEXT columns holding JSON arrays.
 _VALIDITY_COLS = (
-    "symbol, hgnc_id, disease_name, mondo, moi, sop, classification, expert_panel, "
-    "affiliate_id, perm_id, report_id, released, classified_date"
+    "symbol, hgnc_id, disease_name, disease_obsolete, mondo, moi, sop, classification, "
+    "expert_panel, affiliate_id, perm_id, report_id, released, classified_date"
 )
 _DOSAGE_COLS = (
     "record_type, symbol, hgnc_id, isca_id, cytoband, grch37, grch38, haplo_score, "
@@ -352,21 +357,34 @@ def gene_summary_counts(conn: sqlite3.Connection, symbol: str) -> dict[str, Any]
 
 
 def search_genes(conn: sqlite3.Connection, query: str, *, limit: int = 25) -> list[dict[str, Any]]:
-    """Return gene index rows whose symbol or alias prefix-matches ``query``.
+    """Return gene index rows resolving ``query`` (symbol/alias prefix, or exact HGNC id).
 
-    Resolution to a single canonical symbol is the store's job; this returns the
-    candidate set for the ``search_genes`` tool's listing.
+    Resolution to a single canonical symbol is the store's job; this returns the candidate set for
+    the ``search_genes`` tool's listing. An ``HGNC:n`` input is matched by **equality** on
+    ``hgnc_id`` (plus the alias table), never by ``LIKE`` prefix, so a canonical HGNC id returns
+    only its gene and a short id like ``HGNC:11`` does not pollute the candidate set (assessment H3).
     """
+    cols = (
+        "g.symbol, g.hgnc_id, g.name, g.has_validity, g.has_dosage, "
+        "g.has_actionability, g.erepo_variant_count"
+    )
+    if _HGNC_ID_RE.match(query.strip()):
+        hgnc = query.strip()
+        rows = conn.execute(
+            f"SELECT {cols} FROM gene g WHERE g.hgnc_id = ? COLLATE NOCASE "  # noqa: S608 - fixed cols
+            "UNION "
+            f"SELECT {cols} FROM gene g "
+            "JOIN gene_alias a ON a.symbol = g.symbol WHERE a.alias = ? COLLATE NOCASE "
+            "ORDER BY symbol LIMIT ?",
+            (hgnc, hgnc, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
     like = f"{query}%"
     rows = conn.execute(
-        "SELECT g.symbol, g.hgnc_id, g.name, g.has_validity, g.has_dosage, "
-        "g.has_actionability, g.erepo_variant_count FROM gene g "
-        "WHERE g.symbol LIKE ? COLLATE NOCASE "
+        f"SELECT {cols} FROM gene g WHERE g.symbol LIKE ? COLLATE NOCASE "  # noqa: S608 - fixed cols
         "UNION "
-        "SELECT g.symbol, g.hgnc_id, g.name, g.has_validity, g.has_dosage, "
-        "g.has_actionability, g.erepo_variant_count FROM gene g "
-        "JOIN gene_alias a ON a.symbol = g.symbol "
-        "WHERE a.alias LIKE ? COLLATE NOCASE "
+        f"SELECT {cols} FROM gene g "
+        "JOIN gene_alias a ON a.symbol = g.symbol WHERE a.alias LIKE ? COLLATE NOCASE "
         "ORDER BY symbol LIMIT ?",
         (like, like, limit),
     ).fetchall()

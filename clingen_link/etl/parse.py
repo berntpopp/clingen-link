@@ -21,6 +21,8 @@ import io
 import json
 from typing import Any
 
+from .sanitize import is_obsolete_label, strip_html
+
 # ---------------------------------------------------------------------------
 # Dosage score-code decoding (FTP README + spec Task 2.2)
 # ---------------------------------------------------------------------------
@@ -48,8 +50,10 @@ def parse_validity(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Normalize ``/api/validity`` rows into ``validity`` table dicts.
 
     The API wraps rows in ``{total, rows: [...]}``; callers pass ``rows`` here.
-    ``disease_name`` is right-stripped (the feed pads names with trailing
-    spaces). ``ep`` is renamed ``expert_panel`` and ``date`` to
+    ``disease_name`` is HTML-sanitized (the feed embeds ``<span>…Obsolete
+    Term</span>`` markup) and whitespace-collapsed, with obsolescence surfaced as
+    a structured ``disease_obsolete`` flag rather than left as raw markup
+    (assessment M1). ``ep`` is renamed ``expert_panel`` and ``date`` to
     ``classified_date``.
     """
     out: list[dict[str, Any]] = []
@@ -59,7 +63,8 @@ def parse_validity(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             {
                 "symbol": row.get("symbol"),
                 "hgnc_id": row.get("hgnc_id"),
-                "disease_name": disease.rstrip(),
+                "disease_name": strip_html(disease) or None,
+                "disease_obsolete": is_obsolete_label(disease),
                 "mondo": row.get("mondo"),
                 "moi": row.get("moi"),
                 "sop": row.get("sop"),
@@ -386,6 +391,8 @@ def build_gene_index(
     dosage: list[dict[str, Any]],
     actionability: list[dict[str, Any]],
     erepo_summary: dict[str, Any],
+    *,
+    hgnc: dict[str, dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Build the union ``gene`` table and ``gene_alias`` rows across domains.
 
@@ -393,6 +400,10 @@ def build_gene_index(
     flags plus the ERepo variant count (summed from the summary feed). Aliases
     are derived from HGNC ids and case-folded symbols so the store can resolve
     ``brca1`` / ``HGNC:1100`` to the canonical symbol.
+
+    When an ``hgnc`` map (symbol → ``{hgnc_id, name, aliases}``) is supplied, the gene's full
+    ``name`` is populated and each HGNC alias / previous symbol becomes a ``gene_alias`` row, so an
+    official alias such as ``FANCD1`` resolves to ``BRCA2`` (assessment L2/L3).
     """
     genes: dict[str, dict[str, Any]] = {}
     aliases: set[tuple[str, str]] = set()
@@ -442,6 +453,18 @@ def build_gene_index(
                 record["erepo_variant_count"] = sum(
                     int(v) for v in classifications.values() if isinstance(v, int)
                 )
+
+    if hgnc:
+        for symbol, record in genes.items():
+            info = hgnc.get(symbol)
+            if info is None:
+                continue
+            if info.get("name") and not record.get("name"):
+                record["name"] = info["name"]
+            if info.get("hgnc_id") and not record.get("hgnc_id"):
+                record["hgnc_id"] = info["hgnc_id"]
+            for alias in info.get("aliases", []):
+                _add_alias(aliases, alias, symbol)
 
     for symbol, record in genes.items():
         hgnc_id = record.get("hgnc_id")

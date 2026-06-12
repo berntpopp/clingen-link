@@ -54,10 +54,21 @@ def test_fetch_dosage_captures_etags() -> None:
             200, text=_read("dosage_region_GRCh38.head.tsv"), headers={"ETag": '"r1"'}
         )
     )
+    # GRCh37 files are now fetched too (L5: backfill the second coordinate set).
+    respx.get(f"{base}/ClinGen_gene_curation_list_GRCh37.tsv").mock(
+        return_value=httpx.Response(200, text="GRCh37-gene", headers={"ETag": '"g37"'})
+    )
+    respx.get(f"{base}/ClinGen_region_curation_list_GRCh37.tsv").mock(
+        return_value=httpx.Response(200, text="GRCh37-region", headers={"ETag": '"r37"'})
+    )
     bundle = fetch.fetch_dosage()
     assert bundle.gene_tsv.startswith("#ClinGen Gene")
+    assert bundle.gene_tsv_grch37 == "GRCh37-gene"
+    assert bundle.region_tsv_grch37 == "GRCh37-region"
+    # Only the GRCh38 ETags form the canonical freshness signal.
     assert bundle.etags["ClinGen_gene_curation_list_GRCh38.tsv"] == '"g1"'
     assert bundle.etags["ClinGen_region_curation_list_GRCh38.tsv"] == '"r1"'
+    assert "ClinGen_gene_curation_list_GRCh37.tsv" not in bundle.etags
 
 
 @respx.mock
@@ -199,6 +210,12 @@ def test_gather_sources_collects_all_domains() -> None:
     respx.get(f"{base_d}/ClinGen_region_curation_list_GRCh38.tsv").mock(
         return_value=httpx.Response(200, text=_read("dosage_region_GRCh38.head.tsv"))
     )
+    respx.get(f"{base_d}/ClinGen_gene_curation_list_GRCh37.tsv").mock(
+        return_value=httpx.Response(200, text=_read("dosage_gene_GRCh38.head.tsv"))
+    )
+    respx.get(f"{base_d}/ClinGen_region_curation_list_GRCh37.tsv").mock(
+        return_value=httpx.Response(200, text=_read("dosage_region_GRCh38.head.tsv"))
+    )
     respx.get(f"{base_a}/api/summ/brief").mock(
         return_value=httpx.Response(200, json=_load_json("actionability_brief_small.json"))
     )
@@ -211,6 +228,12 @@ def test_gather_sources_collects_all_domains() -> None:
     respx.get(f"{base_e}/api/summary/classifications/summary/gene").mock(
         return_value=httpx.Response(200, json=_load_json("erepo_summary_sample.json"))
     )
+    respx.get(settings.hgnc_complete_set_url).mock(
+        return_value=httpx.Response(
+            200,
+            text="hgnc_id\tsymbol\tname\talias_symbol\tprev_symbol\nHGNC:20\tAARS1\tAla tRNA\t\t\n",
+        )
+    )
     sources, failures = refresh.gather_sources()
     assert failures == []
     assert len(sources.validity_rows) == 5
@@ -219,6 +242,7 @@ def test_gather_sources_collects_all_domains() -> None:
     assert sources.erepo_tsv.startswith("Variation")
     assert len(sources.affiliates) == 59
     assert "ABCA4" in sources.erepo_summary["data"]
+    assert sources.hgnc_rows and sources.hgnc_rows[0]["symbol"] == "AARS1"
 
 
 @respx.mock

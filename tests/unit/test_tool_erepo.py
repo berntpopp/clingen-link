@@ -47,6 +47,17 @@ class TestGetVariantInterpretations:
         assert trunc["kind"] == "pagination"
         assert trunc["dropped"] >= 1
 
+    async def test_truncation_echoes_expert_panel(self, tool_mcp: FastMCP) -> None:
+        # L1: PAH has 3 variants under one VCEP; size=1 forces truncation that must echo the filter.
+        payload = await _call(
+            tool_mcp,
+            "get_variant_interpretations",
+            {"expert_panel": "Phenylketonuria", "size": 1},
+        )
+        trunc = payload["_meta"]["truncated"]
+        assert trunc["dropped"] >= 1
+        assert trunc["filter"]["expert_panel"] == "Phenylketonuria"
+
     async def test_empty_result_has_next(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "get_variant_interpretations", {"gene": "ZZZNOPE"})
         assert payload["success"] is True
@@ -112,3 +123,50 @@ class TestGetVariantInterpretation:
         assert payload["source"] == "live"
         assert payload["interpretation"]["assertion"] == "Pathogenic"
         assert route.called
+
+    @respx.mock
+    async def test_refresh_dict_gene_shape_no_validation_failed(self, tool_mcp: FastMCP) -> None:
+        # H1: the real ERepo summary returns gene as a dict; this must NOT become validation_failed.
+        respx.get(f"{EREPO_TEST_BASE}/api/summary/news/").mock(
+            return_value=httpx.Response(200, json={"data": [{"relatedVersion": "2.5.6"}]})
+        )
+        respx.get(f"{EREPO_TEST_BASE}/api/classifications").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "variantInterpretations": [
+                        {
+                            "caid": "CA281951",
+                            "gene": {"label": "BRAF", "NCBI_id": "673"},
+                            "assertion": "Pathogenic",
+                            "hgvs": ["NC_000007.14:g.140753336A>T"],
+                        }
+                    ]
+                },
+            )
+        )
+        payload = await _call(
+            tool_mcp, "get_variant_interpretation", {"caid": "CA281951", "refresh": True}
+        )
+        assert payload["success"] is True
+        assert payload.get("error_code") != "validation_failed"
+        assert payload["source"] == "live"
+        assert payload["interpretation"]["gene"] == "BRAF"
+
+    @respx.mock
+    async def test_refresh_degrades_to_snapshot_not_validation_failed(
+        self, tool_mcp: FastMCP
+    ) -> None:
+        # H1: a live upstream fault degrades to the snapshot — never a bad-input error envelope.
+        respx.get(f"{EREPO_TEST_BASE}/api/summary/news/").mock(
+            return_value=httpx.Response(200, json={"data": [{"relatedVersion": "2.5.6"}]})
+        )
+        respx.get(f"{EREPO_TEST_BASE}/api/classifications").mock(return_value=httpx.Response(400))
+        payload = await _call(
+            tool_mcp, "get_variant_interpretation", {"caid": "CA281951", "refresh": True}
+        )
+        assert payload["success"] is True
+        assert payload.get("error_code") != "validation_failed"
+        assert payload["source"] == "snapshot"
+        assert payload["notice"]
+        assert payload["interpretation"]["gene"] == "BRAF"
