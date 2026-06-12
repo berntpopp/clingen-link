@@ -137,13 +137,15 @@ class ClingenClient(BaseClient):
     def _interpretation_list(payload: Any) -> list[dict[str, Any]]:
         """Extract the interpretation list from a classifications payload.
 
-        The API has returned both a bare list and a wrapped ``{data: [...]}`` /
-        ``{rows: [...]}`` shape across versions; tolerate all three.
+        The live ``?format=json`` classifications endpoint wraps results under
+        ``{variantInterpretations: [...]}``; older/other shapes have returned a
+        bare list or a ``{data|rows|interpretations: [...]}`` wrapper. Tolerate
+        all of them.
         """
         if isinstance(payload, list):
             return [p for p in payload if isinstance(p, dict)]
         if isinstance(payload, dict):
-            for key in ("data", "rows", "interpretations"):
+            for key in ("variantInterpretations", "data", "rows", "interpretations"):
                 value = payload.get(key)
                 if isinstance(value, list):
                     return [p for p in value if isinstance(p, dict)]

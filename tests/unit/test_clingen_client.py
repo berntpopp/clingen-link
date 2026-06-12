@@ -86,6 +86,36 @@ class TestErepo:
         assert route.calls.last.request.url.params["matchLimit"] == "10"
 
     @respx.mock
+    async def test_for_gene_live_variant_interpretations_wrapper(
+        self, client: ClingenClient
+    ) -> None:
+        # The real live ?format=json endpoint wraps results under
+        # variantInterpretations (drift caught by the integration tests).
+        respx.get(f"{_EREPO}/api/classifications").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "@context": "https://erepo.genome.network/evrepo/api/context/light",
+                    "variantInterpretations": [{"caid": "CA1"}, {"caid": "CA2"}],
+                },
+            )
+        )
+        rows = await client.erepo_for_gene_live("BRCA1")
+        assert [r["caid"] for r in rows] == ["CA1", "CA2"]
+
+    @respx.mock
+    async def test_interpretation_variant_interpretations_wrapper(
+        self, client: ClingenClient
+    ) -> None:
+        respx.get(f"{_EREPO}/api/classifications").mock(
+            return_value=httpx.Response(
+                200, json={"variantInterpretations": [{"caid": "CA9", "gene": "BRCA1"}]}
+            )
+        )
+        result = await client.erepo_interpretation(caid="CA9")
+        assert result["gene"] == "BRCA1"
+
+    @respx.mock
     async def test_news(self, client: ClingenClient) -> None:
         respx.get(f"{_EREPO}/api/summary/news/").mock(
             return_value=httpx.Response(200, json={"data": [{"relatedVersion": "2.5.6"}]})
