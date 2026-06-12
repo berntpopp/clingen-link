@@ -21,7 +21,7 @@ from typing import Any
 
 from ..config import settings
 from ..exceptions import SnapshotBuildError
-from . import freshness, parse, schema
+from . import freshness, hgnc, parse, schema
 
 SNAPSHOT_VERSION = "1"
 
@@ -53,6 +53,7 @@ class Sources:
     erepo_news: list[dict[str, Any]] = field(default_factory=list)
     erepo_summary: dict[str, Any] = field(default_factory=dict)
     affiliates: list[dict[str, Any]] = field(default_factory=list)
+    hgnc_rows: list[dict[str, Any]] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -290,7 +291,10 @@ def populate(conn: sqlite3.Connection, sources: Sources, fetched_at: str) -> dic
     )
     actionability = parse.parse_actionability(sources.actionability_brief)
     erepo = parse.parse_erepo(sources.erepo_tsv)
-    genes, aliases = parse.build_gene_index(validity, dosage, actionability, sources.erepo_summary)
+    hgnc_map = hgnc.index_by_symbol(sources.hgnc_rows) if sources.hgnc_rows else None
+    genes, aliases = parse.build_gene_index(
+        validity, dosage, actionability, sources.erepo_summary, hgnc=hgnc_map
+    )
 
     counts: dict[str, int] = {
         "validity": _write_validity(conn, validity),

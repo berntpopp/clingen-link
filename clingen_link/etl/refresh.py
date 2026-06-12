@@ -23,7 +23,7 @@ from typing import Any
 import httpx
 
 from ..exceptions import SourceFetchError
-from . import fetch, freshness, parse
+from . import fetch, freshness, hgnc, parse
 from .build import Sources, build_snapshot, default_snapshot_path, open_readonly
 
 _DOMAINS = ("validity", "dosage", "actionability", "erepo")
@@ -49,6 +49,7 @@ def gather_sources() -> tuple[Sources, list[str]]:
         _try(lambda: _load_erepo(sources, client), "erepo", failures)
         _try(lambda: _load_erepo_summary(sources, client), "erepo_summary", failures)
         _try(lambda: _load_affiliates(sources, client), "affiliates", failures)
+        _try(lambda: _load_hgnc(sources, client), "hgnc", failures)
     return sources, failures
 
 
@@ -89,6 +90,10 @@ def _load_erepo_summary(sources: Sources, client: httpx.Client) -> None:
 
 def _load_affiliates(sources: Sources, client: httpx.Client) -> None:
     sources.affiliates = fetch.fetch_affiliates(client)
+
+
+def _load_hgnc(sources: Sources, client: httpx.Client) -> None:
+    sources.hgnc_rows = hgnc.parse_hgnc(fetch.fetch_hgnc(client))
 
 
 def _compute_signals(sources: Sources) -> dict[str, dict[str, Any]]:

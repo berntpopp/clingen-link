@@ -170,6 +170,17 @@ def fetch_erepo_summary(client: httpx.Client | None = None) -> dict[str, Any]:
             client.close()
 
 
+def fetch_hgnc(client: httpx.Client | None = None) -> str:
+    """Fetch the HGNC complete-set TSV (symbol / alias / prev-symbol / name authority)."""
+    owned = client is None
+    client = client or httpx.Client(timeout=_DEFAULT_TIMEOUT)
+    try:
+        return _get(client, settings.hgnc_complete_set_url, "hgnc").text
+    finally:
+        if owned:
+            client.close()
+
+
 def fetch_affiliates(client: httpx.Client | None = None) -> list[dict[str, Any]]:
     """Fetch the expert-panel affiliates list (GCEPs / VCEPs + curation counts)."""
     owned = client is None

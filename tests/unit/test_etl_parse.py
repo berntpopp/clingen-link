@@ -226,6 +226,26 @@ def test_build_gene_index_flags_and_aliases() -> None:
     assert ("hgnc:20", "AARS1") in alias_pairs
 
 
+def test_build_gene_index_applies_hgnc_name_and_alias() -> None:
+    # L2/L3: HGNC map fills the full name + adds alias rows for ClinGen-curated genes.
+    validity = [{"symbol": "BRCA2", "hgnc_id": "HGNC:1101"}]
+    hgnc_map = {
+        "BRCA2": {
+            "hgnc_id": "HGNC:1101",
+            "name": "BRCA2 DNA repair associated",
+            "aliases": ["FANCD1", "FACD"],
+        },
+        # A gene NOT in any ClinGen domain must be ignored (index stays lean).
+        "UNRELATED": {"hgnc_id": "HGNC:9999", "name": "n", "aliases": ["ZZZ"]},
+    }
+    genes, aliases = parse.build_gene_index(validity, [], [], {}, hgnc=hgnc_map)
+    by_symbol = {g["symbol"]: g for g in genes}
+    assert by_symbol["BRCA2"]["name"] == "BRCA2 DNA repair associated"
+    assert "UNRELATED" not in by_symbol
+    alias_pairs = {(a["alias"], a["symbol"]) for a in aliases}
+    assert ("FANCD1", "BRCA2") in alias_pairs
+
+
 def test_to_json_is_compact_and_deterministic() -> None:
     assert parse.to_json(["b", "a"]) == '["b","a"]'
     assert parse.to_json([]) == "[]"

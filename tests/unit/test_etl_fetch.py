@@ -228,6 +228,12 @@ def test_gather_sources_collects_all_domains() -> None:
     respx.get(f"{base_e}/api/summary/classifications/summary/gene").mock(
         return_value=httpx.Response(200, json=_load_json("erepo_summary_sample.json"))
     )
+    respx.get(settings.hgnc_complete_set_url).mock(
+        return_value=httpx.Response(
+            200,
+            text="hgnc_id\tsymbol\tname\talias_symbol\tprev_symbol\nHGNC:20\tAARS1\tAla tRNA\t\t\n",
+        )
+    )
     sources, failures = refresh.gather_sources()
     assert failures == []
     assert len(sources.validity_rows) == 5
@@ -236,6 +242,7 @@ def test_gather_sources_collects_all_domains() -> None:
     assert sources.erepo_tsv.startswith("Variation")
     assert len(sources.affiliates) == 59
     assert "ABCA4" in sources.erepo_summary["data"]
+    assert sources.hgnc_rows and sources.hgnc_rows[0]["symbol"] == "AARS1"
 
 
 @respx.mock
