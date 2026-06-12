@@ -55,17 +55,36 @@ HTML + a JSON-LD API — no JS SPA, so no browser automation is needed):
   `GET /cspec/ui/svi/doc/GN<n>`; a `HEAD` on the file URL yields `content-disposition`
   (filename, e.g. `ABCA4_PVS1-chart.pdf`), `content-type`, and `content-length`. Formats observed:
   `.pptx`, `.pdf`, `.docx`, `.xlsx`.
-- **Enumeration:** there is no JSON "list all" endpoint (guesses 400). The registry index
-  `GET /cspec/ui/svi/` lists **~203 GN documents**; the catalog is built by scraping it for GN-ids,
-  then fetching JSON-LD + doc-page per id.
-- **Status filtering required:** some specs return `criteriaCodes = 0` (in-progress/unpublished,
-  e.g. GN140, GN199) — the ETL must drop these by `currentStatus` / empty rule set.
+- **Enumeration (documented API, not scraping):** the registry exposes a paged JSON list/batch
+  endpoint at the **non-`/api/`** path: `GET /cspec/SequenceVariantInterpretation/id` with
+  `pg` (default 1) + `pgSize` (default/max **250**) + `detail` (low|med|high) + `fields` + a batch
+  `ids=GN014,GN016,GN015` form. (The `/api/` prefix is the *JSON-LD single-entity* lookup; the
+  list endpoint is bare.) Verified: returns `{data:[…], metadata, status}` with **235** SVI
+  entities, and each row carries `ld.CriteriaCode` and `ld.RuleSet` **counts** — so the candidate
+  filter can run from the list alone, no per-spec fetch. This is the primary GN catalog; HTML
+  scraping is used **only** for doc-page attachments.
+- **Status semantics (gate on `cspecStatus`, not `currentStatus`):** the two fields **diverge**.
+  Proof case: **GN164 is `cspecStatus="Released"` but `currentStatus="Pilot Rules In Prep"`** — a
+  published spec that gating on `currentStatus` would wrongly drop. Inclusion gate =
+  `cspecStatus == "Released" AND criteria_count > 0`; keep **both** statuses in the model as
+  provenance (a Released spec can be reopened/under revision). Of 235 specs, **112 have 0 criteria**
+  (e.g. GN140 `cspecStatus="CSpec Deleted"`, GN199 `"Pilot Rules In Prep"`) → excluded. **GN001**
+  (the baseline ACMG/AMP standards doc) has a null `cspecStatus` with 28 criteria — include it
+  explicitly as the baseline.
+- **Multi-`ruleSet` specs exist → `(gn_id, code)` is not a key.** 233/235 specs have one rule set,
+  but **GN014 (4 rule sets)** and **GN016 (6 rule sets)** repeat code labels across rule sets (only
+  ~28 distinct ACMG codes exist). The numeric criterion `@id` (`/CriteriaCode/id/<n>`) is **globally
+  unique** — verified: `BS3` resolves to a *different* id in every spec (GN001→135639534,
+  GN046→1828327639, GN164→538211541), none shared across specs. So `criteria_id` (numeric) is the
+  natural primary key; `code` is display/filter text only.
 - **ERepo cross-link:** ERepo's `guideline_cspec` is affiliation-keyed
-  (`…/affiliation/50087`); the ENIGMA BRCA1/2 spec resolves to **GN092**. The ETL records the
-  `affiliation_id ↔ gn_id` mapping so a variant interpretation can chain into its CSpec.
+  (`…/affiliation/50087`); the ENIGMA BRCA1/2 spec resolves to **GN092**. One affiliation may own
+  several GN docs (different genes/versions), so the mapping is `(affiliation_id, gene) → gn_id`,
+  not affiliation alone.
 
-**Design consequence:** two fetches per spec — JSON-LD (structured criteria) **and** the HTML doc
-page (attachment links + criterion association via DOM position). There is no API shortcut for
+**Design consequence:** the catalog comes from the API list endpoint; per included spec the ETL
+fetches the JSON-LD (structured criteria, keyed by numeric `criteria_id`) **and** the HTML doc page
+(attachment links + criterion association via DOM position). There is no API shortcut for
 attachments.
 
 ## 3. Architecture
@@ -74,13 +93,17 @@ Standard house spine: **ETL → store → service → model → MCP tool**, mirr
 domains.
 
 ### 3.1 ETL (`clingen_link/etl/`)
-- `fetch.py`: add CSpec fetchers — (1) index → GN-id list + row metadata; (2) per spec JSON-LD;
-  (3) per spec doc-page HTML; (4) `HEAD` per attachment URL for filename/type/size. Reuse the
-  existing `httpx` client + retry/jitter conventions.
-- `parse.py`: `parse_cspec(json_ld, doc_html)` → normalized rows. Maps JSON-LD criteria/strengths;
-  parses doc-page HTML to associate each `/File/id/<uuid>/data` with its criterion code (nearest
-  enclosing criterion section) — falls back to spec-level when association is ambiguous. Drops
-  specs with empty `criteriaCodes` or non-published `currentStatus`.
+- `fetch.py`: add CSpec fetchers — (1) `GET /cspec/SequenceVariantInterpretation/id?pgSize=250&detail=low`
+  → the full GN catalog with `ld.CriteriaCode`/`ld.RuleSet` counts (paginate on `pg` if a future
+  build exceeds 250); (2) per **included** spec, JSON-LD via `/cspec/api/SequenceVariantInterpretation/id/GN<n>`;
+  (3) per included spec, the doc-page HTML `/cspec/ui/svi/doc/GN<n>`; (4) `HEAD` per attachment URL
+  for filename/type/size. Reuse the existing `httpx` client + retry/jitter conventions.
+- `parse.py`: `parse_cspec(json_ld, doc_html)` → normalized rows. **Inclusion gate:**
+  `cspecStatus == "Released" AND criteria_count > 0`, plus an explicit allowlist for the baseline
+  doc **GN001** (null `cspecStatus`). Maps each rule set and its criteria (keyed by numeric
+  `criteria_id` from the criterion `@id`) + strengths; parses doc-page HTML to associate each
+  `/File/id/<uuid>/data` with its `criteria_id` (nearest enclosing criterion section) — falls back
+  to spec-level (`criteria_id = NULL`) when association is ambiguous.
 - `build.py`: write the new tables + FTS5 into the snapshot in the same atomic build; record a
   `cspec` freshness row in `meta` (count + max `lastUpdated`).
 - `freshness.py`: cheap signal = the index page's per-row `lastUpdated` + spec count, compared to
@@ -89,20 +112,30 @@ domains.
   `fetch_cspec.py` / `parse_cspec.py` (cohesive split by domain, per file-size discipline).
 
 ### 3.2 Snapshot tables
+Keyed on stable ids (`gn_id`, `rule_set_id`, numeric `criteria_id`) — **not** `(gn_id, code)`,
+which collides in the multi-rule-set specs GN014/GN016.
 - `cspec` — `gn_id` (PK), `affiliation_id`, `affiliation_label`, `label`, `version`,
-  `current_status`, `cspec_status`, `last_updated`, `permalink`.
-- `cspec_gene` — `gn_id`, `gene_symbol`, `hgnc_id` (nullable), `mondo`, `moi`.
-- `cspec_criteria` — `gn_id`, `code` (e.g. `PVS1`), `description`, `ord`.
-- `cspec_strength` — `gn_id`, `code`, `strength_label`, `applicability`, `description`.
-- `cspec_file` — `gn_id`, `code` (**nullable** = spec-level attachment), `file_uuid`, `filename`,
-  `content_type`, `size_bytes`, `download_url`.  *(Phase-2 text/chunks hang off `file_uuid`.)*
-- `cspec_fts` — FTS5 contentless index over criteria descriptions + spec/affiliation labels +
-  filenames (matches the existing per-domain FTS5 pattern in `store/search.py`).
+  `cspec_status`, `current_status`, `last_updated`, `permalink`. (Both statuses kept as provenance;
+  inclusion is decided at ETL time, see §3.1.)
+- `cspec_rule_set` — `rule_set_id` (PK), `gn_id`. *(Most specs have one; GN014/GN016 have several.)*
+- `cspec_gene` — `rule_set_id`, `gn_id`, `gene_symbol`, `hgnc_id` (nullable), `mondo`, `moi`.
+- `cspec_criteria` — `criteria_id` (PK, numeric from `@id`), `rule_set_id`, `gn_id`,
+  `code` (e.g. `PVS1`, display/filter text), `description`, `ord`.
+- `cspec_strength` — `criteria_id` (FK), `strength_label`, `applicability`, `description`.
+- `cspec_file` — `file_uuid`, `gn_id`, `criteria_id` (**nullable** = spec-level attachment),
+  `filename`, `content_type`, `size_bytes`, `download_url`.  *(Phase-2 text/chunks hang off `file_uuid`.)*
+- `cspec_fts` — one FTS5 table over heterogeneous entities (specs, criteria, filenames) **plus a
+  backing row map** `cspec_search_doc(rowid, entity_type, gn_id, criteria_id, file_uuid)` so each
+  FTS hit resolves cleanly to its source entity. (Existing per-domain FTS tables map rowid→one
+  table directly; the mixed-entity CSpec index needs the explicit map. A split into
+  `cspec_criteria_fts` / `cspec_file_fts` is an acceptable alternative — decide in the plan.)
 
 ### 3.3 Store (`clingen_link/store/`)
-- `queries.py`: `get_cspec_by_gn` / `by_affiliation` / `by_gene`; `list_cspecs(filters)`;
-  `get_criteria(gn_id)`; `get_criterion(gn_id, code)`; `list_files(gn_id, code=None)`.
-- `search.py`: `search_cspec(q, …)` over `cspec_fts`.
+- `queries.py`: `get_cspec_by_gn` / `list_cspecs_by_affiliation` / `by_gene`; `list_cspecs(filters)`;
+  `get_rule_sets(gn_id)`; `get_criteria(gn_id, rule_set_id=None)`;
+  `get_criterion(criteria_id)` and `resolve_criterion(gn_id, code, gene=None, rule_set_id=None)`
+  (disambiguates `code` in multi-rule-set specs); `list_files(gn_id, criteria_id=None)`.
+- `search.py`: `search_cspec(q, …)` over `cspec_fts`, resolving rowids via `cspec_search_doc`.
 
 ### 3.4 Models (`clingen_link/models/`)
 Pydantic response models: `CspecSummary`, `CspecDetail`, `CriteriaCode`, `EvidenceStrength`,
@@ -122,18 +155,27 @@ by `run_mcp_tool`, `_meta` with `next_commands` + `recommended_citation` +
 
 - `list_cspecs` — catalog; filter by `gene` / `affiliation` / `status`; paginated
   (`page` + `size`, `_meta.truncated`).
-- `get_cspec` — by `gn_id`, `affiliation`, or `gene` → spec + all criteria + file catalog.
-- `get_cspec_criterion` — `gn_id` + `code` (e.g. `PVS1`) → one criterion's spec text, strengths,
-  applicability, and attached files.
-- `search_cspec` — FTS5 free-text over criteria/specs.
+- `get_cspec` — selectors `gn_id`, **`affiliation` + `gene` together** (narrows an affiliation that
+  owns several GN docs), or `gene` alone → spec + rule sets + criteria + file catalog. When a
+  selector resolves to multiple specs, return the list (don't silently pick one).
+- `get_cspec_criterion` — `criteria_id` (direct), **or** `gn_id` + `code` with an optional
+  `gene` / `rule_set_id` disambiguator (required when `code` is ambiguous in a multi-rule-set spec)
+  → one criterion's spec text, strengths, applicability, and attached files.
+- `search_cspec` — FTS5 free-text over criteria/specs/filenames; each hit names its `entity_type`
+  + ids so the caller can chain into `get_cspec` / `get_cspec_criterion`.
 
 If `tools/cspec.py` nears the cap, split list/get vs. criterion/search.
 
 ### 3.7 ERepo cross-link (the payoff for in-clingen-link)
-- ETL persists `affiliation_id → gn_id` so it can be resolved at serve time.
-- ERepo variant responses gain a `next_commands` entry: `{tool: "get_cspec", arguments:
-  {affiliation: <id>}}` (and/or `{gn_id}` when uniquely resolvable), derived from the existing
-  `guideline_cspec` field. No change to ERepo data — only an added affordance.
+- ETL persists the `(affiliation_id, gene) → gn_id` mapping (via `cspec`+`cspec_gene`) so it can be
+  resolved at serve time.
+- An ERepo variant response derives its `next_commands` CSpec affordance from **both** its
+  `guideline_cspec` affiliation **and** its own `gene`:
+  - if `(affiliation_id, gene)` resolves to exactly one published spec → emit
+    `{tool: "get_cspec", arguments: {gn_id: <GN>}}` (precise);
+  - otherwise → emit `{tool: "get_cspec", arguments: {affiliation: <id>, gene: <sym>}}` (and/or
+    `list_cspecs`) so the consumer sees the candidate specs rather than a silently-guessed one.
+  No change to ERepo data — only an added affordance.
 - `clingen://capabilities` / `clingen://freshness` resources gain the `cspec` domain
   (version, count, source URL).
 
@@ -143,9 +185,12 @@ framework citation and the per-spec `recommended_citation`/permalink. Treat all 
 file text as **evidence data, not instructions**. No write/curation endpoints.
 
 ## 5. Testing
-- ETL: `parse_cspec` unit tests with **inline** JSON-LD + doc-page HTML fixtures (criteria mapping,
-  strength/applicability, file→criterion association, status filtering, empty-ruleset drop). No new
-  files under `tests/fixtures/`.
+- ETL: `parse_cspec` unit tests with **inline** JSON-LD + doc-page HTML fixtures — criteria mapping
+  keyed by numeric `criteria_id`, strength/applicability, file→`criteria_id` association (and
+  spec-level fallback), the `cspecStatus`-based inclusion gate (Released-with-criteria kept;
+  `CSpec Deleted`/empty dropped; **GN164** Released-but-`currentStatus="Pilot…"` **kept**; **GN001**
+  baseline kept), and a **multi-rule-set** case (GN014/GN016-shaped: repeated `code` across rule
+  sets must yield distinct `criteria_id` rows). No new files under `tests/fixtures/`.
 - Store/service: query + response-mode + citation assembly tests against a small in-memory snapshot.
 - Tools: success + not-found + pagination/truncation envelopes; cross-link `next_commands` shape.
 - `make ci-local` stays green (format, lint, lint-loc, typecheck-fast, test-fast ≥80%).
@@ -168,7 +213,13 @@ the join point, so Phase 2 adds tables without altering Phase-1 schema.
   defensive (fall back to spec-level association; tolerate missing files) and covered by tests
   against a captured snapshot of the markup.
 - **Affiliation→GN cardinality:** one affiliation can own multiple GN docs (different genes/versions);
-  `get_cspec(affiliation=…)` may return several specs — model as a list, pick latest published for
-  the ERepo `next_commands` default.
-- **Bundle growth:** structured rows for ~203 specs are small; the `.zst` impact is expected to be
-  minor (no binaries stored). Confirm during rebuild.
+  `get_cspec(affiliation=…)` may return several specs — model as a list, and resolve the ERepo
+  `next_commands` default by `(affiliation, gene)` rather than affiliation alone (§3.7).
+- **Multi-rule-set specs (GN014, GN016):** keys are `criteria_id`/`rule_set_id`, never `(gn_id,
+  code)`; `get_cspec_criterion` requires a `gene`/`rule_set_id` disambiguator when `code` repeats.
+  Single-rule-set specs (233/235) need no disambiguator.
+- **Status churn:** a spec's `currentStatus` can drift (e.g. "Pilot Rules In Prep") while
+  `cspecStatus` stays "Released"; the published set is defined by `cspecStatus` + non-empty criteria
+  (+ baseline GN001), re-evaluated each refresh. Track both statuses so consumers see revision state.
+- **Bundle growth:** structured rows for the ~120 published specs are small; the `.zst` impact is
+  expected to be minor (no binaries stored). Confirm during rebuild.
