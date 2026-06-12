@@ -95,7 +95,7 @@ def cspec_next_command(
     args: dict[str, Any] = {"affiliation": affiliation}
     if gene:
         args["gene"] = gene
-    return {"tool": "get_cspec", "arguments": args}
+    return cmd("get_cspec", **args)
 
 
 def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenServices]) -> None:
@@ -277,7 +277,7 @@ def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
             extra = cspec_next_command(
                 model.guideline_cspec,
                 gene=model.gene,
-                resolve=lambda aff, g: services.cspec_resolve_sync(aff, g),
+                resolve=services.cspec_resolve_sync,
             )
             if extra is not None:
                 next_cmds.append(extra)

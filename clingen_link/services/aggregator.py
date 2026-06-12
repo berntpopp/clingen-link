@@ -12,6 +12,7 @@ from pathlib import Path
 
 from ..api.clingen_client import ClingenClient
 from ..config import settings
+from ..store import cspec_queries
 from ..store.db import Store
 from .actionability_service import ActionabilityService
 from .cspec_service import CspecService
@@ -64,8 +65,11 @@ class ClingenServices:
         return self.store.meta()
 
     def cspec_resolve_sync(self, affiliation_id: str, gene: str | None) -> list[str]:
-        """Resolve affiliation(+gene) -> GN ids synchronously (snapshot read)."""
-        with self.store.connection() as conn:
-            from ..store import cspec_queries
+        """Resolve affiliation(+gene) -> GN ids synchronously (snapshot read).
 
+        Deliberate SYNCHRONOUS twin of ``CspecService.resolve_for_erepo`` (both
+        call ``resolve_gn``) so the ERepo tool can resolve without awaiting inside
+        its next_commands construction; do not dedupe.
+        """
+        with self.store.connection() as conn:
             return cspec_queries.resolve_gn(conn, affiliation_id=affiliation_id, gene=gene)
