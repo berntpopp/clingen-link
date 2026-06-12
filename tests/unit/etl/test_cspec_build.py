@@ -106,6 +106,100 @@ def _multi_entity_spec():
     return cspec_parse.parse_spec(jsonld, html, heads)
 
 
+def _shared_criteria_id_spec():
+    """One spec whose two rule sets SHARE a single criteria_id.
+
+    Both rule sets list a ``PM2`` criteriaCode with the SAME numeric ``@id`` tail
+    (538200999). The registry reuses one numeric ``criteria_id`` across rule sets,
+    so ``parse_spec`` emits TWO criteria rows (one per rule set) carrying the same
+    ``criteria_id`` — the case that must be indexed exactly once.
+    """
+    rule_set = lambda rs_id, gene, mondo: {  # noqa: E731 - inline fixture helper
+        "@id": f".../id/{rs_id}",
+        "genes": [
+            {
+                "@id": f".../?query={gene}",
+                "diseases": [{"label": mondo}],
+                "modeOfInheritance": "AD",
+            }
+        ],
+        "criteriaCodes": [
+            {
+                "@id": ".../id/538200999",
+                "label": "PM2",
+                "description": "absent from controls",
+                "evidenceStrengths": [
+                    {"label": "Moderate", "applicability": "Applicable"},
+                    {"label": "Supporting", "applicability": "Applicable"},
+                ],
+            }
+        ],
+    }
+    jsonld = {
+        "@id": ".../id/GN300",
+        "affiliation": {"@id": ".../id/50300", "label": "Shared VCEP"},
+        "label": "Shared spec v1",
+        "version": "1.0.0",
+        "cspecStatus": "Released",
+        "ruleSets": [
+            rule_set("901", "GENEA", "MONDO:0000010"),
+            rule_set("902", "GENEB", "MONDO:0000020"),
+        ],
+    }
+    return cspec_parse.parse_spec(jsonld, "", {})
+
+
+def test_write_cspec_reused_criteria_id_indexed_once() -> None:
+    """A criteria_id reused across two rule sets is indexed exactly once.
+
+    The registry reuses one numeric criteria_id across rule sets within a spec, so
+    parse_spec emits two criteria rows with the same criteria_id. The build must
+    collapse those into ONE cspec_search_doc + ONE cspec_fts + ONE set of
+    strengths, preserving the rowid <-> search_doc <-> fts lockstep.
+    """
+    parsed = _shared_criteria_id_spec()
+    # Guard: the fixture must actually make parse_spec emit a duplicated
+    # criteria_id (two criteria rows, two strength-blocks, one shared id).
+    assert len(parsed.criteria) == 2
+    assert {c["criteria_id"] for c in parsed.criteria} == {"538200999"}
+    assert len(parsed.strengths) == 4  # 2 strengths x 2 rule-set occurrences
+
+    conn = sqlite3.connect(":memory:")
+    schema.create_schema(conn)
+    assert build._write_cspec(conn, [parsed]) == 1
+
+    shared = "538200999"
+    # Exactly one search_doc row for the shared criterion.
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) FROM cspec_search_doc WHERE criteria_id = ?", (shared,)
+        ).fetchone()[0]
+        == 1
+    )
+    # Lockstep: every cspec_fts row has a matching cspec_search_doc row.
+    fts_count = conn.execute("SELECT COUNT(*) FROM cspec_fts").fetchone()[0]
+    doc_count = conn.execute("SELECT COUNT(*) FROM cspec_search_doc").fetchone()[0]
+    assert fts_count == doc_count
+    # The criterion is found exactly once by an FTS match for its code.
+    hits = conn.execute(
+        "SELECT rowid FROM cspec_fts WHERE cspec_fts MATCH ?", ('"PM2"',)
+    ).fetchall()
+    assert len(hits) == 1
+    doc = conn.execute(
+        "SELECT entity_type, criteria_id FROM cspec_search_doc WHERE rowid = ?",
+        (hits[0][0],),
+    ).fetchone()
+    assert doc == ("criterion", shared)
+    # Strengths for the shared criterion are written once (not doubled): the one
+    # criterion carries two strengths, so exactly two rows — not four.
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) FROM cspec_strength WHERE criteria_id = ?", (shared,)
+        ).fetchone()[0]
+        == 2
+    )
+
+
 def test_write_cspec_populates_tables_and_fts() -> None:
     conn = sqlite3.connect(":memory:")
     schema.create_schema(conn)

@@ -306,7 +306,17 @@ def _write_cspec(conn: sqlite3.Connection, specs: list[cspec_parse.ParsedSpec]) 
                     g["moi"],
                 ),
             )
+        # The registry reuses one numeric criteria_id across multiple rule sets
+        # within a spec, so parse_spec emits multiple criteria/strength rows with
+        # the same criteria_id. cspec_criteria collapses on its PK, but the
+        # search_doc/fts/strength inserts must be guarded so the shared criterion
+        # is indexed exactly once and the rowid <-> search_doc <-> fts lockstep is
+        # preserved (never bump rowid without inserting the matching pair).
+        seen_criteria: set[str] = set()
         for c in parsed.criteria:
+            if c["criteria_id"] in seen_criteria:
+                continue
+            seen_criteria.add(c["criteria_id"])
             cur.execute(
                 "INSERT OR REPLACE INTO cspec_criteria (criteria_id, rule_set_id, gn_id, code, "
                 "description, ord) VALUES (?,?,?,?,?,?)",
@@ -329,7 +339,16 @@ def _write_cspec(conn: sqlite3.Connection, specs: list[cspec_parse.ParsedSpec]) 
                 "INSERT INTO cspec_fts (rowid, text) VALUES (?,?)",
                 (rowid, f"{c['code'] or ''} {c['description'] or ''}"),
             )
+        seen_strengths: set[tuple[str, int]] = set()
         for st in parsed.strengths:
+            # A reused criteria_id carries the same strengths in each rule set, so
+            # parse_spec emits each (criteria_id, ord) strength twice. Key the
+            # guard on (criteria_id, ord) to write each distinct strength once
+            # without dropping the multiple strengths of a single criterion.
+            key = (st["criteria_id"], st["ord"])
+            if key in seen_strengths:
+                continue
+            seen_strengths.add(key)
             cur.execute(
                 "INSERT INTO cspec_strength (criteria_id, strength_label, applicability, "
                 "description, ord) VALUES (?,?,?,?,?)",

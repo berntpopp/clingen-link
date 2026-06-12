@@ -90,9 +90,13 @@ SQLite tables (see `etl/schema.py` for DDL): `gene`, `gene_alias`, `validity`,
 search: `validity_fts`, `dosage_fts`, `actionability_fts`, `erepo_fts`,
 `expert_panel_fts`, and `cspec_fts` (a mixed-entity index over specs, criteria,
 and filenames, with each rowid resolved back to its source entity through the
-`cspec_search_doc` row-map). `cspec_criteria` is keyed on the globally-unique
-numeric `criteria_id` rather than `(gn_id, code)`, because a code repeats across
-the multiple rule sets of a multi-rule-set spec.
+`cspec_search_doc` row-map). `cspec_criteria` uses the numeric `criteria_id` as
+its primary key rather than `(gn_id, code)`, because a code repeats across the
+multiple rule sets of a multi-rule-set spec. That `criteria_id` is unique per
+criterion, but the registry can reuse the same `criteria_id` across multiple rule
+sets within a spec — so it is not globally unique across rule-set occurrences. The
+build collapses those reuses to one `cspec_criteria` row and indexes each distinct
+criterion in `cspec_fts` exactly once.
 
 ## CSpec two-source ETL
 

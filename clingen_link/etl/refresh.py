@@ -158,7 +158,6 @@ def _load_cspec(sources: Sources, client: httpx.Client | None, *, with_specs: bo
                 f"  ! cspec {gn_id} doc page unavailable, no attachments: {exc}",
                 file=sys.stderr,
             )
-            doc_html = ""
         heads: dict[str, dict[str, str]] = {}
         for url in cspec_parse.extract_file_urls(doc_html):
             try:
