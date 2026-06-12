@@ -18,15 +18,15 @@ import sqlite3
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
 from ..exceptions import SourceFetchError
-from . import fetch, freshness, hgnc, parse
+from . import cspec_fetch, cspec_parse, fetch, freshness, hgnc, parse
 from .build import Sources, build_snapshot, default_snapshot_path, open_readonly
 
-_DOMAINS = ("validity", "dosage", "actionability", "erepo")
+_DOMAINS = ("validity", "dosage", "actionability", "erepo", "cspec")
 
 
 def _now_iso() -> str:
@@ -50,6 +50,7 @@ def gather_sources() -> tuple[Sources, list[str]]:
         _try(lambda: _load_erepo_summary(sources, client), "erepo_summary", failures)
         _try(lambda: _load_affiliates(sources, client), "affiliates", failures)
         _try(lambda: _load_hgnc(sources, client), "hgnc", failures)
+        _try(lambda: _load_cspec(sources, client), "cspec", failures)
     return sources, failures
 
 
@@ -96,6 +97,42 @@ def _load_hgnc(sources: Sources, client: httpx.Client) -> None:
     sources.hgnc_rows = hgnc.parse_hgnc(fetch.fetch_hgnc(client))
 
 
+def _load_cspec(sources: Sources, client: httpx.Client | None) -> None:
+    """Fetch the cspec catalog, then JSON-LD + doc page for each published spec.
+
+    Candidate filter (cheap, from the catalog ``ld.CriteriaCode`` count) runs
+    before any per-spec fetch; the ``cspecStatus`` gate runs after the JSON-LD is
+    in hand so non-Released specs never trigger a doc-page/HEAD fetch.
+
+    The catalog count is coerced via ``freshness._as_int`` (and ``ld`` guarded to
+    a dict) so a malformed catalog row downgrades to a candidate-of-0 rather than
+    aborting the whole cspec load.
+    """
+    catalog = cspec_fetch.fetch_catalog(client)
+    sources.cspec_catalog = catalog
+    for row in catalog:
+        raw_ld = row.get("ld")
+        ld = raw_ld if isinstance(raw_ld, dict) else {}
+        if freshness._as_int(ld.get("CriteriaCode")) == 0:
+            continue
+        gn_id = str(row.get("entId") or "")
+        if not gn_id:
+            continue
+        # Per-spec fetchers require a live client; in ``gather_sources`` one is
+        # always supplied. The ``client=None`` path exists only for the unit test,
+        # which monkeypatches every fetcher so the real client is never touched.
+        spec_client = cast(httpx.Client, client)
+        jsonld = cspec_fetch.fetch_spec_jsonld(spec_client, gn_id)
+        if not cspec_parse.is_published(jsonld):
+            continue
+        doc_html = cspec_fetch.fetch_doc_page(spec_client, gn_id)
+        heads = {
+            url: cspec_fetch.head_file(spec_client, url)
+            for url in cspec_parse.extract_file_urls(doc_html)
+        }
+        sources.cspec_specs.append(cspec_parse.parse_spec(jsonld, doc_html, heads))
+
+
 def _compute_signals(sources: Sources) -> dict[str, dict[str, Any]]:
     """Compute the per-domain freshness signals from fetched sources."""
     return {
@@ -103,6 +140,7 @@ def _compute_signals(sources: Sources) -> dict[str, dict[str, Any]]:
         "dosage": freshness.dosage_signal(sources.dosage_etags),
         "actionability": freshness.actionability_signal(sources.actionability_brief),
         "erepo": freshness.erepo_signal(sources.erepo_news, sources.erepo_tsv),
+        "cspec": freshness.cspec_signal(sources.cspec_catalog),
     }
 
 

@@ -234,6 +234,9 @@ def test_gather_sources_collects_all_domains() -> None:
             text="hgnc_id\tsymbol\tname\talias_symbol\tprev_symbol\nHGNC:20\tAARS1\tAla tRNA\t\t\n",
         )
     )
+    respx.get("https://cspec.genome.network/cspec/SequenceVariantInterpretation/id").mock(
+        return_value=httpx.Response(200, json={"data": []})
+    )
     sources, failures = refresh.gather_sources()
     assert failures == []
     assert len(sources.validity_rows) == 5
