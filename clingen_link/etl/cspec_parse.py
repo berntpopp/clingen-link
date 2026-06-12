@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 _BASE = "https://cspec.genome.network"
+# Deliberately assumes hex UUID file ids (the registry's id scheme); a non-hex
+# id would silently not match and its attachment would be dropped.
 _FILE_RE = re.compile(r"/cspec/File/id/([0-9a-fA-F-]+)/data")
 _FILENAME_RE = re.compile(r'filename="?([^"\r\n;]+)"?')
 # An ACMG/AMP code token as it appears in a doc-page heading (PVS1, PS3, PM2, BA1, BS3, BP7...).
@@ -96,6 +98,12 @@ def _associate_files(
 
     A file link is attributed to the most recent unambiguous code heading seen
     before it; spec-level (``criteria_id = None``) when none/ambiguous.
+
+    Note: tracking keys on the most recent ACMG/AMP **code token**, not strictly
+    a heading, so a code mentioned in prose (e.g. "differs from BS3 below") can
+    redirect attribution to the wrong criterion. The spec-level fallback
+    (``criteria_id = None`` for ambiguous codes) keeps the build correct, and
+    this heuristic is validated against a real GN164 doc page in Task 12.
     """
     events: list[tuple[int, str, str]] = []
     for m in _CODE_RE.finditer(doc_html):
@@ -173,10 +181,13 @@ def parse_spec(
         for ord_, code in enumerate(rs.get("criteriaCodes", []) or []):
             criteria_id = _tail_id(code.get("@id")) or ""
             label = code.get("label") or ""
-            # Only map unambiguous code->criteria for single-rule-set specs.
-            code_to_criteria.setdefault(label, criteria_id)
+            # A code repeated across rule sets with a different criteria_id is
+            # ambiguous -> map it to spec-level ("") so its files attach to no
+            # single criterion.
             if label in code_to_criteria and code_to_criteria[label] != criteria_id:
-                code_to_criteria[label] = ""  # ambiguous -> spec-level
+                code_to_criteria[label] = ""
+            else:
+                code_to_criteria.setdefault(label, criteria_id)
             parsed.criteria.append(
                 {
                     "criteria_id": criteria_id,
