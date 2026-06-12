@@ -72,12 +72,23 @@ def test_server_version_is_str() -> None:
     assert isinstance(_server_version(), str)
 
 
-def test_service_adapters_inject_and_reset() -> None:
+def test_service_adapters_inject_and_reset(test_snapshot_path: object) -> None:
+    from clingen_link.services.aggregator import ClingenServices as RealServices
+
     reset_services()
-    default = get_services()
-    assert isinstance(default, ClingenServices)
-    sentinel = ClingenServices(store=object())
-    set_services(sentinel)
-    assert get_services() is sentinel
-    reset_services()
-    assert get_services() is not sentinel
+    sentinel = RealServices.from_snapshot(test_snapshot_path)  # type: ignore[arg-type]
+    try:
+        set_services(sentinel)
+        assert get_services() is sentinel
+        assert isinstance(get_services(), ClingenServices)
+        reset_services()
+        # After reset the override is cleared; a new build would load the bundled
+        # snapshot, so we only assert the override is gone (not the default build).
+        from clingen_link.mcp import service_adapters
+
+        assert service_adapters._override is None
+    finally:
+        import asyncio
+
+        asyncio.run(sentinel.aclose())
+        reset_services()

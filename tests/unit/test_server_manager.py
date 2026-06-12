@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from fastmcp import FastMCP
 
 from clingen_link.config import ServerConfig
 from clingen_link.exceptions import ConfigurationError
-from clingen_link.mcp.service_adapters import ClingenServices
+from clingen_link.mcp.service_adapters import ClingenServices, set_services
 from clingen_link.server_manager import UnifiedServerManager
 
 
@@ -19,13 +21,24 @@ def _manager() -> UnifiedServerManager:
     return manager
 
 
-def test_create_services_returns_container() -> None:
-    assert isinstance(_manager()._create_services(), ClingenServices)
+@pytest.fixture
+def injected_services(test_snapshot_path: Path) -> Iterator[ClingenServices]:
+    """Inject a real services container built from the small test snapshot."""
+    services = ClingenServices.from_snapshot(test_snapshot_path)
+    set_services(services)
+    try:
+        yield services
+    finally:
+        services.store.close()
 
 
-def test_create_mcp_server_builds_facade() -> None:
+def test_create_services_returns_container(injected_services: ClingenServices) -> None:
+    assert _manager()._create_services() is injected_services
+
+
+def test_create_mcp_server_builds_facade(injected_services: ClingenServices) -> None:
     manager = _manager()
-    mcp = manager._create_mcp_server(lambda: ClingenServices())
+    mcp = manager._create_mcp_server(lambda: injected_services)
     assert isinstance(mcp, FastMCP)
 
 
@@ -53,12 +66,14 @@ async def test_start_server_rejects_unknown_transport() -> None:
         await manager.start_server(config)
 
 
-async def test_compose_lifespan_runs_both_contexts() -> None:
+async def test_compose_lifespan_runs_both_contexts(
+    injected_services: ClingenServices,
+) -> None:
     manager = _manager()
     manager._current_transport = "unified"
     app = await manager._create_fastapi_app(ServerConfig(transport="unified"))
 
-    mcp = manager._create_mcp_server(lambda: ClingenServices())
+    mcp = manager._create_mcp_server(lambda: injected_services)
     mcp_http_app = mcp.http_app(path="/", stateless_http=True, json_response=True)
     manager._compose_lifespan(app, mcp_http_app)
 

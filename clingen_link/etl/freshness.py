@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any
 
@@ -32,9 +32,9 @@ def _rfc1123_sort_key(value: str) -> datetime:
     try:
         parsed = parsedate_to_datetime(value)
     except (TypeError, ValueError):
-        return datetime.min.replace(tzinfo=timezone.utc)
+        return datetime.min.replace(tzinfo=UTC)
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
     return parsed
 
 
@@ -126,9 +126,7 @@ def actionability_signal(brief: list[dict[str, Any]]) -> dict[str, Any]:
                 "last_updated": str(last_updated),
             }
         )
-    signal_value = (
-        max(last_updated_values, key=_rfc1123_sort_key) if last_updated_values else ""
-    )
+    signal_value = max(last_updated_values, key=_rfc1123_sort_key) if last_updated_values else ""
     return {
         "signal_type": "max_last_updated",
         "signal_value": signal_value,

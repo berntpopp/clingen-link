@@ -43,6 +43,21 @@ class TestValidity:
         assert rows == []
         assert total == 0
 
+    def test_search_structured_filters(self, conn: object) -> None:
+        rows, total = q.search_validity(  # type: ignore[arg-type]
+            conn,
+            gene="AARS1",
+            expert_panel="Charcot",
+            classification="Definitive",
+            moi="AD",
+        )
+        assert total == 1
+        assert rows[0]["symbol"] == "AARS1"
+
+    def test_search_classification_no_match(self, conn: object) -> None:
+        rows, total = q.search_validity(conn, gene="AARS1", classification="Refuted")  # type: ignore[arg-type]
+        assert (rows, total) == ([], 0)
+
 
 class TestDosage:
     def test_for_gene_decodes_pmids(self, conn: object) -> None:
@@ -60,6 +75,16 @@ class TestDosage:
         rows, total = q.search_dosage(conn, record_type="gene", page=1, size=2)  # type: ignore[arg-type]
         assert len(rows) == 2
         assert total >= 2  # total exceeds page size → caller flags truncation
+
+    def test_search_text_no_match(self, conn: object) -> None:
+        assert q.search_dosage(conn, text="zzznosuchterm") == ([], 0)  # type: ignore[arg-type]
+
+    def test_search_cytoband_and_score(self, conn: object) -> None:
+        rows, total = q.search_dosage(  # type: ignore[arg-type]
+            conn, cytoband="15q", record_type="gene", size=100
+        )
+        assert total >= 1
+        assert all(r["cytoband"].startswith("15q") for r in rows)
 
 
 class TestActionability:
@@ -105,6 +130,28 @@ class TestErepo:
         rows, total = q.search_erepo(conn, gene="GJB2")  # type: ignore[arg-type]
         assert total >= 1
         assert all(r["gene"] == "GJB2" for r in rows)
+
+    def test_by_hgvs_missing(self, conn: object) -> None:
+        assert q.erepo_by_hgvs(conn, "NM_999999.9:c.1A>T") is None  # type: ignore[arg-type]
+
+    def test_search_structured_filters(self, conn: object) -> None:
+        rows, total = q.search_erepo(  # type: ignore[arg-type]
+            conn,
+            gene="BRAF",
+            mondo="MONDO:0021060",
+            expert_panel="RASopathy",
+            assertion="Likely Pathogenic",
+        )
+        assert total == 1
+        assert rows[0]["caid"] == "CA281951"
+
+    def test_search_text(self, conn: object) -> None:
+        rows, total = q.search_erepo(conn, text="RASopathy")  # type: ignore[arg-type]
+        assert total >= 1
+        assert any(r["gene"] == "BRAF" for r in rows)
+
+    def test_search_text_no_match(self, conn: object) -> None:
+        assert q.search_erepo(conn, text="zzznoterm") == ([], 0)  # type: ignore[arg-type]
 
 
 class TestGeneHubAndReference:
