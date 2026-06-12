@@ -10,7 +10,10 @@ from __future__ import annotations
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
-from mcp.types import LATEST_PROTOCOL_VERSION as MCP_PROTOCOL_VERSION
+from mcp.types import LATEST_PROTOCOL_VERSION
+
+# Re-exported for the diagnostics tool and capabilities document.
+MCP_PROTOCOL_VERSION: str = LATEST_PROTOCOL_VERSION
 
 RESEARCH_USE_NOTICE = "Research use only; not for clinical decision support."
 

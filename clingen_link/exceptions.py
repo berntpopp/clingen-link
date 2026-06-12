@@ -3,7 +3,7 @@
 Two families live here:
 
 * Server-lifecycle exceptions (`ConfigurationError`, `StartupError`,
-  `MCPIntegrationError`, ...) mirror the gnomad-link house style and drive the
+  `MCPIntegrationError`, ...) mirror the *-link house style and drive the
   transport/startup error handling.
 * ClinGen data/upstream exceptions (`ClingenApiError` and friends, plus
   `SnapshotUnavailableError`) are the typed faults the MCP error boundary

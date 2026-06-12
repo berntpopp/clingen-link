@@ -1,6 +1,6 @@
 """Structured MCP error envelopes for clingen-link tools.
 
-Patterned after gnomad_link/mcp/errors.py (itself copied from pubtator-link).
+Patterned after the house-style error envelope (originally pubtator-link).
 The envelope shape is what LLMs branch on; codes are deterministic per exception
 class so prompts can recover without scraping free text.
 """

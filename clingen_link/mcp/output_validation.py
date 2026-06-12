@@ -1,6 +1,6 @@
 """Output-schema validation error interceptor for clingen-link MCP tools.
 
-Ported from gnomad_link/mcp/output_validation.py (itself from pubtator-link).
+Ported from the house-style output_validation handler (originally pubtator-link).
 When FastMCP fires an output-schema validation error, this handler wraps it in
 the standard clingen-link error envelope so LLM callers see a structured
 actionable response instead of a raw SDK error string.
