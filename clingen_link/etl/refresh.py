@@ -114,9 +114,18 @@ def _load_cspec(sources: Sources, client: httpx.Client | None, *, with_specs: bo
     count is coerced via ``freshness._as_int`` (and ``ld`` guarded to a dict) so a
     malformed row downgrades to candidate-of-0 rather than aborting the load.
 
-    Per-spec failures are isolated: a ``SourceFetchError`` from any one spec's
-    JSON-LD, doc-page, or attachment HEAD drops only that spec (logged and skipped)
-    rather than failing the whole domain.
+    Per-spec failures degrade by severity rather than discarding curated criteria:
+
+    - A ``SourceFetchError`` from the JSON-LD fetch drops only that spec (the
+      criteria are unreachable without it), logged and skipped.
+    - A ``SourceFetchError`` from the doc-page fetch is non-fatal: the doc page
+      is only a source of *supplementary* attachment links, so the spec is still
+      parsed and appended with its criteria/strengths intact and zero
+      attachments (``doc_html = ""``).
+    - A ``SourceFetchError`` from a single attachment HEAD omits only that url
+      from ``heads``; ``parse_spec``/``_associate_files`` still records the file
+      (uuid + download_url) with null filename/type/size, so the attachment link
+      is never lost over a HEAD/GET hiccup.
     """
     catalog = cspec_fetch.fetch_catalog(client)
     sources.cspec_catalog = catalog
@@ -136,17 +145,30 @@ def _load_cspec(sources: Sources, client: httpx.Client | None, *, with_specs: bo
         spec_client = cast(httpx.Client, client)
         try:
             jsonld = cspec_fetch.fetch_spec_jsonld(spec_client, gn_id)
-            if not cspec_parse.is_published(jsonld):
-                continue
-            doc_html = cspec_fetch.fetch_doc_page(spec_client, gn_id)
-            heads = {
-                url: cspec_fetch.head_file(spec_client, url)
-                for url in cspec_parse.extract_file_urls(doc_html)
-            }
-            sources.cspec_specs.append(cspec_parse.parse_spec(jsonld, doc_html, heads))
         except SourceFetchError as exc:
-            print(f"  ! cspec {gn_id} skipped: {exc}", file=sys.stderr)
+            print(f"  ! cspec {gn_id} skipped (jsonld): {exc}", file=sys.stderr)
             continue
+        if not cspec_parse.is_published(jsonld):
+            continue
+        doc_html = ""
+        try:
+            doc_html = cspec_fetch.fetch_doc_page(spec_client, gn_id)
+        except SourceFetchError as exc:
+            print(
+                f"  ! cspec {gn_id} doc page unavailable, no attachments: {exc}",
+                file=sys.stderr,
+            )
+            doc_html = ""
+        heads: dict[str, dict[str, str]] = {}
+        for url in cspec_parse.extract_file_urls(doc_html):
+            try:
+                heads[url] = cspec_fetch.head_file(spec_client, url)
+            except SourceFetchError as exc:
+                print(
+                    f"  ! cspec {gn_id} attachment metadata skipped ({url}): {exc}",
+                    file=sys.stderr,
+                )
+        sources.cspec_specs.append(cspec_parse.parse_spec(jsonld, doc_html, heads))
 
 
 def _compute_signals(sources: Sources) -> dict[str, dict[str, Any]]:
