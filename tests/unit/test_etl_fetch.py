@@ -54,10 +54,21 @@ def test_fetch_dosage_captures_etags() -> None:
             200, text=_read("dosage_region_GRCh38.head.tsv"), headers={"ETag": '"r1"'}
         )
     )
+    # GRCh37 files are now fetched too (L5: backfill the second coordinate set).
+    respx.get(f"{base}/ClinGen_gene_curation_list_GRCh37.tsv").mock(
+        return_value=httpx.Response(200, text="GRCh37-gene", headers={"ETag": '"g37"'})
+    )
+    respx.get(f"{base}/ClinGen_region_curation_list_GRCh37.tsv").mock(
+        return_value=httpx.Response(200, text="GRCh37-region", headers={"ETag": '"r37"'})
+    )
     bundle = fetch.fetch_dosage()
     assert bundle.gene_tsv.startswith("#ClinGen Gene")
+    assert bundle.gene_tsv_grch37 == "GRCh37-gene"
+    assert bundle.region_tsv_grch37 == "GRCh37-region"
+    # Only the GRCh38 ETags form the canonical freshness signal.
     assert bundle.etags["ClinGen_gene_curation_list_GRCh38.tsv"] == '"g1"'
     assert bundle.etags["ClinGen_region_curation_list_GRCh38.tsv"] == '"r1"'
+    assert "ClinGen_gene_curation_list_GRCh37.tsv" not in bundle.etags
 
 
 @respx.mock
@@ -197,6 +208,12 @@ def test_gather_sources_collects_all_domains() -> None:
         )
     )
     respx.get(f"{base_d}/ClinGen_region_curation_list_GRCh38.tsv").mock(
+        return_value=httpx.Response(200, text=_read("dosage_region_GRCh38.head.tsv"))
+    )
+    respx.get(f"{base_d}/ClinGen_gene_curation_list_GRCh37.tsv").mock(
+        return_value=httpx.Response(200, text=_read("dosage_gene_GRCh38.head.tsv"))
+    )
+    respx.get(f"{base_d}/ClinGen_region_curation_list_GRCh37.tsv").mock(
         return_value=httpx.Response(200, text=_read("dosage_region_GRCh38.head.tsv"))
     )
     respx.get(f"{base_a}/api/summ/brief").mock(

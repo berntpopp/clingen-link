@@ -45,6 +45,8 @@ class Sources:
     validity_rows: list[dict[str, Any]] = field(default_factory=list)
     dosage_gene_tsv: str = ""
     dosage_region_tsv: str = ""
+    dosage_gene_tsv_grch37: str = ""
+    dosage_region_tsv_grch37: str = ""
     dosage_etags: dict[str, str] = field(default_factory=dict)
     actionability_brief: list[dict[str, Any]] = field(default_factory=list)
     erepo_tsv: str = ""
@@ -280,7 +282,12 @@ def populate(conn: sqlite3.Connection, sources: Sources, fetched_at: str) -> dic
     schema created.
     """
     validity = parse.parse_validity(sources.validity_rows)
-    dosage = parse.parse_dosage(sources.dosage_gene_tsv, sources.dosage_region_tsv)
+    dosage = parse.parse_dosage(
+        sources.dosage_gene_tsv,
+        sources.dosage_region_tsv,
+        gene_tsv_grch37=sources.dosage_gene_tsv_grch37 or None,
+        region_tsv_grch37=sources.dosage_region_tsv_grch37 or None,
+    )
     actionability = parse.parse_actionability(sources.actionability_brief)
     erepo = parse.parse_erepo(sources.erepo_tsv)
     genes, aliases = parse.build_gene_index(validity, dosage, actionability, sources.erepo_summary)

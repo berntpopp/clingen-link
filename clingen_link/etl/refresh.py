@@ -68,6 +68,8 @@ def _load_dosage(sources: Sources, client: httpx.Client) -> None:
     bundle = fetch.fetch_dosage(client)
     sources.dosage_gene_tsv = bundle.gene_tsv
     sources.dosage_region_tsv = bundle.region_tsv
+    sources.dosage_gene_tsv_grch37 = bundle.gene_tsv_grch37
+    sources.dosage_region_tsv_grch37 = bundle.region_tsv_grch37
     sources.dosage_etags = bundle.etags
 
 

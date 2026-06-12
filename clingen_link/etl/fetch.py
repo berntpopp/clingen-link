@@ -27,20 +27,24 @@ from ..exceptions import SourceFetchError
 # Generous default for bulk pulls; the validity and erepo bodies are large.
 _DEFAULT_TIMEOUT = httpx.Timeout(120.0, connect=30.0)
 
-# Dosage FTP files we pull (GRCh38 gene + region; GRCh37 optional, off by default
-# to keep the snapshot lean — GRCh38 is canonical per the spec).
+# Dosage FTP files we pull. Both assemblies are ingested: GRCh38 is canonical and GRCh37 backfills
+# the second coordinate set so ``grch37`` is populated rather than always null (assessment L5).
 _DOSAGE_FILES: dict[str, str] = {
     "gene_grch38": "ClinGen_gene_curation_list_GRCh38.tsv",
     "region_grch38": "ClinGen_region_curation_list_GRCh38.tsv",
+    "gene_grch37": "ClinGen_gene_curation_list_GRCh37.tsv",
+    "region_grch37": "ClinGen_region_curation_list_GRCh37.tsv",
 }
 
 
 @dataclass
 class DosageBundle:
-    """Fetched dosage TSVs plus the per-file conditional-GET signals."""
+    """Fetched dosage TSVs (both assemblies) plus the per-file conditional-GET signals."""
 
     gene_tsv: str
     region_tsv: str
+    gene_tsv_grch37: str = ""
+    region_tsv_grch37: str = ""
     etags: dict[str, str] = field(default_factory=dict)
 
 
@@ -88,7 +92,11 @@ def fetch_validity(client: httpx.Client | None = None) -> list[dict[str, Any]]:
 
 
 def fetch_dosage(client: httpx.Client | None = None) -> DosageBundle:
-    """Fetch the GRCh38 dosage gene + region TSVs and capture freshness headers."""
+    """Fetch the dosage gene + region TSVs for both assemblies and capture freshness headers.
+
+    The GRCh38 ETags are the canonical freshness signal; the GRCh37 files backfill the second
+    coordinate set (they update in lockstep with GRCh38).
+    """
     owned = client is None
     client = client or httpx.Client(timeout=_DEFAULT_TIMEOUT)
     try:
@@ -98,11 +106,14 @@ def fetch_dosage(client: httpx.Client | None = None) -> DosageBundle:
             url = f"{settings.dosage_ftp_base}/{filename}"
             response = _get(client, url, "dosage")
             texts[key] = response.text
-            etag = response.headers.get("etag") or response.headers.get("last-modified") or ""
-            etags[filename] = etag
+            if key.endswith("grch38"):
+                etag = response.headers.get("etag") or response.headers.get("last-modified") or ""
+                etags[filename] = etag
         return DosageBundle(
             gene_tsv=texts["gene_grch38"],
             region_tsv=texts["region_grch38"],
+            gene_tsv_grch37=texts.get("gene_grch37", ""),
+            region_tsv_grch37=texts.get("region_grch37", ""),
             etags=etags,
         )
     finally:
