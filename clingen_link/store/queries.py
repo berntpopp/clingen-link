@@ -262,6 +262,15 @@ def erepo_by_caid(conn: sqlite3.Connection, caid: str) -> dict[str, Any] | None:
     return _decode(rows[0], _EREPO_JSON) if rows else None
 
 
+def erepo_by_clinvar_id(
+    conn: sqlite3.Connection, clinvar_variation_id: str
+) -> dict[str, Any] | None:
+    """Return the single ERepo interpretation for a ClinVar VariationID, or None."""
+    sql = f"SELECT {_EREPO_COLS} FROM erepo WHERE clinvar_variation_id = ? LIMIT 1"  # noqa: S608
+    rows = _rows(conn, sql, (clinvar_variation_id,))
+    return _decode(rows[0], _EREPO_JSON) if rows else None
+
+
 def erepo_by_hgvs(conn: sqlite3.Connection, hgvs: str) -> dict[str, Any] | None:
     """Return the first ERepo interpretation listing ``hgvs`` in its HGVS set."""
     ids = _fts_rowids(conn, "erepo_fts", f'hgvs:"{hgvs}"')

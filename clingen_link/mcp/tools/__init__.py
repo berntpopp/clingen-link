@@ -10,8 +10,10 @@ from clingen_link.mcp.service_adapters import ClingenServices
 from clingen_link.mcp.tools.actionability import register_actionability_tools
 from clingen_link.mcp.tools.diagnostics import register_diagnostics_tools
 from clingen_link.mcp.tools.dosage import register_dosage_tools
+from clingen_link.mcp.tools.erepo import register_erepo_tools
 from clingen_link.mcp.tools.genes import register_gene_tools
 from clingen_link.mcp.tools.metadata import register_metadata_tools
+from clingen_link.mcp.tools.reference import register_reference_tools
 from clingen_link.mcp.tools.validity import register_validity_tools
 
 
@@ -26,4 +28,6 @@ def register_clingen_tools(
     register_validity_tools(mcp, service_factory=service_factory)
     register_dosage_tools(mcp, service_factory=service_factory)
     register_actionability_tools(mcp, service_factory=service_factory)
+    register_erepo_tools(mcp, service_factory=service_factory)
+    register_reference_tools(mcp, service_factory=service_factory)
     register_diagnostics_tools(mcp, service_factory=service_factory)

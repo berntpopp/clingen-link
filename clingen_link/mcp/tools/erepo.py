@@ -1,0 +1,272 @@
+"""ERepo variant-pathogenicity tools: list + single-variant ACMG detail.
+
+``get_variant_interpretations`` lists expert-panel interpretations from the
+snapshot (CAID, canonical HGVS, MONDO, classification, VCEP, dates, permalink).
+``get_variant_interpretation`` returns the full ACMG evidence (codes Met / Not
+Met, outcome, guideline/CSpec, PubMed, permalink) preferring the snapshot, with
+``refresh=true`` forcing a live SEPIO fetch. Every record carries a verbatim
+``recommended_citation``.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Annotated, Any, Literal
+
+from fastmcp import FastMCP
+from pydantic import Field
+
+from clingen_link.exceptions import DataNotFoundError, UpstreamInputError
+from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
+from clingen_link.mcp.envelope import build_meta, data_version_for
+from clingen_link.mcp.errors import McpErrorContext, run_mcp_tool
+from clingen_link.mcp.next_commands import cmd
+from clingen_link.mcp.patterns import CAID_PATTERN, HGVS_PATTERN
+from clingen_link.mcp.schema_relax import relax_output_schema
+from clingen_link.mcp.service_adapters import ClingenServices
+from clingen_link.mcp.shaping import shape_record, shape_records, truncated_block
+from clingen_link.models.models import VariantInterpretation
+from clingen_link.store import queries
+
+_RESPONSE_MODE = Literal["minimal", "compact", "standard", "full"]
+_CLASSIFICATION = Literal[
+    "Pathogenic",
+    "Likely Pathogenic",
+    "Uncertain Significance",
+    "Likely Benign",
+    "Benign",
+]
+
+_LIST_SCHEMA = relax_output_schema(
+    {
+        "type": "object",
+        "properties": {
+            "headline": {"type": "string"},
+            "records": {"type": "array", "items": {"type": "object"}},
+            "total": {"type": "integer"},
+            "page": {"type": "integer"},
+            "size": {"type": "integer"},
+            "recommended_citation": {"type": ["string", "null"]},
+            "_meta": {"type": "object"},
+        },
+    }
+)
+
+_DETAIL_SCHEMA = relax_output_schema(
+    {
+        "type": "object",
+        "properties": {
+            "headline": {"type": "string"},
+            "interpretation": {"type": "object"},
+            "source": {"type": "string"},
+            "recommended_citation": {"type": ["string", "null"]},
+            "_meta": {"type": "object"},
+        },
+    }
+)
+
+
+def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenServices]) -> None:
+    """Register get_variant_interpretations + get_variant_interpretation on ``mcp``."""
+
+    @mcp.tool(
+        name="get_variant_interpretations",
+        title="List ERepo Variant Interpretations",
+        annotations=READ_ONLY_OPEN_WORLD,
+        output_schema=_LIST_SCHEMA,
+        tags={"erepo", "variant"},
+    )
+    async def get_variant_interpretations(
+        gene: Annotated[
+            str | None,
+            Field(description="Gene symbol (resolve with search_genes first).", examples=["BRCA1"]),
+        ] = None,
+        condition: Annotated[
+            str | None,
+            Field(
+                description="Disease text (FTS) or MONDO id.",
+                examples=["MONDO:0700268", "cardiomyopathy"],
+            ),
+        ] = None,
+        expert_panel: Annotated[
+            str | None,
+            Field(description="Substring of the curating VCEP name.", examples=["ENIGMA"]),
+        ] = None,
+        classification: Annotated[
+            _CLASSIFICATION | None,
+            Field(description="Filter to one ACMG classification."),
+        ] = None,
+        page: Annotated[int, Field(ge=1, le=1000, description="1-based page number.")] = 1,
+        size: Annotated[int, Field(ge=1, le=100, description="Page size (max 100).")] = 25,
+        response_mode: Annotated[
+            _RESPONSE_MODE,
+            Field(
+                description="compact (default) trims evidence-code/PubMed lists; full keeps them."
+            ),
+        ] = "compact",
+    ) -> dict[str, Any]:
+        """Use this to list ClinGen ERepo expert-panel variant interpretations by gene, condition (disease text/MONDO), expert panel, or classification. Returns each variant's CAID, canonical HGVS, MONDO, ACMG classification, VCEP, dates, and permalink. Drill into one with get_variant_interpretation. Paginated. Returns ~2-12kB."""
+
+        async def call() -> dict[str, Any]:
+            services = service_factory()
+            resolved_gene = services.gene.resolve(gene) if gene else None
+            mondo = condition if condition and condition.startswith("MONDO:") else None
+            text = condition if condition and not mondo else None
+            models, total = await services.erepo.search(
+                text=text,
+                gene=resolved_gene or gene,
+                mondo=mondo,
+                expert_panel=expert_panel,
+                assertion=classification,
+                page=page,
+                size=size,
+            )
+            records = shape_records(models, domain="erepo", response_mode=response_mode)
+            shown = len(records)
+            dropped = max(0, total - (page - 1) * size - shown)
+            citation = models[0].recommended_citation if models else None
+            trunc = (
+                truncated_block(
+                    kind="pagination",
+                    dropped=dropped,
+                    to_restore=f"page={page + 1}",
+                    to_disable="raise size",
+                    filter_applied={
+                        k: v
+                        for k, v in {
+                            "gene": gene,
+                            "condition": condition,
+                            "classification": classification,
+                        }.items()
+                        if v
+                    },
+                )
+                if dropped > 0
+                else None
+            )
+            first_caid = next((m.caid for m in models if m.caid), None)
+            next_commands = (
+                [cmd("get_variant_interpretation", caid=first_caid)]
+                if first_caid
+                else [cmd("search_genes", query=gene or condition or "BRCA1")]
+            )
+            return {
+                "headline": (
+                    f"{total} ERepo interpretation(s) match (page {page}, showing {shown})."
+                ),
+                "records": records,
+                "total": total,
+                "page": page,
+                "size": size,
+                "recommended_citation": citation,
+                "_meta": build_meta(
+                    data_version=data_version_for(services.meta(), "erepo"),
+                    next_commands=next_commands,
+                    recommended_citation=citation,
+                    record_count=shown,
+                    truncated=trunc,
+                ),
+            }
+
+        return await run_mcp_tool(
+            "get_variant_interpretations",
+            call,
+            context=McpErrorContext(
+                tool_name="get_variant_interpretations", gene=gene, query=condition
+            ),
+        )
+
+    @mcp.tool(
+        name="get_variant_interpretation",
+        title="Get ERepo Variant ACMG Detail",
+        annotations=READ_ONLY_OPEN_WORLD,
+        output_schema=_DETAIL_SCHEMA,
+        tags={"erepo", "variant"},
+    )
+    async def get_variant_interpretation(
+        caid: Annotated[
+            str | None,
+            Field(
+                description="ClinGen Allele Registry id.",
+                pattern=CAID_PATTERN,
+                examples=["CA003783"],
+            ),
+        ] = None,
+        hgvs: Annotated[
+            str | None,
+            Field(
+                description="HGVS expression (genomic/coding/protein).",
+                pattern=HGVS_PATTERN,
+                examples=["NM_007294.4:c.68_69del"],
+            ),
+        ] = None,
+        clinvar_variation_id: Annotated[
+            str | None,
+            Field(
+                description="ClinVar VariationID (matched against the snapshot).",
+                examples=["17662"],
+            ),
+        ] = None,
+        refresh: Annotated[
+            bool,
+            Field(description="Bypass the snapshot and fetch the live SEPIO interpretation."),
+        ] = False,
+        response_mode: Annotated[
+            _RESPONSE_MODE,
+            Field(description="compact (default) trims verbose blocks; full keeps every field."),
+        ] = "compact",
+    ) -> dict[str, Any]:
+        """Use this for the full ACMG interpretation of one expert-panel variant: evidence codes Met / Not Met, the classification outcome, guideline/CSpec, PubMed evidence, and the permalink. Supply caid, hgvs, or clinvar_variation_id. refresh=true bypasses the snapshot for the live SEPIO JSON. Returns ~2-8kB."""
+
+        async def call() -> dict[str, Any]:
+            selectors = [s for s in (caid, hgvs, clinvar_variation_id) if s]
+            if len(selectors) != 1:
+                raise UpstreamInputError(
+                    "Supply exactly one of caid, hgvs, or clinvar_variation_id."
+                )
+            services = service_factory()
+            # clinvar_variation_id is snapshot-only (the live API keys on caid/hgvs).
+            if clinvar_variation_id and not refresh:
+                model = _by_clinvar(services, clinvar_variation_id)
+                source = "snapshot"
+            else:
+                model = await services.erepo.get_interpretation(
+                    caid=caid, hgvs=hgvs, refresh=refresh
+                )
+                source = "live" if refresh else "snapshot"
+            interpretation = shape_record(model, domain="erepo", response_mode=response_mode)
+            headline = (
+                f"{model.caid or model.gene or 'variant'}: {model.assertion or 'n/a'}"
+                + (f" by {model.expert_panel}" if model.expert_panel else "")
+                + "."
+            )
+            return {
+                "headline": headline,
+                "interpretation": interpretation,
+                "source": source,
+                "recommended_citation": model.recommended_citation,
+                "_meta": build_meta(
+                    data_version=data_version_for(services.meta(), "erepo"),
+                    next_commands=[
+                        cmd("get_variant_interpretations", gene=model.gene or "BRCA1"),
+                    ],
+                    recommended_citation=model.recommended_citation,
+                ),
+            }
+
+        return await run_mcp_tool(
+            "get_variant_interpretation",
+            call,
+            context=McpErrorContext(tool_name="get_variant_interpretation", caid=caid, hgvs=hgvs),
+        )
+
+
+def _by_clinvar(services: ClingenServices, clinvar_variation_id: str) -> VariantInterpretation:
+    """Resolve a snapshot interpretation by ClinVar VariationID, or raise not_found."""
+    with services.store.connection() as conn:
+        row = queries.erepo_by_clinvar_id(conn, clinvar_variation_id)
+    if row is None:
+        raise DataNotFoundError(
+            f"No ERepo interpretation for ClinVar VariationID {clinvar_variation_id}."
+        )
+    return VariantInterpretation.from_row(row)
