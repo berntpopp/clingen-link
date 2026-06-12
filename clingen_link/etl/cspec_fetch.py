@@ -28,6 +28,7 @@ def fetch_catalog(
     client: httpx.Client | None = None, *, page_size: int = 250
 ) -> list[dict[str, Any]]:
     """Return the full SVI catalog (paged; ``pgSize`` max is 250)."""
+    page_size = max(1, page_size)
     owned = client is None
     client = client or httpx.Client(timeout=_TIMEOUT)
     try:
