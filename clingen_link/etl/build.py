@@ -62,13 +62,14 @@ def _write_validity(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> int
     cur = conn.cursor()
     for rowid, row in enumerate(rows, start=1):
         cur.execute(
-            "INSERT INTO validity (symbol, hgnc_id, disease_name, mondo, moi, sop, "
-            "classification, expert_panel, affiliate_id, perm_id, report_id, released, "
-            "classified_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO validity (symbol, hgnc_id, disease_name, disease_obsolete, mondo, moi, "
+            "sop, classification, expert_panel, affiliate_id, perm_id, report_id, released, "
+            "classified_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 row["symbol"],
                 row["hgnc_id"],
                 row["disease_name"],
+                1 if row.get("disease_obsolete") else 0,
                 row["mondo"],
                 row["moi"],
                 row["sop"],
@@ -295,7 +296,11 @@ def populate(conn: sqlite3.Connection, sources: Sources, fetched_at: str) -> dic
     counts["gene_alias"] = len(aliases)
 
     _write_meta(conn, "validity", freshness.validity_signal(validity), fetched_at)
-    _write_meta(conn, "dosage", freshness.dosage_signal(sources.dosage_etags), fetched_at)
+    # The ETag set is the dosage freshness signal, but record_count must be the real row count, not
+    # the number of source files (assessment H2).
+    dosage_signal = freshness.dosage_signal(sources.dosage_etags)
+    dosage_signal["record_count"] = len(dosage)
+    _write_meta(conn, "dosage", dosage_signal, fetched_at)
     _write_meta(
         conn,
         "actionability",

@@ -44,6 +44,21 @@ def test_parse_validity_count_matches() -> None:
     assert len(parse.parse_validity(rows)) == 5
 
 
+def test_parse_validity_sanitizes_html_and_flags_obsolete() -> None:
+    rows = [
+        {
+            "symbol": "TMPO",
+            "disease_name": 'dilated cardiomyopathy <span class="badge">Obsolete Term</span>',
+            "perm_id": "p1",
+        },
+        {"symbol": "BRCA1", "disease_name": "hereditary breast cancer", "perm_id": "p2"},
+    ]
+    out = parse.parse_validity(rows)
+    assert out[0]["disease_name"] == "dilated cardiomyopathy Obsolete Term"
+    assert out[0]["disease_obsolete"] is True
+    assert out[1]["disease_obsolete"] is False
+
+
 # ---------------------------------------------------------------------------
 # Dosage
 # ---------------------------------------------------------------------------

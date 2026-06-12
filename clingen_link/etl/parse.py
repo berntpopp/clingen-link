@@ -21,6 +21,8 @@ import io
 import json
 from typing import Any
 
+from .sanitize import is_obsolete_label, strip_html
+
 # ---------------------------------------------------------------------------
 # Dosage score-code decoding (FTP README + spec Task 2.2)
 # ---------------------------------------------------------------------------
@@ -48,8 +50,10 @@ def parse_validity(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Normalize ``/api/validity`` rows into ``validity`` table dicts.
 
     The API wraps rows in ``{total, rows: [...]}``; callers pass ``rows`` here.
-    ``disease_name`` is right-stripped (the feed pads names with trailing
-    spaces). ``ep`` is renamed ``expert_panel`` and ``date`` to
+    ``disease_name`` is HTML-sanitized (the feed embeds ``<span>…Obsolete
+    Term</span>`` markup) and whitespace-collapsed, with obsolescence surfaced as
+    a structured ``disease_obsolete`` flag rather than left as raw markup
+    (assessment M1). ``ep`` is renamed ``expert_panel`` and ``date`` to
     ``classified_date``.
     """
     out: list[dict[str, Any]] = []
@@ -59,7 +63,8 @@ def parse_validity(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             {
                 "symbol": row.get("symbol"),
                 "hgnc_id": row.get("hgnc_id"),
-                "disease_name": disease.rstrip(),
+                "disease_name": strip_html(disease) or None,
+                "disease_obsolete": is_obsolete_label(disease),
                 "mondo": row.get("mondo"),
                 "moi": row.get("moi"),
                 "sop": row.get("sop"),

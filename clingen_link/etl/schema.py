@@ -57,10 +57,11 @@ GENE_ALIAS_INDEX = "CREATE INDEX idx_gene_alias_symbol ON gene_alias (symbol);"
 
 VALIDITY_DDL = """
 CREATE TABLE validity (
-    symbol          TEXT NOT NULL,
-    hgnc_id         TEXT,
-    disease_name    TEXT,
-    mondo           TEXT,
+    symbol           TEXT NOT NULL,
+    hgnc_id          TEXT,
+    disease_name     TEXT,
+    disease_obsolete INTEGER NOT NULL DEFAULT 0,
+    mondo            TEXT,
     moi             TEXT,
     sop             TEXT,
     classification  TEXT,
