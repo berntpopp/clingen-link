@@ -76,7 +76,10 @@ An ERepo variant interpretation cross-links to its spec via `_meta.next_commands
 - `get_cspec` — one criteria specification in full (criteria with strengths and
   applicability, genes/diseases, file catalog). Select by `gn_id`, by
   `affiliation` (optionally narrowed by `gene`), or by `gene`.
-  Example: `get_cspec(gn_id="GN092")` → the ENIGMA BRCA1/2 spec.
+  Example: `get_cspec(gn_id="GN092")` → the ENIGMA BRCA1/2 spec. The top-level
+  `files` array is the spec's full catalog; a file is nested under a criterion
+  only when its own label names that single code, so spec-wide reference docs
+  (e.g. ENIGMA's Specifications/Appendices/Tables) appear only at the top level.
 - `list_cspecs` — browse spec headers (GN id, affiliation, label, version,
   status); filter by `gene`, `affiliation`, or `status`; paginated.
   Example: `list_cspecs(gene="BRCA1")` or `list_cspecs(affiliation="50087")`.
