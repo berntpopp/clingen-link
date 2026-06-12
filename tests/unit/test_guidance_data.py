@@ -1,0 +1,54 @@
+"""Schema + provenance invariants for the clingen://guidance manifest data."""
+
+from __future__ import annotations
+
+import json
+from importlib.resources import files
+
+OA_LICENSE = {
+    "CC-BY-4.0",
+    "CC-BY-NC-4.0",
+    "CC-BY-NC-ND-4.0",
+    "author-manuscript",
+    "not-in-pmc",
+    "none",
+    "unverified",
+}
+FULLTEXT = {"redistributable", "read-only", "unavailable", "unverified"}
+CATEGORY = {"general", "criteria-specific", "endorsed"}
+
+
+def _manifest() -> dict:
+    raw = files("clingen_link.data").joinpath("svi_guidance.json").read_text(encoding="utf-8")
+    return json.loads(raw)
+
+
+def test_top_level_shape() -> None:
+    m = _manifest()
+    assert m["source_index"].startswith("https://clinicalgenome.org/")
+    assert isinstance(m["recommendations"], list) and m["recommendations"]
+    assert m["unsafe_for_clinical_use"] is True
+    assert m["research_use_notice"]
+    assert m["baseline"]["pmid"] == "25741868"  # ACMG/AMP 2015 baseline
+
+
+def test_entry_invariants() -> None:
+    m = _manifest()
+    ids = [e["id"] for e in m["recommendations"]]
+    assert len(ids) == len(set(ids)), "entry ids must be unique"
+    for e in m["recommendations"]:
+        assert e["category"] in CATEGORY, e["id"]
+        assert isinstance(e["codes"], list), e["id"]
+        assert e["clingen_doc_url"].startswith("https://clinicalgenome.org/docs/"), e["id"]
+        assert e["oa_license"] in OA_LICENSE, e["id"]
+        assert e["fulltext"] in FULLTEXT, e["id"]
+        assert e["pmid"] is None or e["pmid"].isdigit(), e["id"]
+        assert e["pmcid"] is None or e["pmcid"].startswith("PMC"), e["id"]
+
+
+def test_verified_cc_by_entries_tagged() -> None:
+    """The two confirmed CC BY papers must be redistributable."""
+    m = {e["id"]: e for e in _manifest()["recommendations"]}
+    for slug in ("pp3-bp4-calibration", "ps3-bs3-functional"):
+        assert m[slug]["oa_license"] == "CC-BY-4.0", slug
+        assert m[slug]["fulltext"] == "redistributable", slug
