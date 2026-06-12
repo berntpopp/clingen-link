@@ -1,0 +1,41 @@
+name: clingen-link
+
+services:
+  clingen-link:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: production
+    container_name: clingen-link-prod
+    ports:
+      - "${CLINGEN_LINK_HOST_PORT:-8000}:8000"
+    env_file:
+      - path: ../.env
+        required: false
+      - path: ../.env.docker
+        required: false
+    environment:
+      CLINGEN_LINK_MCP_HOST: 0.0.0.0
+      CLINGEN_LINK_MCP_PORT: 8000
+      CLINGEN_LINK_MCP_TRANSPORT: unified
+      CLINGEN_LINK_MCP_PATH: /mcp
+      CLINGEN_LINK_LOG_LEVEL: INFO
+    command: ["clingen-link", "--transport", "unified", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - clingen-network
+
+networks:
+  clingen-network:
+    driver: bridge

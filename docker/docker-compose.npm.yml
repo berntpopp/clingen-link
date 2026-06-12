@@ -1,0 +1,66 @@
+name: clingen-link-npm
+
+services:
+  clingen_link:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: production
+    container_name: clingen-link-npm
+    # NO direct ports exposed - NPM handles all routing.
+    # Unified server: FastAPI host /health and MCP /mcp via the same port.
+    expose:
+      - "8000"
+    environment:
+      - CLINGEN_LINK_MCP_HOST=0.0.0.0
+      - CLINGEN_LINK_MCP_PORT=8000
+      - CLINGEN_LINK_MCP_TRANSPORT=unified
+      - CLINGEN_LINK_MCP_PATH=/mcp
+      - CLINGEN_LINK_LOG_LEVEL=${LOG_LEVEL_API:-INFO}
+      - CLINGEN_LINK_CACHE_SIZE=${CLINGEN_CACHE_SIZE:-2000}
+      - CLINGEN_LINK_CACHE_TTL_MINUTES=${CLINGEN_CACHE_TTL_MINUTES:-120}
+      - CLINGEN_LINK_CORS_ORIGINS=${CLINGEN_CORS_ORIGINS:-*}
+    # env_file is provided via the --env-file flag for consistency with siblings.
+    command: ["clingen-link", "--transport", "unified", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp/clingen-link:rw,noexec,nosuid,size=256m,mode=1777
+    networks:
+      - clingen_link_internal_net
+      - npm_proxy_network
+    deploy:
+      resources:
+        limits:
+          memory: ${CLINGEN_API_MEMORY_LIMIT:-1g}
+          cpus: ${CLINGEN_API_CPU_LIMIT:-1.0}
+          pids: 256
+        reservations:
+          memory: 256m
+          cpus: 0.25
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+        labels: "service=clingen-link,environment=production,proxy=npm"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    init: true
+
+networks:
+  clingen_link_internal_net:
+    driver: bridge
+    name: clingen_link_internal_net
+  npm_proxy_network:
+    external: true
+    name: ${NPM_SHARED_NETWORK_NAME:-npm_default}

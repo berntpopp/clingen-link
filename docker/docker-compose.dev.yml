@@ -1,0 +1,39 @@
+name: clingen-link-dev
+
+services:
+  clingen_link_dev:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: production
+    container_name: clingen-link-dev
+    ports:
+      - "${CLINGEN_LINK_HOST_PORT:-8000}:8000"
+    environment:
+      - CLINGEN_LINK_MCP_HOST=0.0.0.0
+      - CLINGEN_LINK_MCP_PORT=8000
+      - CLINGEN_LINK_MCP_TRANSPORT=unified
+      - CLINGEN_LINK_MCP_PATH=/mcp
+      - CLINGEN_LINK_LOG_LEVEL=DEBUG
+      # Development CORS settings (more permissive)
+      - CLINGEN_LINK_CORS_ORIGINS=*
+    volumes:
+      # Mount source code for development (read-write for iteration).
+      # The bundled snapshot ships in the image; the mount overlays code only.
+      - ../clingen_link:/home/app/web/clingen_link
+      - ../tests:/home/app/web/tests
+      - ../server.py:/home/app/web/server.py:ro
+      - ../mcp_server.py:/home/app/web/mcp_server.py:ro
+      - ../pyproject.toml:/home/app/web/pyproject.toml:ro
+      - ../README.md:/home/app/web/README.md:ro
+    command: ["clingen-link", "--transport", "unified", "--host", "0.0.0.0", "--port", "8000", "--log-level", "DEBUG"]
+    user: root
+    working_dir: /home/app/web
+    restart: unless-stopped
+    networks:
+      - clingen_link_dev_network
+
+networks:
+  clingen_link_dev_network:
+    driver: bridge
+    name: clingen_link_dev_network

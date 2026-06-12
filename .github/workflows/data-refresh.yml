@@ -1,0 +1,136 @@
+name: Data refresh
+
+# Weekly freshness check of the bundled ClinGen SQLite snapshot. When any domain
+# has drifted, rebuild the snapshot, re-bundle the .zst + .sha256, and open a PR.
+# Modeled on the genereviews refresh discipline, adapted for the SQLite bundle.
+
+on:
+  schedule:
+    # Mondays 04:23 UTC (offset from other scheduled jobs).
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: "Rebuild and open a PR even if the snapshot is up to date."
+        required: false
+        default: "false"
+        type: string
+
+concurrency:
+  group: data-refresh
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    name: Check and refresh snapshot
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          enable-cache: true
+          version: "0.8.7"
+
+      - name: Install dependencies
+        run: uv sync --group dev --frozen
+
+      - name: Check snapshot freshness
+        id: check
+        run: |
+          set +e
+          uv run clingen-link refresh --check | tee check.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Rebuild snapshot
+        id: rebuild
+        if: ${{ steps.check.outputs.stale == 'true' || github.event.inputs.force_rebuild == 'true' }}
+        run: |
+          set -euo pipefail
+          # Build a fresh raw snapshot (gitignored), then re-bundle the .zst + .sha256.
+          uv run clingen-link refresh --out clingen_link/data/clingen.sqlite | tee refresh.log
+          uv run python - <<'PY'
+          import hashlib
+          from pathlib import Path
+
+          import zstandard
+
+          data = Path("clingen_link/data")
+          raw = data / "clingen.sqlite"
+          bundle = data / "clingen.sqlite.zst"
+          checksum = data / "clingen.sqlite.sha256"
+
+          cctx = zstandard.ZstdCompressor(level=19)
+          with raw.open("rb") as src, bundle.open("wb") as dst:
+              cctx.copy_stream(src, dst)
+
+          digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
+          checksum.write_text(f"{digest}  {bundle.name}\n")
+          print(f"Re-bundled {bundle} ({bundle.stat().st_size} bytes); sha256={digest}")
+          PY
+
+      - name: Verify rebuilt bundle loads
+        if: ${{ steps.rebuild.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          # The .sha256 must match the .zst, and the store must open it cleanly.
+          (cd clingen_link/data && sha256sum -c clingen.sqlite.sha256)
+          uv run python - <<'PY'
+          from clingen_link.store.db import Store
+
+          store = Store("clingen_link/data/clingen.sqlite.zst")
+          meta = store.meta()
+          store.close()
+          assert meta, "rebuilt snapshot has no meta rows"
+          for domain, row in sorted(meta.items()):
+              print(f"{domain}: {row.get('record_count')} records (version {row.get('signal_value')})")
+          PY
+
+      - name: Open pull request
+        if: ${{ steps.rebuild.outcome == 'success' }}
+        uses: peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c1cb33d45e # v7.0.8
+        with:
+          add-paths: |
+            clingen_link/data/clingen.sqlite.zst
+            clingen_link/data/clingen.sqlite.sha256
+          branch: data-refresh/snapshot
+          delete-branch: true
+          commit-message: |
+            chore: refresh ClinGen snapshot bundle
+
+            Automated weekly snapshot rebuild after detecting upstream drift.
+
+            Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+          title: "chore: refresh ClinGen snapshot bundle"
+          body: |
+            Automated weekly snapshot refresh.
+
+            The freshness check detected upstream drift in at least one ClinGen
+            domain, so the bundled SQLite snapshot was rebuilt and re-bundled
+            (`clingen.sqlite.zst` + `clingen.sqlite.sha256`).
+
+            Review the row-count and freshness summary in the workflow logs
+            before merging. Research use only; not for clinical decision support.
+          labels: |
+            data-refresh
+            automated
