@@ -1,4 +1,4 @@
-from clingen_link.models.models import CspecDetail, CspecSummary, CriteriaCode
+from clingen_link.models.models import CriteriaCode, CspecSummary
 
 
 def test_cspec_summary_citation() -> None:
