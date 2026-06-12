@@ -228,6 +228,106 @@ class GeneSummary(_Base):
         )
 
 
+class EvidenceStrength(_Base):
+    """One strength level for a criterion (applicability + optional spec text)."""
+
+    strength_label: str | None = None
+    applicability: str | None = None
+    description: str | None = None
+
+
+class CspecFile(_Base):
+    """A supplementary guidance attachment for a spec or criterion."""
+
+    file_uuid: str
+    criteria_id: str | None = None
+    filename: str | None = None
+    content_type: str | None = None
+    size_bytes: int | None = None
+    download_url: str | None = None
+
+
+class CriteriaCode(_Base):
+    """One ACMG/AMP criterion as specified by a VCEP."""
+
+    criteria_id: str
+    gn_id: str
+    rule_set_id: str | None = None
+    code: str
+    description: str | None = None
+    strengths: list[EvidenceStrength] = Field(default_factory=list)
+    files: list[CspecFile] = Field(default_factory=list)
+
+    @classmethod
+    def from_row(cls, row: dict[str, Any]) -> CriteriaCode:
+        """Build from a criterion store row (strengths/files already attached)."""
+        strengths = [
+            EvidenceStrength(**_pick(s, EvidenceStrength)) for s in row.get("strengths", [])
+        ]
+        files = [CspecFile(**_pick(f, CspecFile)) for f in row.get("files", [])]
+        data = _pick(row, cls)
+        data.update(strengths=strengths, files=files)
+        return cls(**data)
+
+
+class CspecGene(_Base):
+    """A gene/disease covered by a spec's rule set."""
+
+    gene_symbol: str | None = None
+    hgnc_id: str | None = None
+    mondo: str | None = None
+    moi: str | None = None
+
+
+class CspecSummary(_Base):
+    """Spec header (catalog row)."""
+
+    gn_id: str
+    affiliation_id: str | None = None
+    affiliation_label: str | None = None
+    label: str | None = None
+    version: str | None = None
+    cspec_status: str | None = None
+    current_status: str | None = None
+    last_updated: str | None = None
+    permalink: str
+    recommended_citation: str
+
+    @classmethod
+    def from_row(cls, row: dict[str, Any]) -> CspecSummary:
+        """Build a spec header with permalink + citation."""
+        permalink, citation = citations.cspec_citation(row)
+        return cls(permalink=permalink, recommended_citation=citation, **_pick(row, cls))
+
+
+class CspecDetail(CspecSummary):
+    """Spec header plus its genes, criteria, and file catalog."""
+
+    genes: list[CspecGene] = Field(default_factory=list)
+    criteria: list[CriteriaCode] = Field(default_factory=list)
+    files: list[CspecFile] = Field(default_factory=list)
+
+    @classmethod
+    def assemble(
+        cls,
+        spec_row: dict[str, Any],
+        *,
+        genes: list[dict[str, Any]],
+        criteria: list[dict[str, Any]],
+        files: list[dict[str, Any]],
+    ) -> CspecDetail:
+        """Build a full detail object from store rows."""
+        permalink, citation = citations.cspec_citation(spec_row)
+        return cls(
+            permalink=permalink,
+            recommended_citation=citation,
+            genes=[CspecGene(**_pick(g, CspecGene)) for g in genes],
+            criteria=[CriteriaCode.from_row(c) for c in criteria],
+            files=[CspecFile(**_pick(f, CspecFile)) for f in files],
+            **_pick(spec_row, CspecSummary),
+        )
+
+
 def _pick(row: dict[str, Any], model: type[BaseModel]) -> dict[str, Any]:
     """Project ``row`` onto the model's own fields (minus the derived two).
 
