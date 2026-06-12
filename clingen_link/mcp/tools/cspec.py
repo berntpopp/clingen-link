@@ -35,6 +35,8 @@ from clingen_link.mcp.shaping import shape_record, shape_records, truncated_bloc
 
 _RESPONSE_MODE = Literal["minimal", "compact", "standard", "full"]
 
+# Intentionally a permissive SUPERSET schema shared by all four cspec tools: record | records |
+# total | page | size never all coexist in one response, and relax_output_schema keeps it additive.
 _DETAIL_SCHEMA = relax_output_schema(
     {
         "type": "object",
