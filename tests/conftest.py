@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
 import pytest
 from fastmcp import FastMCP
 
+from clingen_link.api.clingen_client import ClingenClient
 from clingen_link.etl import build
 from clingen_link.mcp.facade import create_clingen_mcp
-from clingen_link.mcp.service_adapters import reset_services
+from clingen_link.mcp.service_adapters import reset_services, set_services
+from clingen_link.services.aggregator import ClingenServices
 from clingen_link.store.db import Store
 
 _FIXTURES = Path(__file__).parent / "fixtures"
@@ -76,4 +78,36 @@ def _reset_service_singleton() -> Iterator[None]:
 @pytest.fixture
 def mcp() -> FastMCP:
     """A clingen-link MCP server built from the facade with default services."""
+    return create_clingen_mcp()
+
+
+# Base URLs the injected live client points at, so respx mocks can target them.
+EREPO_TEST_BASE = "https://erepo.test/evrepo"
+ACTION_TEST_BASE = "https://actionability.test/ac"
+
+
+@pytest.fixture
+async def tool_services(store: Store) -> AsyncIterator[ClingenServices]:
+    """A ClingenServices over the small test store + a test-pointed live client.
+
+    Yields the container so tests can assert against it directly; closing the
+    live client is handled here.
+    """
+    client = ClingenClient(
+        erepo_base=EREPO_TEST_BASE,
+        actionability_base=ACTION_TEST_BASE,
+        timeout_s=1.0,
+        queue_wait_timeout_s=1.0,
+    )
+    svc = ClingenServices(store, client=client)
+    try:
+        yield svc
+    finally:
+        await svc.client.aclose()
+
+
+@pytest.fixture
+def tool_mcp(tool_services: ClingenServices) -> FastMCP:
+    """An MCP server wired to the small-snapshot services (full tool surface)."""
+    set_services(tool_services)
     return create_clingen_mcp()
