@@ -97,3 +97,33 @@ class SnapshotUnavailableError(ClingenServerError):
     Maps to ``snapshot_unavailable`` (not retryable by the caller; the operator
     must run ``clingen-link refresh``). Surfaced via diagnostics.
     """
+
+
+# ---------------------------------------------------------------------------
+# ETL fault taxonomy (offline build path only)
+# ---------------------------------------------------------------------------
+#
+# These are raised by the ETL fetchers/builder (``clingen_link.etl``) and never
+# reach the MCP request path. They surface to the operator running
+# ``clingen-link refresh`` with a clear, actionable message.
+
+
+class EtlError(ClingenServerError):
+    """Base exception for the offline ETL build pipeline."""
+
+
+class SourceFetchError(EtlError):
+    """A ClinGen source endpoint was unreachable or returned an error status.
+
+    Carries the offending ``source`` name so ``refresh`` can report which
+    domain failed and continue with the others where possible.
+    """
+
+    def __init__(self, message: str, source: str | None = None) -> None:
+        """Initialize with a message and the failing source identifier."""
+        super().__init__(message)
+        self.source = source
+
+
+class SnapshotBuildError(EtlError):
+    """The snapshot could not be assembled (schema, write, or atomic-swap failure)."""
