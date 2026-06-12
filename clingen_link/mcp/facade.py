@@ -13,9 +13,10 @@ from clingen_link.mcp.service_adapters import ClingenServices, get_services
 from clingen_link.mcp.tools import register_clingen_tools
 
 _INSTRUCTIONS = (
-    "clingen-link grounds gene/disease/variant questions in ClinGen's four "
+    "clingen-link grounds gene/disease/variant questions in ClinGen's five "
     "curated datasets: gene-disease validity, gene dosage, clinical "
-    "actionability, and variant pathogenicity (ERepo).\n"
+    "actionability, variant pathogenicity (ERepo), and VCEP criteria "
+    "specifications (CSpec).\n"
     "- Canonical workflow: search_genes (resolve a symbol/HGNC/alias to a "
     "canonical gene) -> get_gene_summary (one-call cross-domain overview) -> "
     "drill into a domain (get_gene_validity / get_gene_dosage / "
@@ -32,8 +33,8 @@ _INSTRUCTIONS = (
     "search_cspec expose the gene-specific ACMG/AMP rules each VCEP applies; an "
     "ERepo variant links to its CSpec via affiliation+gene.\n"
     "- Search across domains with search_validity / search_dosage / "
-    "search_actionability / get_variant_interpretations; resolve a curating panel "
-    "with list_expert_panels.\n"
+    "search_actionability / get_variant_interpretations / search_cspec; resolve a "
+    "curating panel with list_expert_panels.\n"
     "- Payload control: response_mode = minimal | compact (default) | standard | "
     "full. Search tools paginate (page + size) and emit _meta.truncated when rows "
     "are dropped.\n"
