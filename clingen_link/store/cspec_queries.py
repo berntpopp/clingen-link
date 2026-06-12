@@ -10,7 +10,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-from .search import fts_match
+from .search import Page, fts_match, paginate
 
 _SPEC_COLS = (
     "gn_id, affiliation_id, affiliation_label, label, version, cspec_status, "
@@ -136,12 +136,12 @@ def list_cspecs(
         f"SELECT COUNT(*) FROM cspec{clause}",  # noqa: S608 - internal clause
         tuple(params),
     ).fetchone()[0]
-    offset = max(0, (page - 1) * size)
+    pg: Page = paginate(page, size)
     sql = (
         f"SELECT {_SPEC_COLS} FROM cspec{clause} "  # noqa: S608 - fixed cols/clause
         "ORDER BY gn_id LIMIT ? OFFSET ?"
     )
-    rows = _rows(conn, sql, (*params, size, offset))
+    rows = _rows(conn, sql, (*params, pg.size, pg.offset))
     return [dict(r) for r in rows], int(total)
 
 
@@ -180,11 +180,11 @@ def search_cspec(
         return [], 0
     placeholders = ",".join("?" * len(ids))
     total = len(ids)
-    offset = max(0, (page - 1) * size)
+    pg: Page = paginate(page, size)
     sql = (
         "SELECT rowid, entity_type, gn_id, criteria_id, file_uuid "  # noqa: S608 - int rowids
         f"FROM cspec_search_doc WHERE rowid IN ({placeholders}) "
         "ORDER BY rowid LIMIT ? OFFSET ?"
     )
-    rows = _rows(conn, sql, (*ids, size, offset))
+    rows = _rows(conn, sql, (*ids, pg.size, pg.offset))
     return [dict(r) for r in rows], total
