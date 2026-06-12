@@ -52,6 +52,7 @@ def register_diagnostics_tools(
         async def call() -> dict[str, Any]:
             recent = get_recent_errors()
             drift = get_recent_schema_drift()
+            snapshot = _snapshot_health(service_factory)
             return {
                 "server_version": _server_version(),
                 "mcp_protocol_version": MCP_PROTOCOL_VERSION,
@@ -59,12 +60,7 @@ def register_diagnostics_tools(
                 "recent_error_count": len(recent),
                 "recent_schema_drift": drift,
                 "recent_schema_drift_count": len(drift),
-                # Snapshot freshness is a placeholder until the store lands in a
-                # later phase; surfaced now so the contract is stable.
-                "snapshot": {
-                    "status": "not_loaded",
-                    "detail": "Snapshot store is not wired in yet (Phase 1 scaffold).",
-                },
+                "snapshot": snapshot,
                 "_meta": {
                     "next_commands": [{"tool": "get_server_capabilities", "arguments": {}}],
                     "unsafe_for_clinical_use": True,
@@ -72,3 +68,22 @@ def register_diagnostics_tools(
             }
 
         return await run_mcp_tool("get_clingen_diagnostics", call)
+
+
+def _snapshot_health(service_factory: Callable[[], ClingenServices]) -> dict[str, Any]:
+    """Return snapshot freshness, or a degraded status if the snapshot is absent."""
+    try:
+        meta = service_factory().meta()
+    except Exception as exc:  # snapshot missing/unreadable — surface, don't crash
+        return {"status": "unavailable", "detail": str(exc)[:240]}
+    return {
+        "status": "loaded",
+        "domains": {
+            domain: {
+                "version": row.get("signal_value"),
+                "fetched_at": row.get("fetched_at"),
+                "record_count": row.get("record_count"),
+            }
+            for domain, row in meta.items()
+        },
+    }

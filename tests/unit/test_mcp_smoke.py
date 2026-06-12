@@ -31,7 +31,9 @@ async def test_diagnostics_tool_callable(mcp: FastMCP) -> None:
     assert payload.get("success") is True, payload
     assert "recent_errors" in payload
     assert payload["recent_error_count"] == len(payload["recent_errors"])
-    assert payload["snapshot"]["status"] == "not_loaded"
+    # With the default services the bundled snapshot loads; if it is missing the
+    # status degrades to "unavailable" rather than crashing.
+    assert payload["snapshot"]["status"] in {"loaded", "unavailable"}
 
 
 @pytest.mark.asyncio

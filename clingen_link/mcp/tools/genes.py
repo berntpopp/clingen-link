@@ -17,7 +17,7 @@ from pydantic import Field
 
 from clingen_link.exceptions import DataNotFoundError
 from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
-from clingen_link.mcp.envelope import build_meta, cross_domain_version, data_version_for
+from clingen_link.mcp.envelope import build_meta, cross_domain_version
 from clingen_link.mcp.errors import McpErrorContext, run_mcp_tool
 from clingen_link.mcp.next_commands import cmd
 from clingen_link.mcp.patterns import GENE_SYMBOL_PATTERN
