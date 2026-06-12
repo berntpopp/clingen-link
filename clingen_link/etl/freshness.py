@@ -21,6 +21,20 @@ from email.utils import parsedate_to_datetime
 from typing import Any
 
 
+def _as_int(value: object) -> int:
+    """Coerce a raw catalog value to int; 0 on missing/non-numeric."""
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, (str, float)):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 0
+    return 0
+
+
 def _rfc1123_sort_key(value: str) -> datetime:
     """Chronological sort key for an RFC1123 datetime string.
 
@@ -188,14 +202,19 @@ def cspec_signal(catalog: list[dict[str, Any]]) -> dict[str, Any]:
     the hash covers ``(entId, criteriaCode_count, ruleSet_count)`` per spec, so
     additions, criteria changes, and rule-set changes all flip the digest without
     fetching any per-spec document.
+
+    Defensive like every other signal: a non-numeric ``CriteriaCode``/``RuleSet``,
+    a missing/None ``ld``, or an ``ld`` that is not a dict coerces to 0 rather than
+    raising and aborting the whole snapshot build.
     """
     projected: list[dict[str, str]] = []
     published = 0
     for row in catalog:
         ent_id = str(row.get("entId") or "")
-        ld = row.get("ld") or {}
-        cc = int(ld.get("CriteriaCode") or 0)
-        rs = int(ld.get("RuleSet") or 0)
+        raw_ld = row.get("ld")
+        ld = raw_ld if isinstance(raw_ld, dict) else {}
+        cc = _as_int(ld.get("CriteriaCode"))
+        rs = _as_int(ld.get("RuleSet"))
         if cc > 0:
             published += 1
         projected.append({"ent_id": ent_id, "cc": str(cc), "rs": str(rs)})
