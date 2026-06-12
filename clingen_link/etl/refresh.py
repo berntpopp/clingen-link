@@ -34,11 +34,14 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def gather_sources() -> tuple[Sources, list[str]]:
+def gather_sources(*, with_cspec_specs: bool = True) -> tuple[Sources, list[str]]:
     """Fetch every domain. Returns ``(sources, failures)``.
 
     A single failing domain is recorded in ``failures`` and the others continue,
     so a partial outage still produces a usable (partial) snapshot.
+
+    When ``with_cspec_specs`` is False, cspec fetches only its catalog for the
+    cheap ``--check`` freshness signal and skips the per-spec crawl entirely.
     """
     sources = Sources()
     failures: list[str] = []
@@ -50,7 +53,7 @@ def gather_sources() -> tuple[Sources, list[str]]:
         _try(lambda: _load_erepo_summary(sources, client), "erepo_summary", failures)
         _try(lambda: _load_affiliates(sources, client), "affiliates", failures)
         _try(lambda: _load_hgnc(sources, client), "hgnc", failures)
-        _try(lambda: _load_cspec(sources, client), "cspec", failures)
+        _try(lambda: _load_cspec(sources, client, with_specs=with_cspec_specs), "cspec", failures)
     return sources, failures
 
 
@@ -97,19 +100,28 @@ def _load_hgnc(sources: Sources, client: httpx.Client) -> None:
     sources.hgnc_rows = hgnc.parse_hgnc(fetch.fetch_hgnc(client))
 
 
-def _load_cspec(sources: Sources, client: httpx.Client | None) -> None:
+def _load_cspec(sources: Sources, client: httpx.Client | None, *, with_specs: bool = True) -> None:
     """Fetch the cspec catalog, then JSON-LD + doc page for each published spec.
+
+    The catalog is always fetched (it backs the cheap freshness signal). When
+    ``with_specs`` is False — the ``--check`` path — the per-spec crawl is skipped
+    entirely, so a freshness check stays cheap (one catalog call), per the design
+    contract.
 
     Candidate filter (cheap, from the catalog ``ld.CriteriaCode`` count) runs
     before any per-spec fetch; the ``cspecStatus`` gate runs after the JSON-LD is
-    in hand so non-Released specs never trigger a doc-page/HEAD fetch.
+    in hand so non-Released specs never trigger a doc-page/HEAD fetch. The catalog
+    count is coerced via ``freshness._as_int`` (and ``ld`` guarded to a dict) so a
+    malformed row downgrades to candidate-of-0 rather than aborting the load.
 
-    The catalog count is coerced via ``freshness._as_int`` (and ``ld`` guarded to
-    a dict) so a malformed catalog row downgrades to a candidate-of-0 rather than
-    aborting the whole cspec load.
+    Per-spec failures are isolated: a ``SourceFetchError`` from any one spec's
+    JSON-LD, doc-page, or attachment HEAD drops only that spec (logged and skipped)
+    rather than failing the whole domain.
     """
     catalog = cspec_fetch.fetch_catalog(client)
     sources.cspec_catalog = catalog
+    if not with_specs:
+        return
     for row in catalog:
         raw_ld = row.get("ld")
         ld = raw_ld if isinstance(raw_ld, dict) else {}
@@ -122,15 +134,19 @@ def _load_cspec(sources: Sources, client: httpx.Client | None) -> None:
         # always supplied. The ``client=None`` path exists only for the unit test,
         # which monkeypatches every fetcher so the real client is never touched.
         spec_client = cast(httpx.Client, client)
-        jsonld = cspec_fetch.fetch_spec_jsonld(spec_client, gn_id)
-        if not cspec_parse.is_published(jsonld):
+        try:
+            jsonld = cspec_fetch.fetch_spec_jsonld(spec_client, gn_id)
+            if not cspec_parse.is_published(jsonld):
+                continue
+            doc_html = cspec_fetch.fetch_doc_page(spec_client, gn_id)
+            heads = {
+                url: cspec_fetch.head_file(spec_client, url)
+                for url in cspec_parse.extract_file_urls(doc_html)
+            }
+            sources.cspec_specs.append(cspec_parse.parse_spec(jsonld, doc_html, heads))
+        except SourceFetchError as exc:
+            print(f"  ! cspec {gn_id} skipped: {exc}", file=sys.stderr)
             continue
-        doc_html = cspec_fetch.fetch_doc_page(spec_client, gn_id)
-        heads = {
-            url: cspec_fetch.head_file(spec_client, url)
-            for url in cspec_parse.extract_file_urls(doc_html)
-        }
-        sources.cspec_specs.append(cspec_parse.parse_spec(jsonld, doc_html, heads))
 
 
 def _compute_signals(sources: Sources) -> dict[str, dict[str, Any]]:
@@ -168,7 +184,7 @@ def run_check(out_path: Path) -> int:
     if not existing:
         print(f"No snapshot at {out_path}; run 'refresh' to build one. STALE")
         return 1
-    sources, failures = gather_sources()
+    sources, failures = gather_sources(with_cspec_specs=False)
     signals = _compute_signals(sources)
     stale = False
     print(f"Freshness check against {out_path}:")

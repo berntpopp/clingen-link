@@ -158,7 +158,7 @@ def test_run_check_up_to_date(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     out = tmp_path / "clingen.sqlite"
     sources = _full_sources()
     build_snapshot(out, sources, "2026-06-12T00:00:00+00:00")
-    monkeypatch.setattr(refresh, "gather_sources", lambda: (sources, []))
+    monkeypatch.setattr(refresh, "gather_sources", lambda **kw: (sources, []))
     assert refresh.run_check(out) == 0
 
 
@@ -171,7 +171,7 @@ def test_run_check_detects_stale(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     drifted = _full_sources()
     drifted.validity_rows = drifted.validity_rows[:2]
     assert isinstance(drifted, Sources)
-    monkeypatch.setattr(refresh, "gather_sources", lambda: (drifted, []))
+    monkeypatch.setattr(refresh, "gather_sources", lambda **kw: (drifted, []))
     assert refresh.run_check(out) == 1
 
 
