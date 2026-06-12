@@ -21,7 +21,7 @@ from typing import Any
 
 from ..config import settings
 from ..exceptions import SnapshotBuildError
-from . import freshness, hgnc, parse, schema
+from . import cspec_parse, freshness, hgnc, parse, schema
 
 SNAPSHOT_VERSION = "1"
 
@@ -31,6 +31,7 @@ _SOURCE_URLS: dict[str, str] = {
     "dosage": "https://ftp.clinicalgenome.org/ClinGen_gene_curation_list_GRCh38.tsv",
     "actionability": "https://actionability.clinicalgenome.org/ac/api/summ/brief",
     "erepo": "https://erepo.clinicalgenome.org/evrepo/api/summary/classifications/download",
+    "cspec": "https://cspec.genome.network/cspec/SequenceVariantInterpretation/id",
 }
 
 
@@ -54,6 +55,8 @@ class Sources:
     erepo_summary: dict[str, Any] = field(default_factory=dict)
     affiliates: list[dict[str, Any]] = field(default_factory=list)
     hgnc_rows: list[dict[str, Any]] = field(default_factory=list)
+    cspec_specs: list[cspec_parse.ParsedSpec] = field(default_factory=list)
+    cspec_catalog: list[dict[str, Any]] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +251,142 @@ def _write_expert_panels(conn: sqlite3.Connection, affiliates: list[dict[str, An
     return len(affiliates)
 
 
+def _write_cspec(conn: sqlite3.Connection, specs: list[cspec_parse.ParsedSpec]) -> int:
+    """Insert cspec rows + the contentless FTS row-map (search_doc + fts in lockstep).
+
+    A single ``rowid`` counter is shared across spec / criterion / file inserts so each
+    ``cspec_fts`` rowid resolves to exactly one source entity via ``cspec_search_doc``.
+    Returns the number of specs written (becomes ``counts["cspec"]``).
+    """
+    cur = conn.cursor()
+    rowid = 0
+    for parsed in specs:
+        s = parsed.spec
+        cur.execute(
+            "INSERT OR REPLACE INTO cspec (gn_id, affiliation_id, affiliation_label, label, "
+            "version, cspec_status, current_status, last_updated, permalink) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            (
+                s["gn_id"],
+                s["affiliation_id"],
+                s["affiliation_label"],
+                s["label"],
+                s["version"],
+                s["cspec_status"],
+                s["current_status"],
+                s["last_updated"],
+                s["permalink"],
+            ),
+        )
+        rowid += 1
+        cur.execute(
+            "INSERT INTO cspec_search_doc (rowid, entity_type, gn_id, criteria_id, file_uuid) "
+            "VALUES (?,?,?,?,?)",
+            (rowid, "spec", s["gn_id"], None, None),
+        )
+        cur.execute(
+            "INSERT INTO cspec_fts (rowid, text) VALUES (?,?)",
+            (rowid, f"{s['label'] or ''} {s['affiliation_label'] or ''}"),
+        )
+        for rs in parsed.rule_sets:
+            cur.execute(
+                "INSERT INTO cspec_rule_set (rule_set_id, gn_id) VALUES (?,?)",
+                (rs["rule_set_id"], rs["gn_id"]),
+            )
+        for g in parsed.genes:
+            cur.execute(
+                "INSERT INTO cspec_gene (rule_set_id, gn_id, gene_symbol, hgnc_id, mondo, moi) "
+                "VALUES (?,?,?,?,?,?)",
+                (
+                    g["rule_set_id"],
+                    g["gn_id"],
+                    g["gene_symbol"],
+                    g["hgnc_id"],
+                    g["mondo"],
+                    g["moi"],
+                ),
+            )
+        # The registry reuses one numeric criteria_id across multiple rule sets
+        # within a spec, so parse_spec emits multiple criteria/strength rows with
+        # the same criteria_id. cspec_criteria collapses on its PK, but the
+        # search_doc/fts/strength inserts must be guarded so the shared criterion
+        # is indexed exactly once and the rowid <-> search_doc <-> fts lockstep is
+        # preserved (never bump rowid without inserting the matching pair).
+        seen_criteria: set[str] = set()
+        for c in parsed.criteria:
+            if c["criteria_id"] in seen_criteria:
+                continue
+            seen_criteria.add(c["criteria_id"])
+            cur.execute(
+                "INSERT OR REPLACE INTO cspec_criteria (criteria_id, rule_set_id, gn_id, code, "
+                "description, ord) VALUES (?,?,?,?,?,?)",
+                (
+                    c["criteria_id"],
+                    c["rule_set_id"],
+                    c["gn_id"],
+                    c["code"],
+                    c["description"],
+                    c["ord"],
+                ),
+            )
+            rowid += 1
+            cur.execute(
+                "INSERT INTO cspec_search_doc (rowid, entity_type, gn_id, criteria_id, file_uuid) "
+                "VALUES (?,?,?,?,?)",
+                (rowid, "criterion", c["gn_id"], c["criteria_id"], None),
+            )
+            cur.execute(
+                "INSERT INTO cspec_fts (rowid, text) VALUES (?,?)",
+                (rowid, f"{c['code'] or ''} {c['description'] or ''}"),
+            )
+        seen_strengths: set[tuple[str, int]] = set()
+        for st in parsed.strengths:
+            # A reused criteria_id carries the same strengths in each rule set, so
+            # parse_spec emits each (criteria_id, ord) strength twice. Key the
+            # guard on (criteria_id, ord) to write each distinct strength once
+            # without dropping the multiple strengths of a single criterion.
+            key = (st["criteria_id"], st["ord"])
+            if key in seen_strengths:
+                continue
+            seen_strengths.add(key)
+            cur.execute(
+                "INSERT INTO cspec_strength (criteria_id, strength_label, applicability, "
+                "description, ord) VALUES (?,?,?,?,?)",
+                (
+                    st["criteria_id"],
+                    st["strength_label"],
+                    st["applicability"],
+                    st["description"],
+                    st["ord"],
+                ),
+            )
+        for f in parsed.files:
+            cur.execute(
+                "INSERT INTO cspec_file (file_uuid, gn_id, criteria_id, filename, content_type, "
+                "size_bytes, download_url) VALUES (?,?,?,?,?,?,?)",
+                (
+                    f["file_uuid"],
+                    f["gn_id"],
+                    f["criteria_id"],
+                    f["filename"],
+                    f["content_type"],
+                    f["size_bytes"],
+                    f["download_url"],
+                ),
+            )
+            rowid += 1
+            cur.execute(
+                "INSERT INTO cspec_search_doc (rowid, entity_type, gn_id, criteria_id, file_uuid) "
+                "VALUES (?,?,?,?,?)",
+                (rowid, "file", f["gn_id"], f["criteria_id"], f["file_uuid"]),
+            )
+            cur.execute(
+                "INSERT INTO cspec_fts (rowid, text) VALUES (?,?)",
+                (rowid, f["filename"] or ""),
+            )
+    return len(specs)
+
+
 def _write_meta(
     conn: sqlite3.Connection,
     domain: str,
@@ -303,6 +442,7 @@ def populate(conn: sqlite3.Connection, sources: Sources, fetched_at: str) -> dic
         "erepo": _write_erepo(conn, erepo),
         "gene": _write_genes(conn, genes, aliases),
         "expert_panel": _write_expert_panels(conn, sources.affiliates),
+        "cspec": _write_cspec(conn, sources.cspec_specs),
     }
     counts["gene_alias"] = len(aliases)
 
@@ -324,6 +464,7 @@ def populate(conn: sqlite3.Connection, sources: Sources, fetched_at: str) -> dic
         freshness.erepo_signal(sources.erepo_news, sources.erepo_tsv),
         fetched_at,
     )
+    _write_meta(conn, "cspec", freshness.cspec_signal(sources.cspec_catalog), fetched_at)
     conn.commit()
     return counts
 

@@ -268,7 +268,7 @@ class TestGeneService:
 class TestAggregator:
     def test_meta(self, services: ClingenServices) -> None:
         meta = services.meta()
-        assert set(meta) == {"validity", "dosage", "actionability", "erepo"}
+        assert set(meta) == {"validity", "dosage", "actionability", "erepo", "cspec"}
 
     async def test_from_snapshot_missing_raises(self, tmp_path: object) -> None:
         from clingen_link.exceptions import SnapshotUnavailableError

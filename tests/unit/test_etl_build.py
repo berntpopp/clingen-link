@@ -56,9 +56,10 @@ def test_build_in_memory_counts(sources: Sources) -> None:
     assert _count(conn, "dosage") == 10
     assert _count(conn, "actionability") == 5
     assert _count(conn, "erepo") == 5
+    assert _count(conn, "cspec") == 0
     assert _count(conn, "expert_panel") == 59
     assert _count(conn, "gene") > 0
-    assert _count(conn, "meta") == 4
+    assert _count(conn, "meta") == 5
 
 
 def test_build_meta_rows_complete(sources: Sources) -> None:

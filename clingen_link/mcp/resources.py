@@ -43,6 +43,10 @@ _TOOLS: dict[str, str] = {
     "search_actionability": "~2-8kB (size-dependent)",
     "get_variant_interpretations": "~2-12kB (size-dependent)",
     "get_variant_interpretation": "~2-8kB (refresh fetches live SEPIO)",
+    "list_cspecs": "~1-8kB (size-dependent)",
+    "get_cspec": "~3-30kB (spec-dependent)",
+    "get_cspec_criterion": "~1-4kB",
+    "search_cspec": "~1-6kB (size-dependent)",
     "list_expert_panels": "~1-5kB",
     "get_clingen_diagnostics": "<1kB",
 }
@@ -83,6 +87,10 @@ _DATASET_LABELS: dict[str, dict[str, str]] = {
     "erepo": {
         "label": "Variant Pathogenicity (ERepo)",
         "question": "Expert-panel ACMG classification of variant V.",
+    },
+    "cspec": {
+        "label": "Criteria Specifications (CSpec)",
+        "question": "How does a VCEP adapt the ACMG/AMP criteria for gene/disease X?",
     },
 }
 

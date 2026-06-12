@@ -33,6 +33,18 @@ class TestCapabilities:
         assert ds["validity"]["version"]
         assert ds["validity"]["record_count"] is not None
 
+    async def test_cspec_flows_into_rendered_capabilities(self, tool_mcp: FastMCP) -> None:
+        """cspec must surface in the rendered payload, not just the private dict."""
+        payload = await _call(tool_mcp, "get_server_capabilities", {})
+        # Datasets section carries the cspec domain with its labelled name.
+        datasets = payload["datasets"]
+        assert "cspec" in datasets
+        assert "Criteria Specification" in datasets["cspec"]["label"]
+        # Tools list + token-cost section expose all four cspec tools.
+        cspec_tools = {"list_cspecs", "get_cspec", "get_cspec_criterion", "search_cspec"}
+        assert cspec_tools <= set(payload["tools"])
+        assert cspec_tools <= set(payload["token_cost_hints"])
+
     async def test_error_codes_and_conventions(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "get_server_capabilities", {})
         assert "snapshot_unavailable" in payload["error_codes"]

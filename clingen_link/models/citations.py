@@ -17,6 +17,7 @@ _NA = "n/a"
 _VALIDITY_PERMALINK = "https://search.clinicalgenome.org/kb/gene-validity/{perm_id}"
 _DOSAGE_PERMALINK = "https://search.clinicalgenome.org/kb/gene-dosage/{ident}"
 _ACTIONABILITY_PERMALINK = "https://actionability.clinicalgenome.org/ac/"
+_CSPEC_PERMALINK = "https://cspec.genome.network/cspec/ui/svi/doc/{gn_id}"
 
 
 def _val(row: dict[str, Any], key: str, default: str = _NA) -> str:
@@ -102,3 +103,17 @@ def erepo_citation(row: dict[str, Any]) -> tuple[str, str]:
         f"published {_val(row, 'published_date')}. {repo_link}"
     )
     return (permalink or _NA), citation
+
+
+# ---------------------------------------------------------------------------
+# CSpec (criteria specifications)
+# ---------------------------------------------------------------------------
+def cspec_citation(row: dict[str, Any]) -> tuple[str, str]:
+    """Return ``(permalink, recommended_citation)`` for a criteria specification."""
+    gn_id = _val(row, "gn_id", "")
+    permalink = row.get("permalink") or (_CSPEC_PERMALINK.format(gn_id=gn_id) if gn_id else _NA)
+    citation = (
+        f"ClinGen Criteria Specification ({gn_id}): {_val(row, 'label')} "
+        f"by {_val(row, 'affiliation_label')}, version {_val(row, 'version')}. {permalink}"
+    )
+    return permalink, citation

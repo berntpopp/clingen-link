@@ -153,6 +153,84 @@ CREATE TABLE expert_panel (
 );
 """
 
+CSPEC_DDL = """
+CREATE TABLE cspec (
+    gn_id             TEXT PRIMARY KEY,
+    affiliation_id    TEXT,
+    affiliation_label TEXT,
+    label             TEXT,
+    version           TEXT,
+    cspec_status      TEXT,
+    current_status    TEXT,
+    last_updated      TEXT,
+    permalink         TEXT
+);
+"""
+CSPEC_RULE_SET_DDL = """
+CREATE TABLE cspec_rule_set (
+    rule_set_id TEXT PRIMARY KEY,
+    gn_id       TEXT NOT NULL
+);
+"""
+CSPEC_RULE_SET_INDEX = "CREATE INDEX idx_cspec_rule_set_gn ON cspec_rule_set (gn_id);"
+CSPEC_GENE_DDL = """
+CREATE TABLE cspec_gene (
+    rule_set_id TEXT NOT NULL,
+    gn_id       TEXT NOT NULL,
+    gene_symbol TEXT,
+    hgnc_id     TEXT,
+    mondo       TEXT,
+    moi         TEXT
+);
+"""
+CSPEC_GENE_GN_INDEX = "CREATE INDEX idx_cspec_gene_gn ON cspec_gene (gn_id);"
+CSPEC_GENE_SYMBOL_INDEX = "CREATE INDEX idx_cspec_gene_symbol ON cspec_gene (gene_symbol);"
+CSPEC_CRITERIA_DDL = """
+CREATE TABLE cspec_criteria (
+    criteria_id TEXT PRIMARY KEY,
+    rule_set_id TEXT NOT NULL,
+    gn_id       TEXT NOT NULL,
+    code        TEXT NOT NULL,
+    description TEXT,
+    ord         INTEGER NOT NULL DEFAULT 0
+);
+"""
+CSPEC_CRITERIA_GN_INDEX = "CREATE INDEX idx_cspec_criteria_gn ON cspec_criteria (gn_id);"
+CSPEC_CRITERIA_CODE_INDEX = "CREATE INDEX idx_cspec_criteria_code ON cspec_criteria (gn_id, code);"
+CSPEC_STRENGTH_DDL = """
+CREATE TABLE cspec_strength (
+    criteria_id    TEXT NOT NULL,
+    strength_label TEXT,
+    applicability  TEXT,
+    description    TEXT,
+    ord            INTEGER NOT NULL DEFAULT 0
+);
+"""
+CSPEC_STRENGTH_INDEX = "CREATE INDEX idx_cspec_strength_criteria ON cspec_strength (criteria_id);"
+CSPEC_FILE_DDL = """
+CREATE TABLE cspec_file (
+    file_uuid    TEXT NOT NULL,
+    gn_id        TEXT NOT NULL,
+    criteria_id  TEXT,
+    filename     TEXT,
+    content_type TEXT,
+    size_bytes   INTEGER,
+    download_url TEXT
+);
+"""
+CSPEC_FILE_GN_INDEX = "CREATE INDEX idx_cspec_file_gn ON cspec_file (gn_id);"
+# Backing row map for the mixed-entity FTS index: each cspec_fts rowid resolves
+# to exactly one source entity (spec | criterion | file) via this table.
+CSPEC_SEARCH_DOC_DDL = """
+CREATE TABLE cspec_search_doc (
+    rowid       INTEGER PRIMARY KEY,
+    entity_type TEXT NOT NULL,
+    gn_id       TEXT,
+    criteria_id TEXT,
+    file_uuid   TEXT
+);
+"""
+
 META_DDL = """
 CREATE TABLE meta (
     domain           TEXT PRIMARY KEY,
@@ -189,6 +267,7 @@ EREPO_FTS_DDL = (
 EXPERT_PANEL_FTS_DDL = (
     "CREATE VIRTUAL TABLE expert_panel_fts USING fts5(label, content='', tokenize='unicode61');"
 )
+CSPEC_FTS_DDL = "CREATE VIRTUAL TABLE cspec_fts USING fts5(text, content='', tokenize='unicode61');"
 
 # Ordered DDL statements applied by create_schema().
 _TABLE_STATEMENTS: tuple[str, ...] = (
@@ -205,6 +284,20 @@ _TABLE_STATEMENTS: tuple[str, ...] = (
     EREPO_CAID_INDEX,
     EREPO_UUID_INDEX,
     EXPERT_PANEL_DDL,
+    CSPEC_DDL,
+    CSPEC_RULE_SET_DDL,
+    CSPEC_RULE_SET_INDEX,
+    CSPEC_GENE_DDL,
+    CSPEC_GENE_GN_INDEX,
+    CSPEC_GENE_SYMBOL_INDEX,
+    CSPEC_CRITERIA_DDL,
+    CSPEC_CRITERIA_GN_INDEX,
+    CSPEC_CRITERIA_CODE_INDEX,
+    CSPEC_STRENGTH_DDL,
+    CSPEC_STRENGTH_INDEX,
+    CSPEC_FILE_DDL,
+    CSPEC_FILE_GN_INDEX,
+    CSPEC_SEARCH_DOC_DDL,
     META_DDL,
 )
 
@@ -214,6 +307,7 @@ _FTS_STATEMENTS: tuple[str, ...] = (
     ACTIONABILITY_FTS_DDL,
     EREPO_FTS_DDL,
     EXPERT_PANEL_FTS_DDL,
+    CSPEC_FTS_DDL,
 )
 
 # Names introspectable in sqlite_master after create_schema().
@@ -225,6 +319,13 @@ TABLE_NAMES: tuple[str, ...] = (
     "actionability",
     "erepo",
     "expert_panel",
+    "cspec",
+    "cspec_rule_set",
+    "cspec_gene",
+    "cspec_criteria",
+    "cspec_strength",
+    "cspec_file",
+    "cspec_search_doc",
     "meta",
 )
 FTS_NAMES: tuple[str, ...] = (
@@ -233,6 +334,7 @@ FTS_NAMES: tuple[str, ...] = (
     "actionability_fts",
     "erepo_fts",
     "expert_panel_fts",
+    "cspec_fts",
 )
 
 

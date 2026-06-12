@@ -1,6 +1,6 @@
 # Usage
 
-clingen-link exposes 13 MCP tools across ClinGen's four curated domains. This
+clingen-link exposes 17 MCP tools across ClinGen's five curated domains. This
 guide covers the canonical workflows, the `response_mode` contract, and the
 citation contract. For the data architecture, see
 [`architecture.md`](architecture.md).
@@ -34,6 +34,10 @@ get_gene_summary(gene)         # one-call cross-domain overview
                     │
                     ▼
             get_variant_interpretation(caid|hgvs)  # full ACMG evidence for one variant
+                    │
+                    ▼
+            get_cspec(...)                 # the VCEP's ACMG/AMP criteria spec (cross-linked
+                                           # from the interpretation via affiliation + gene)
 ```
 
 Every response carries `_meta.next_commands` — a ready-to-call list of
@@ -55,6 +59,34 @@ tool (`get_clingen_diagnostics`) is appended last.
   add `refresh=true` for the live evidence-code SEPIO. To browse a gene's
   variants first, `get_variant_interpretations(gene="X")`.
 - **"Which expert panels curate this area?"** → `list_expert_panels(query=…)`.
+- **"What ACMG/AMP criteria does the VCEP apply for gene X?"** →
+  `get_cspec(gene="X")` (or `get_cspec(gn_id="GN…")`); browse spec headers with
+  `list_cspecs(gene="X")` / `list_cspecs(affiliation="…")`. For one rule, e.g.
+  `get_cspec_criterion(gn_id="GN…", code="PVS1")`; full-text search with
+  `search_cspec(query="…")`.
+
+### CSpec criteria specifications
+
+The cspec domain serves ClinGen Criteria Specification Registry records — the
+gene-specific ACMG/AMP rule sets each VCEP applies (criteria codes with strength
+levels + applicability, the genes/diseases covered, and a guidance-file catalog).
+An ERepo variant interpretation cross-links to its spec via `_meta.next_commands`
+(resolved from the curating affiliation + gene).
+
+- `get_cspec` — one criteria specification in full (criteria with strengths and
+  applicability, genes/diseases, file catalog). Select by `gn_id`, by
+  `affiliation` (optionally narrowed by `gene`), or by `gene`.
+  Example: `get_cspec(gn_id="GN092")` → the ENIGMA BRCA1/2 spec.
+- `list_cspecs` — browse spec headers (GN id, affiliation, label, version,
+  status); filter by `gene`, `affiliation`, or `status`; paginated.
+  Example: `list_cspecs(gene="BRCA1")` or `list_cspecs(affiliation="50087")`.
+- `get_cspec_criterion` — one ACMG/AMP criterion's spec (its strength rules and
+  attached guidance files). Select by `criteria_id`, or by `gn_id` + `code`
+  (add `rule_set_id` when a code repeats across rule sets).
+  Example: `get_cspec_criterion(gn_id="GN092", code="PVS1")`.
+- `search_cspec` — FTS across spec labels, criteria, and filenames; each hit
+  names its `entity_type`.
+  Example: `search_cspec(query="BS3 splicing")`.
 
 ## response_mode
 
@@ -97,6 +129,7 @@ also carry a structured `disease_obsolete` boolean (HTML markup is stripped from
 - **Dosage** — HGNC / ISCA report page.
 - **Actionability** — `AC####` doc id + SEPIO IRI.
 - **ERepo** — `CAR:CA…` allele + interpretation `@id`.
+- **CSpec** — registry `GN…` doc page.
 
 The framework citation and license are exposed in `get_server_capabilities` and
 the `clingen://citations` resource:

@@ -10,6 +10,7 @@ Met, outcome, guideline/CSpec, PubMed, permalink) preferring the snapshot, with
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from typing import Annotated, Any, Literal
 
@@ -65,6 +66,36 @@ _DETAIL_SCHEMA = relax_output_schema(
         },
     }
 )
+
+
+_AFFILIATION_RE = re.compile(r"/affiliation/(\d+)")
+
+
+def cspec_next_command(
+    guideline_cspec: str | None,
+    *,
+    gene: str | None,
+    resolve: Callable[[str, str | None], list[str]],
+) -> dict[str, Any] | None:
+    """Build the ERepo->CSpec next_commands entry from a record's guideline_cspec + gene.
+
+    Emits a precise ``{gn_id}`` when ``(affiliation, gene)`` resolves to exactly one
+    published spec; otherwise ``{affiliation, gene}`` so the consumer sees candidates.
+    Returns None when there is no affiliation to key on.
+    """
+    if not guideline_cspec:
+        return None
+    m = _AFFILIATION_RE.search(guideline_cspec)
+    if m is None:
+        return None
+    affiliation = m.group(1)
+    gn_ids = resolve(affiliation, gene)
+    if len(gn_ids) == 1:
+        return cmd("get_cspec", gn_id=gn_ids[0])
+    args: dict[str, Any] = {"affiliation": affiliation}
+    if gene:
+        args["gene"] = gene
+    return cmd("get_cspec", **args)
 
 
 def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenServices]) -> None:
@@ -242,9 +273,17 @@ def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
                 + (f" by {model.expert_panel}" if model.expert_panel else "")
                 + "."
             )
+            next_cmds = [cmd("get_variant_interpretations", gene=model.gene or "BRCA1")]
+            extra = cspec_next_command(
+                model.guideline_cspec,
+                gene=model.gene,
+                resolve=services.cspec_resolve_sync,
+            )
+            if extra is not None:
+                next_cmds.append(extra)
             meta_block = build_meta(
                 data_version=data_version_for(services.meta(), "erepo"),
-                next_commands=[cmd("get_variant_interpretations", gene=model.gene or "BRCA1")],
+                next_commands=next_cmds,
             )
             if notice:
                 meta_block["notice"] = notice
