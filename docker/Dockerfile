@@ -4,7 +4,7 @@
 # The bundled, read-only SQLite snapshot (clingen_link/data/clingen.sqlite.zst)
 # is copied into the runtime image so the server works offline out of the box.
 
-FROM python:3.12-slim AS builder
+FROM python:3.14-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -30,7 +30,7 @@ RUN pip install --upgrade pip uv && \
     uv sync --frozen --no-dev --active --no-install-project
 
 
-FROM python:3.12-slim AS production
+FROM python:3.14-slim AS production
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
