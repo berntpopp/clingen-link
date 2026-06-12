@@ -2,7 +2,7 @@
 
 clingen-link is a hand-authored FastMCP v3 facade over a **snapshot + live
 hybrid** data layer. The bundled, read-only SQLite snapshot backs fast offline
-search and retrieval across all four ClinGen domains; a thin live `httpx` layer
+search and retrieval across all five ClinGen domains; a thin live `httpx` layer
 adds single-record drill-down. Snapshot building is an **offline** concern and
 is never done in the request path.
 
@@ -17,6 +17,8 @@ is never done in the request path.
   │                (GRCh38 + GRCh37 gene & region; GRCh37 backfills coords) │
   │   • actionability  actionability.clinicalgenome.org/ac/api/summ/brief  │
   │   • erepo      erepo.clinicalgenome.org/evrepo/api/.../download (TSV)   │
+  │   • cspec      cspec.genome.network — paged catalog + per-spec JSON-LD  │
+  │                + rendered doc-page HTML scrape (two sources; see below) │
   │   • hgnc       HGNC complete-set TSV (gene full name + alias/prev sym)  │
   │        │                                                               │
   │        ▼  etl/fetch.py        (httpx, sync; tagged SourceFetchError)   │
@@ -41,7 +43,8 @@ is never done in the request path.
   │  store/queries.py   per-domain SELECTs + FTS5 search                   │
   │        │                                                               │
   │        ▼                                                               │
-  │  services/*.py      gene / validity / dosage / actionability / erepo   │
+  │  services/*.py      gene / validity / dosage / actionability / erepo / │
+  │                     cspec                                              │
   │   • merge store rows into Pydantic models                             │
   │   • async-lru caching on hot reads                                    │
   │   • build per-record recommended_citation + permalink                 │
@@ -52,7 +55,7 @@ is never done in the request path.
   │        │                   • actionability_sepio (include_detail=true) │
   │        │                   • semaphore + jittered retry + rate_limited │
   │        ▼                                                               │
-  │  mcp/tools/*.py     13 tools; each: Annotated Field params, Literal    │
+  │  mcp/tools/*.py     17 tools; each: Annotated Field params, Literal    │
   │   enums, response_mode, output_schema=relax_output_schema(...),        │
   │   READ_ONLY_OPEN_WORLD, inner async call() wrapped by run_mcp_tool     │
   │        │                                                               │
@@ -70,20 +73,47 @@ is never done in the request path.
 
 | Layer | Module(s) | Responsibility |
 |---|---|---|
-| ETL (offline) | `clingen_link/etl/{fetch,parse,hgnc,sanitize,freshness,build,refresh}.py` | Fetch ClinGen bulk sources (+ HGNC complete-set for names/aliases, + GRCh37 dosage coords), sanitize HTML in labels, parse to normalized rows, compute freshness signals, build the SQLite snapshot atomically. Entry: `clingen-link refresh`. |
+| ETL (offline) | `clingen_link/etl/{fetch,parse,hgnc,sanitize,freshness,build,refresh}.py` (+ `cspec_fetch,cspec_parse`) | Fetch ClinGen bulk sources (+ HGNC complete-set for names/aliases, + GRCh37 dosage coords), sanitize HTML in labels, parse to normalized rows, compute freshness signals, build the SQLite snapshot atomically. The cspec domain uses a two-source fetch (per-spec JSON-LD + doc-page HTML scrape; see below). Entry: `clingen-link refresh`. |
 | Store (read) | `clingen_link/store/{db,queries}.py` | Open the bundled snapshot read-only; gene resolution + alias; per-domain SELECTs and FTS5 search. |
 | Live API | `clingen_link/api/{base_client,clingen_client}.py` | `httpx.AsyncClient` for ERepo/actionability SEPIO drill-down with bounded concurrency, jittered retry, queue-wait → `rate_limited`, typed fault taxonomy. |
 | Services | `clingen_link/services/*.py` | Merge store rows (+ live drill-down) into Pydantic models; `async-lru` caching; build `recommended_citation`. |
 | Models | `clingen_link/models/*.py` | Pydantic response models per domain. |
-| MCP surface | `clingen_link/mcp/**` | Facade, canonical envelope, next-commands, resources, shaping, and the 13 tools. |
+| MCP surface | `clingen_link/mcp/**` | Facade, canonical envelope, next-commands, resources, shaping, and the 17 tools. |
 | Transports | `clingen_link/server_manager.py`, `server.py`, `mcp_server.py` | unified / http / stdio. stdio logs to stderr with banners/color suppressed. |
 
 ## Snapshot schema (overview)
 
 SQLite tables (see `etl/schema.py` for DDL): `gene`, `gene_alias`, `validity`,
-`dosage`, `actionability`, `erepo`, `expert_panel`, and `meta` (per-domain
-freshness). FTS5 virtual tables back text search:
-`validity_fts`, `dosage_fts`, `actionability_fts`, `erepo_fts`, `expert_panel_fts`.
+`dosage`, `actionability`, `erepo`, `expert_panel`, the cspec family (`cspec`,
+`cspec_rule_set`, `cspec_gene`, `cspec_criteria`, `cspec_strength`,
+`cspec_file`), and `meta` (per-domain freshness). FTS5 virtual tables back text
+search: `validity_fts`, `dosage_fts`, `actionability_fts`, `erepo_fts`,
+`expert_panel_fts`, and `cspec_fts` (a mixed-entity index over specs, criteria,
+and filenames, with each rowid resolved back to its source entity through the
+`cspec_search_doc` row-map). `cspec_criteria` is keyed on the globally-unique
+numeric `criteria_id` rather than `(gn_id, code)`, because a code repeats across
+the multiple rule sets of a multi-rule-set spec.
+
+## CSpec two-source ETL
+
+Unlike the other domains — each fed by a single bulk source — the cspec domain
+(`cspec.genome.network`, the ClinGen Criteria Specification Registry) is built
+from **two sources per spec**, both fetched offline by `clingen-link refresh`
+and never on the request path:
+
+- **Structured criteria** come from the per-spec JSON-LD
+  (`/cspec/api/SequenceVariantInterpretation/id/<GN>`): rule sets, genes/diseases,
+  ACMG/AMP criteria codes, and their strength levels + applicability.
+- **Attachment links** are *not* in the JSON-LD; they are scraped from the
+  rendered doc-page HTML (`/cspec/ui/svi/doc/<GN>`) and associated to the
+  nearest enclosing criterion. Each file's metadata (filename, content-type,
+  size) comes from a **streaming GET that reads only the response headers** —
+  the File endpoint rejects `HEAD` with HTTP 400.
+
+The catalog of spec headers comes from the documented paged list endpoint. A
+spec is included only when `cspecStatus == "Released"` and it carries at least
+one criterion (plus the baseline GN001), so unpublished or empty specs never
+enter the snapshot.
 
 ## Live drill-down
 
