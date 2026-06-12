@@ -16,7 +16,26 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any
+
+
+def _rfc1123_sort_key(value: str) -> datetime:
+    """Chronological sort key for an RFC1123 datetime string.
+
+    Actionability ``lastUpdated`` values look like ``Wed, 20 May 2026 17:53:34
+    -0000``. String comparison sorts them by day-of-month first, so a plain
+    ``max()`` is wrong (e.g. ``30 Mar 2022`` > ``20 May 2026`` lexically). Parse
+    to an aware ``datetime`` instead; unparseable values sort to the epoch.
+    """
+    try:
+        parsed = parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return datetime.min.replace(tzinfo=timezone.utc)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
 
 
 def sha256_rows(rows: list[dict[str, Any]], key_fields: list[str]) -> str:
@@ -107,7 +126,9 @@ def actionability_signal(brief: list[dict[str, Any]]) -> dict[str, Any]:
                 "last_updated": str(last_updated),
             }
         )
-    signal_value = max(last_updated_values) if last_updated_values else ""
+    signal_value = (
+        max(last_updated_values, key=_rfc1123_sort_key) if last_updated_values else ""
+    )
     return {
         "signal_type": "max_last_updated",
         "signal_value": signal_value,

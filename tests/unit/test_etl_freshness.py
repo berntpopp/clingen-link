@@ -96,6 +96,17 @@ def test_actionability_signal_max_last_updated() -> None:
     assert freshness.actionability_signal(reordered)["content_sha256"] == sig["content_sha256"]
 
 
+def test_actionability_signal_uses_chronological_not_string_max() -> None:
+    # A recent date with a low day-of-month must beat an old date with a high
+    # day-of-month. Plain string max() would wrongly pick "30 Mar 2022".
+    brief = [
+        {"docId": "AC1", "metadata": {"lastUpdated": "Wed, 30 Mar 2022 20:08:13 -0000"}},
+        {"docId": "AC2", "metadata": {"lastUpdated": "Wed, 20 May 2026 17:53:34 -0000"}},
+    ]
+    sig = freshness.actionability_signal(brief)
+    assert sig["signal_value"] == "Wed, 20 May 2026 17:53:34 -0000"
+
+
 # ---------------------------------------------------------------------------
 # erepo_signal
 # ---------------------------------------------------------------------------
