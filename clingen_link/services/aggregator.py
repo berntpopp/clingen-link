@@ -14,6 +14,7 @@ from ..api.clingen_client import ClingenClient
 from ..config import settings
 from ..store.db import Store
 from .actionability_service import ActionabilityService
+from .cspec_service import CspecService
 from .dosage_service import DosageService
 from .erepo_service import ErepoService
 from .gene_service import GeneService
@@ -36,6 +37,7 @@ class ClingenServices:
             store, self.client, cache_size=size, cache_ttl_s=ttl_s
         )
         self.erepo = ErepoService(store, self.client, cache_size=size, cache_ttl_s=erepo_ttl_s)
+        self.cspec = CspecService(store, cache_size=size, cache_ttl_s=ttl_s)
         self.gene = GeneService(store, self.validity, self.dosage, self.actionability)
 
     @classmethod
