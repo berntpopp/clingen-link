@@ -2,7 +2,8 @@
 
 Phase 1 provides the argparse parser and config translation used by the
 ``clingen-link`` entry point (``server:main``), plus ``config`` and ``health``
-subcommands. The ETL ``refresh`` subcommand lands in a later phase.
+subcommands. Phase 2 adds the ETL ``refresh`` subcommand (offline snapshot
+build / staleness check), delegating to :mod:`clingen_link.etl.refresh`.
 """
 
 from __future__ import annotations
@@ -62,7 +63,19 @@ Examples:
         help="Server URL to check (default: http://127.0.0.1:8000)",
     )
 
+    refresh_parser = subparsers.add_parser(
+        "refresh", help="Build or check the bundled ClinGen SQLite snapshot"
+    )
+    _add_refresh_arguments(refresh_parser)
+
     return parser
+
+
+def _add_refresh_arguments(parser: argparse.ArgumentParser) -> None:
+    """Attach refresh options (delegated to the ETL package)."""
+    from .etl.refresh import add_refresh_arguments
+
+    add_refresh_arguments(parser)
 
 
 def create_config_from_args(args: argparse.Namespace) -> ServerConfig:
@@ -122,6 +135,13 @@ def handle_health_command(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+def handle_refresh_command(args: argparse.Namespace) -> None:
+    """Handle the refresh subcommand (delegates to the ETL package)."""
+    from .etl.refresh import handle_refresh
+
+    sys.exit(handle_refresh(args))
+
+
 def main() -> None:
     """Execute CLI subcommands."""
     parser = create_parser()
@@ -130,6 +150,8 @@ def main() -> None:
         handle_config_command(args)
     elif args.command == "health":
         handle_health_command(args)
+    elif args.command == "refresh":
+        handle_refresh_command(args)
     else:
         parser.print_help()
 

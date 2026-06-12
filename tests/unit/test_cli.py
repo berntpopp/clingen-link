@@ -64,3 +64,24 @@ def test_config_command_invalid_port_exits(capsys) -> None:
     args.port = 70000
     with pytest.raises(SystemExit):
         handle_config_command(args)
+
+
+def test_parser_has_refresh_subcommand() -> None:
+    parser = create_parser()
+    args = parser.parse_args(["refresh", "--check"])
+    assert args.command == "refresh"
+    assert args.check is True
+    assert args.out is None
+
+
+def test_refresh_command_exits_with_handler_code(tmp_path, monkeypatch) -> None:
+    from clingen_link.cli import handle_refresh_command
+    from clingen_link.etl import refresh as refresh_mod
+
+    out = tmp_path / "absent.sqlite"
+    parser = create_parser()
+    args = parser.parse_args(["refresh", "--check", "--out", str(out)])
+    monkeypatch.setattr(refresh_mod, "gather_sources", lambda: (refresh_mod.Sources(), []))
+    with pytest.raises(SystemExit) as exc:
+        handle_refresh_command(args)
+    assert exc.value.code == 1

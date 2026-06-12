@@ -58,6 +58,7 @@ dev = [
 [project.scripts]
 clingen-link = "server:main"
 clingen-link-mcp = "mcp_server:main"
+clingen-link-refresh = "clingen_link.etl.refresh:main"
 
 [project.urls]
 Homepage = "https://github.com/berntpopp/clingen-link"

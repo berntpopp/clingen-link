@@ -39,7 +39,7 @@ def main() -> None:
     parser = create_parser()
     args = parser.parse_args()
 
-    if args.command in {"config", "health"}:
+    if args.command in {"config", "health", "refresh"}:
         from clingen_link.cli import main as cli_main
 
         cli_main()
