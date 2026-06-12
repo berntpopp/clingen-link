@@ -62,3 +62,10 @@ class ClingenServices:
     def meta(self) -> dict[str, dict[str, object]]:
         """Return per-domain snapshot freshness rows (provenance for envelopes)."""
         return self.store.meta()
+
+    def cspec_resolve_sync(self, affiliation_id: str, gene: str | None) -> list[str]:
+        """Resolve affiliation(+gene) -> GN ids synchronously (snapshot read)."""
+        with self.store.connection() as conn:
+            from ..store import cspec_queries
+
+            return cspec_queries.resolve_gn(conn, affiliation_id=affiliation_id, gene=gene)
