@@ -12,6 +12,7 @@ OA_LICENSE = {
     "CC-BY-NC-4.0",  # reserved: non-commercial CC license
     "CC-BY-NC-ND-4.0",  # reserved: non-commercial + no-derivatives CC license
     "author-manuscript",
+    "copyright-restricted",  # in PMC, free to read, but all-rights-reserved — no CC license
     "not-in-pmc",
     "none",  # reserved: no associated journal paper (web-only rec)
     "unverified",
@@ -48,16 +49,6 @@ def test_entry_invariants() -> None:
         assert e["pmcid"] is None or e["pmcid"].startswith("PMC"), e["id"]
         assert isinstance(e.get("fulltext_access"), str) and e["fulltext_access"], e["id"]
         assert isinstance(e.get("artifacts"), list), e["id"]
-
-
-def test_entry_invariants_extended() -> None:
-    """Each entry must have a non-empty fulltext_access string and an artifacts list."""
-    m = _manifest()
-    for e in m["recommendations"]:
-        assert isinstance(e.get("fulltext_access"), str) and e["fulltext_access"], (
-            f"fulltext_access must be a non-empty string: {e['id']}"
-        )
-        assert isinstance(e.get("artifacts"), list), f"artifacts must be a list: {e['id']}"
 
 
 def test_verified_cc_by_entries_tagged() -> None:
