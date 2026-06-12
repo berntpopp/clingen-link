@@ -34,6 +34,7 @@ _VERBOSE_FIELDS: dict[str, frozenset[str]] = {
     "erepo": frozenset(
         {"evidence_codes_met", "evidence_codes_not_met", "pubmed", "summary", "uuid"}
     ),
+    "cspec": frozenset({"current_status", "affiliation_id"}),
 }
 
 # Per-domain identifying array that is trimmed to a canonical few (+ a ``*_count``) in the

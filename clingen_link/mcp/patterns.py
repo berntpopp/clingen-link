@@ -22,3 +22,6 @@ DOC_ID_PATTERN = r"^AC\d+$"
 
 # ClinGen Genome / Gene Variant (CGGV) validity permalink / perm_id token.
 CGGV_PATTERN = r"^[A-Za-z0-9:_-]{1,64}$"
+
+# ClinGen criteria-specification (CSpec) GN identifier, e.g. GN092.
+GN_ID_PATTERN = r"^GN\d{1,4}$"

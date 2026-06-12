@@ -19,6 +19,7 @@ _DOMAIN_META_KEY: dict[str, str] = {
     "dosage": "dosage",
     "actionability": "actionability",
     "erepo": "erepo",
+    "cspec": "cspec",
 }
 
 
