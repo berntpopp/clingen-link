@@ -68,9 +68,9 @@ class TestGeneResolution:
 class TestMeta:
     """Per-domain freshness rows."""
 
-    def test_four_domains_present(self, store: Store) -> None:
+    def test_all_domains_present(self, store: Store) -> None:
         meta = store.meta()
-        assert set(meta) == {"validity", "dosage", "actionability", "erepo"}
+        assert set(meta) == {"validity", "dosage", "actionability", "erepo", "cspec"}
 
     def test_meta_row_fields(self, store: Store) -> None:
         row = store.meta()["validity"]
@@ -115,7 +115,7 @@ class TestSnapshotResolution:
         bundle.write_bytes(zstandard.ZstdCompressor().compress(data))
         with Store(bundle) as s:
             assert s.resolve_gene("AARS1") == "AARS1"
-            assert set(s.meta()) == {"validity", "dosage", "actionability", "erepo"}
+            assert set(s.meta()) == {"validity", "dosage", "actionability", "erepo", "cspec"}
 
 
 class TestThreadSafety:
