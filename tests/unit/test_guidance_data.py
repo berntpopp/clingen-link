@@ -5,13 +5,15 @@ from __future__ import annotations
 import json
 from importlib.resources import files
 
+# NC/ND/none values are reserved for future entries where the paper is not
+# openly redistributable or genuinely has no associated journal paper.
 OA_LICENSE = {
     "CC-BY-4.0",
-    "CC-BY-NC-4.0",
-    "CC-BY-NC-ND-4.0",
+    "CC-BY-NC-4.0",  # reserved: non-commercial CC license
+    "CC-BY-NC-ND-4.0",  # reserved: non-commercial + no-derivatives CC license
     "author-manuscript",
     "not-in-pmc",
-    "none",
+    "none",  # reserved: no associated journal paper (web-only rec)
     "unverified",
 }
 FULLTEXT = {"redistributable", "read-only", "unavailable", "unverified"}
@@ -44,6 +46,18 @@ def test_entry_invariants() -> None:
         assert e["fulltext"] in FULLTEXT, e["id"]
         assert e["pmid"] is None or e["pmid"].isdigit(), e["id"]
         assert e["pmcid"] is None or e["pmcid"].startswith("PMC"), e["id"]
+        assert isinstance(e.get("fulltext_access"), str) and e["fulltext_access"], e["id"]
+        assert isinstance(e.get("artifacts"), list), e["id"]
+
+
+def test_entry_invariants_extended() -> None:
+    """Each entry must have a non-empty fulltext_access string and an artifacts list."""
+    m = _manifest()
+    for e in m["recommendations"]:
+        assert isinstance(e.get("fulltext_access"), str) and e["fulltext_access"], (
+            f"fulltext_access must be a non-empty string: {e['id']}"
+        )
+        assert isinstance(e.get("artifacts"), list), f"artifacts must be a list: {e['id']}"
 
 
 def test_verified_cc_by_entries_tagged() -> None:
@@ -52,3 +66,11 @@ def test_verified_cc_by_entries_tagged() -> None:
     for slug in ("pp3-bp4-calibration", "ps3-bs3-functional"):
         assert m[slug]["oa_license"] == "CC-BY-4.0", slug
         assert m[slug]["fulltext"] == "redistributable", slug
+
+
+def test_no_unverified_entries_ship() -> None:
+    """Tier 1 ships fully verified: no oa_license/fulltext left as 'unverified'."""
+    m = _manifest()
+    for e in m["recommendations"]:
+        assert e["oa_license"] != "unverified", e["id"]
+        assert e["fulltext"] != "unverified", e["id"]
