@@ -14,8 +14,10 @@ is never done in the request path.
   │  ClinGen sources                                                       │
   │   • validity   GET search.clinicalgenome.org/api/validity (JSON)       │
   │   • dosage     ftp.clinicalgenome.org/ClinGen_*_curation_list_*.tsv    │
+  │                (GRCh38 + GRCh37 gene & region; GRCh37 backfills coords) │
   │   • actionability  actionability.clinicalgenome.org/ac/api/summ/brief  │
   │   • erepo      erepo.clinicalgenome.org/evrepo/api/.../download (TSV)   │
+  │   • hgnc       HGNC complete-set TSV (gene full name + alias/prev sym)  │
   │        │                                                               │
   │        ▼  etl/fetch.py        (httpx, sync; tagged SourceFetchError)   │
   │   raw bytes / rows / etags                                            │
@@ -68,7 +70,7 @@ is never done in the request path.
 
 | Layer | Module(s) | Responsibility |
 |---|---|---|
-| ETL (offline) | `clingen_link/etl/{fetch,parse,freshness,build,refresh}.py` | Fetch ClinGen bulk sources, parse to normalized rows, compute freshness signals, build the SQLite snapshot atomically. Entry: `clingen-link refresh`. |
+| ETL (offline) | `clingen_link/etl/{fetch,parse,hgnc,sanitize,freshness,build,refresh}.py` | Fetch ClinGen bulk sources (+ HGNC complete-set for names/aliases, + GRCh37 dosage coords), sanitize HTML in labels, parse to normalized rows, compute freshness signals, build the SQLite snapshot atomically. Entry: `clingen-link refresh`. |
 | Store (read) | `clingen_link/store/{db,queries}.py` | Open the bundled snapshot read-only; gene resolution + alias; per-domain SELECTs and FTS5 search. |
 | Live API | `clingen_link/api/{base_client,clingen_client}.py` | `httpx.AsyncClient` for ERepo/actionability SEPIO drill-down with bounded concurrency, jittered retry, queue-wait → `rate_limited`, typed fault taxonomy. |
 | Services | `clingen_link/services/*.py` | Merge store rows (+ live drill-down) into Pydantic models; `async-lru` caching; build `recommended_citation`. |

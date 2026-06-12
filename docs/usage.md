@@ -61,13 +61,20 @@ tool (`get_clingen_diagnostics`) is appended last.
 Every tool takes `response_mode` ∈ `minimal | compact | standard | full`
 (default `compact`). Modes take precedence over individual field toggles.
 
-- `minimal` — headline + counts only (smallest payload).
-- `compact` — default; token-trimmed (drops nulls and verbose fields).
-- `standard` — fuller record detail.
-- `full` — every verbose field (evidence codes, PMIDs, SEPIO IRIs, raw scores).
+- `minimal` — headline + counts only; per-record lists/bodies are omitted (smallest payload).
+- `compact` — default; token-trimmed (drops nulls and verbose fields; ERepo `hgvs[]` is trimmed to
+  the canonical genomic + MANE transcript + protein with an `hgvs_count`).
+- `standard` — fuller record detail (nulls kept; the full `hgvs[]` restored).
+- `full` — every verbose field (evidence codes, PMIDs, SEPIO IRIs, raw scores, full `hgvs[]`).
 
-Start `compact` and widen only when needed. Token-cost hints per tool live in
-`get_server_capabilities.token_cost_hints`.
+The tiers form a strict subset lattice — `minimal ⊆ compact ⊆ standard ⊆ full` — so widening a
+call only ever adds fields. Start `compact` and widen only when needed. Token-cost hints per tool
+live in `get_server_capabilities.token_cost_hints`.
+
+The live ERepo path (`get_variant_interpretation(refresh=true)`) returns the freshest expert-panel
+interpretation; on any upstream failure it **degrades to the snapshot record** (reported via
+`source: "snapshot"` and a `_meta.notice`) rather than failing — a valid CAID/HGVS never returns a
+`validation_failed` error.
 
 ### Pagination & truncation
 
@@ -80,8 +87,11 @@ filter}`).
 ## Citation contract
 
 Every record carries a verbatim **`recommended_citation`** plus a stable
-permalink — **paste it without paraphrasing or fabricating it.** Permalinks by
-domain:
+permalink — **paste it without paraphrasing or fabricating it.** The citation is
+the per-record copy (and a single top-level summary citation on detail/hub
+tools); it is intentionally **not** duplicated into `_meta`. Validity records
+also carry a structured `disease_obsolete` boolean (HTML markup is stripped from
+`disease_name`). Permalinks by domain:
 
 - **Validity** — CGGV `perm_id` page.
 - **Dosage** — HGNC / ISCA report page.
