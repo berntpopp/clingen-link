@@ -158,7 +158,10 @@ class UnifiedServerManager:
 
             services = self._create_services()
             self.mcp = self._create_mcp_server(lambda: services)
-            await self.mcp.run_async(transport="stdio")
+            # show_banner=False keeps stderr clean for stdio clients (Claude
+            # Desktop); the FASTMCP_DISABLE_BANNER env var is not honored by
+            # FastMCP 3.4.2's run_async, so pass the flag explicitly.
+            await self.mcp.run_async(transport="stdio", show_banner=False)
         except Exception as e:
             raise StartupError(f"Failed to start STDIO server: {e}", "stdio") from e
 
