@@ -55,7 +55,9 @@ class TestGeneSummary:
         assert payload["validity"][0]["recommended_citation"].startswith("ClinGen")
         # recommended_citation surfaced on the summary + in _meta.
         assert "ClinGen gene summary for AARS1" in payload["recommended_citation"]
-        assert payload["_meta"]["recommended_citation"] == payload["recommended_citation"]
+        # M4: citation kept top-level + per-record; not duplicated into _meta.
+        assert "recommended_citation" not in payload["_meta"]
+        assert payload["recommended_citation"]
 
     async def test_next_commands_into_domains(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "get_gene_summary", {"gene": "AARS1"})

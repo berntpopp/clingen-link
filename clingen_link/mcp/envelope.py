@@ -50,15 +50,16 @@ def build_meta(
     *,
     data_version: dict[str, Any],
     next_commands: list[dict[str, Any]],
-    recommended_citation: str | None = None,
     record_count: int | None = None,
     truncated: dict[str, Any] | None = None,
     fetched_at: str | None = None,
 ) -> dict[str, Any]:
     """Assemble the canonical success ``_meta`` block.
 
-    ``unsafe_for_clinical_use`` is injected by ``run_mcp_tool`` for every
-    response, so it is intentionally omitted here to avoid duplication.
+    ``unsafe_for_clinical_use`` is injected by ``run_mcp_tool`` for every response, so it is
+    omitted here. The ``recommended_citation`` is deliberately NOT emitted in ``_meta``: the
+    load-bearing copies live per-record (and as the single top-level summary citation on
+    detail/hub tools), so re-stating it in the envelope was pure duplication (assessment M4).
     """
     meta: dict[str, Any] = {
         "data_version": data_version,
@@ -70,8 +71,6 @@ def build_meta(
         meta["fetched_at"] = data_version["fetched_at"]
     if record_count is not None:
         meta["record_count"] = record_count
-    if recommended_citation is not None:
-        meta["recommended_citation"] = recommended_citation
     if truncated is not None:
         meta["truncated"] = truncated
     return meta

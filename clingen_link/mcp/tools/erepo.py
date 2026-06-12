@@ -162,7 +162,6 @@ def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
                 "_meta": build_meta(
                     data_version=data_version_for(services.meta(), "erepo"),
                     next_commands=next_commands,
-                    recommended_citation=citation,
                     record_count=shown,
                     truncated=trunc,
                 ),
@@ -250,7 +249,6 @@ def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
                     next_commands=[
                         cmd("get_variant_interpretations", gene=model.gene or "BRCA1"),
                     ],
-                    recommended_citation=model.recommended_citation,
                 ),
             }
 

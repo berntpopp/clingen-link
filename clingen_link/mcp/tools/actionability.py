@@ -93,16 +93,20 @@ def register_actionability_tools(
                     f"Gene '{gene}' is not in the ClinGen snapshot. Resolve with search_genes."
                 )
             models = await services.actionability.for_gene(symbol, context=context)
-            if not models:
-                raise DataNotFoundError(f"No ClinGen actionability curation lists '{symbol}'.")
+            # The gene resolved; an empty domain is success+0 (not not_found) — reserved for a gene
+            # absent from the index entirely (assessment M5).
             records = shape_records(models, domain="actionability", response_mode=response_mode)
-            if include_detail:
+            if include_detail and models:
                 for model, record in zip(models, records, strict=True):
                     record["sepio_detail"] = await services.actionability.sepio_detail(
                         model.doc_id, context
                     )
-            citation = models[0].recommended_citation
-            headline = f"{symbol}: {len(models)} actionability curation(s) ({context} context)."
+            citation = models[0].recommended_citation if models else None
+            headline = (
+                f"{symbol}: {len(models)} actionability curation(s) ({context} context)."
+                if models
+                else f"{symbol}: no ClinGen actionability curation in the {context} context."
+            )
             return {
                 "headline": headline,
                 "records": records,
@@ -115,7 +119,6 @@ def register_actionability_tools(
                         cmd("get_gene_summary", gene=symbol),
                         cmd("get_gene_validity", gene=symbol),
                     ],
-                    recommended_citation=citation,
                     record_count=len(models),
                 ),
             }
@@ -206,7 +209,6 @@ def register_actionability_tools(
                 "_meta": build_meta(
                     data_version=data_version_for(services.meta(), "actionability"),
                     next_commands=next_commands,
-                    recommended_citation=citation,
                     record_count=shown,
                     truncated=trunc,
                 ),

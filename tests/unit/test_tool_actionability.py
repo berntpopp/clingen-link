@@ -26,7 +26,7 @@ class TestGetGeneActionability:
         assert rec["doc_id"] == "AC1034"
         assert rec["recommended_citation"].startswith("ClinGen Clinical Actionability")
         assert "sepio_detail" not in rec
-        assert payload["_meta"]["recommended_citation"]
+        assert "recommended_citation" not in payload["_meta"]
 
     async def test_pediatric_context_citation(self, tool_mcp: FastMCP) -> None:
         payload = await _call(
@@ -47,10 +47,12 @@ class TestGetGeneActionability:
         assert payload["records"][0]["sepio_detail"]["docId"] == "AC1034"
         assert route.called
 
-    async def test_no_curation_not_found(self, tool_mcp: FastMCP) -> None:
+    async def test_resolvable_gene_no_curation_is_success_zero(self, tool_mcp: FastMCP) -> None:
+        # M5: AARS1 resolves but has no actionability curation → success+0, not not_found.
         payload = await _call(tool_mcp, "get_gene_actionability", {"gene": "AARS1"})
-        assert payload["success"] is False
-        assert payload["error_code"] == "not_found"
+        assert payload["success"] is True
+        assert payload["total"] == 0
+        assert payload["records"] == []
 
     async def test_unknown_gene_not_found(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "get_gene_actionability", {"gene": "ZZZNOPE"})

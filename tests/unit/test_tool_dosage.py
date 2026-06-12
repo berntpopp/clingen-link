@@ -24,13 +24,14 @@ class TestGetGeneDosage:
         assert "triplo_interpretation" in rec
         assert rec["recommended_citation"].startswith("ClinGen Dosage Sensitivity")
         assert "haploinsufficiency" in payload["headline"]
-        assert payload["_meta"]["recommended_citation"]
+        assert "recommended_citation" not in payload["_meta"]
 
-    async def test_no_dosage_record_not_found(self, tool_mcp: FastMCP) -> None:
-        # ABCA3 is in the validity fixture but absent from the dosage fixture.
+    async def test_resolvable_gene_no_dosage_is_success_zero(self, tool_mcp: FastMCP) -> None:
+        # M5: ABCA3 resolves (validity fixture) but has no dosage record → success+0, not not_found.
         payload = await _call(tool_mcp, "get_gene_dosage", {"gene": "ABCA3"})
-        assert payload["success"] is False
-        assert payload["error_code"] == "not_found"
+        assert payload["success"] is True
+        assert payload["total"] == 0
+        assert payload["records"] == []
 
     async def test_unknown_gene_not_found(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "get_gene_dosage", {"gene": "ZZZNOPE"})
