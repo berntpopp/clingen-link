@@ -33,7 +33,7 @@ def _spec_inputs():
             }
         ],
     }
-    html = '<h3>BS3</h3><a href="/cspec/File/id/abc/data">x</a>'
+    html = '<span class="file-label">BS3 spreadsheet</span><a href="/cspec/File/id/abc/data">x</a>'
     heads = {
         "https://cspec.genome.network/cspec/File/id/abc/data": {
             "content-disposition": "filename=ABCA4-BS3.xlsx",
@@ -49,8 +49,9 @@ def _multi_entity_spec():
 
     PM2 -> criteria_id 111 -> file abc-1; PVS1 -> criteria_id 222 -> file def-2.
     The file regex requires hex-style ids (``abc-1`` / ``def-2``) and attribution
-    walks the doc HTML in order, so each file lands under its own heading. This is
-    the fixture that exposes a shared-rowid-counter drift in ``_write_cspec``.
+    keys on each file's own ``file-label`` title, so each file lands on the
+    criterion its label names. This is the fixture that exposes a shared-rowid-
+    counter drift in ``_write_cspec``.
     """
     jsonld = {
         "@id": ".../id/GN200",
@@ -88,8 +89,8 @@ def _multi_entity_spec():
         ],
     }
     html = (
-        '<h3>PM2</h3><a href="/cspec/File/id/abc-1/data">x</a>'
-        '<h3>PVS1</h3><a href="/cspec/File/id/def-2/data">y</a>'
+        '<span class="file-label">PM2 table</span><a href="/cspec/File/id/abc-1/data">x</a>'
+        '<span class="file-label">PVS1 flowchart</span><a href="/cspec/File/id/def-2/data">y</a>'
     )
     heads = {
         "https://cspec.genome.network/cspec/File/id/abc-1/data": {

@@ -84,7 +84,10 @@ def populated_store(tmp_path) -> Store:
             }
         ],
     }
-    html = '<h3>PS3</h3><a href="/cspec/File/id/abc-1/data">x</a>'
+    html = (
+        '<span class="file-label">PS3 functional assay</span>'
+        '<a href="/cspec/File/id/abc-1/data">x</a>'
+    )
     heads = {
         "https://cspec.genome.network/cspec/File/id/abc-1/data": {
             "content-disposition": "filename=PS3.xlsx",
@@ -121,7 +124,7 @@ async def test_detail_has_populated_strengths_and_files(populated_store) -> None
     criterion = detail.criteria[0]
     assert criterion.code == "PS3"
     assert criterion.strengths[0].strength_label == "Supporting"
-    # The PS3 heading is unambiguous, so the file associates at criterion level.
+    # The PS3 file label is unambiguous, so the file associates at criterion level.
     assert criterion.files[0].filename == "PS3.xlsx"
 
 

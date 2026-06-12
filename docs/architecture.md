@@ -109,10 +109,18 @@ and never on the request path:
   (`/cspec/api/SequenceVariantInterpretation/id/<GN>`): rule sets, genes/diseases,
   ACMG/AMP criteria codes, and their strength levels + applicability.
 - **Attachment links** are *not* in the JSON-LD; they are scraped from the
-  rendered doc-page HTML (`/cspec/ui/svi/doc/<GN>`) and associated to the
-  nearest enclosing criterion. Each file's metadata (filename, content-type,
-  size) comes from a **streaming GET that reads only the response headers** —
-  the File endpoint rejects `HEAD` with HTTP 400.
+  rendered doc-page "Files & Images" panel (`/cspec/ui/svi/doc/<GN>`). Each file
+  is attributed to a criterion by the ACMG/AMP code named in its **own authored
+  `file-label` title** (e.g. "PM3 table", "ABCA4 PVS1 Flowchart") — *not* by
+  document position, since every attachment sits in a trailing panel after all
+  criteria. A file binds to a criterion only when its label names exactly one
+  resolvable code; a title that names zero codes (spec-wide docs like
+  "Specifications" / "Appendices"), two or more codes (a shared "PS3 and BS3
+  flowchart"), or an ambiguous code stays **spec-level** (`criteria_id = NULL`)
+  and surfaces in the spec's top-level `files` rather than under any one
+  criterion. Each file's metadata (filename, content-type, size) comes from a
+  **streaming GET that reads only the response headers** — the File endpoint
+  rejects `HEAD` with HTTP 400.
 
 The catalog of spec headers comes from the documented paged list endpoint. A
 spec is included only when `cspecStatus == "Released"` and it carries at least

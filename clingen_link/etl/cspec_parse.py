@@ -3,8 +3,11 @@
 No I/O: every function takes already-fetched JSON-LD / HTML / header dicts and
 returns plain row containers, so the build path is deterministic and unit-tested
 from inline inputs. Attachment links are not present in the JSON-LD; they are
-harvested from the rendered doc-page HTML and associated to the nearest enclosing
-criterion code (spec-level when ambiguous).
+harvested from the rendered doc-page "Files & Images" panel and attributed to a
+criterion by the code named in each file's OWN authored ``file-label`` title —
+spec-level (``criteria_id = None``) whenever the title names zero, multiple, or
+an ambiguous code. Document position carries no criterion signal (every file
+sits in a trailing panel after all criteria), so the title is the only signal.
 """
 
 from __future__ import annotations
@@ -18,8 +21,14 @@ _BASE = "https://cspec.genome.network"
 # id would silently not match and its attachment would be dropped.
 _FILE_RE = re.compile(r"/cspec/File/id/([0-9a-fA-F-]+)/data")
 _FILENAME_RE = re.compile(r'filename="?([^"\r\n;]+)"?')
-# An ACMG/AMP code token as it appears in a doc-page heading (PVS1, PS3, PM2, BA1, BS3, BP7...).
-_CODE_RE = re.compile(r"\b(P(VS|S|M|P)\d|B(A|S|P)\d)[A-Za-z0-9_]*\b")
+# A base ACMG/AMP code as authored in a file label (PVS1, PS1-4, PM1-6, PP1-5,
+# BA1, BS1-4, BP1-7). Bounded by non-alphanumerics so underscores/dots/slashes
+# count as delimiters ("GALT_PS3_assay", "PS2/PM6" both resolve), while gene
+# tokens like "ABCA4" / "PMS2" / "CYP1B1" never false-match.
+_LABEL_CODE_RE = re.compile(r"(?<![A-Za-z0-9])(PVS1|PS\d|PM\d|PP\d|BA1|BS\d|BP\d)(?![A-Za-z0-9])")
+# The authored title span preceding every attachment link/image in the registry's
+# "Files & Images" panel; one per file, it carries the file's own criterion (if any).
+_FILE_LABEL_RE = re.compile(r'class="file-label"[^>]*>(.*?)</span>', re.S)
 _BASELINE_GN = {"GN001"}
 
 
@@ -88,37 +97,61 @@ def _filename(headers: dict[str, str]) -> str | None:
     return m.group(1).strip() if m else None
 
 
+def _label_criteria_id(label: str | None, code_to_criteria: dict[str, str]) -> str | None:
+    """Resolve a file's own label to a single criterion id, else spec-level.
+
+    Returns a criterion id only when the label names exactly one ACMG/AMP code
+    that resolves to a single criterion in this spec. Zero codes (a spec-wide
+    title like "Appendix" or "Specifications_V1.2"), two-or-more distinct codes
+    (a shared "PS3 and BS3 flowchart"), or an ambiguous code (one reused across
+    rule sets, absent from ``code_to_criteria``) all return ``None`` — the file
+    then surfaces at spec level rather than being mis-bound to one criterion.
+    """
+    if not label:
+        return None
+    codes = {m.group(1) for m in _LABEL_CODE_RE.finditer(label)}
+    if len(codes) != 1:
+        return None
+    return code_to_criteria.get(next(iter(codes)))
+
+
 def _associate_files(
     doc_html: str,
     gn_id: str,
     code_to_criteria: dict[str, str],
     heads: dict[str, dict[str, str]],
 ) -> list[dict[str, Any]]:
-    """Walk the doc HTML in order, tracking the current criterion heading.
+    """Attribute each attachment by the code named in its OWN ``file-label``.
 
-    A file link is attributed to the most recent unambiguous code heading seen
-    before it; spec-level (``criteria_id = None``) when none/ambiguous.
+    Attachments live in a dedicated trailing "Files & Images" panel, not
+    interleaved with the criteria tables, so document position carries no
+    criterion signal — every file would otherwise attach to whichever criterion
+    rendered last. Instead each entry has a ``file-label`` title (e.g. "PM3
+    table", "ABCA4 PVS1 Flowchart") that names its criterion when it has one.
 
-    Note: tracking keys on the most recent ACMG/AMP **code token**, not strictly
-    a heading, so a code mentioned in prose (e.g. "differs from BS3 below") can
-    redirect attribution to the wrong criterion. The spec-level fallback
-    (``criteria_id = None`` for ambiguous codes) keeps the build correct, and
-    this heuristic is validated against a real GN164 doc page in Task 12.
+    We walk label and file events in document order and pair each file with the
+    nearest preceding label, consuming that label once so a generic, label-less
+    image never inherits the previous file's code. A file binds to a criterion
+    only when its own label names exactly one resolvable code (see
+    :func:`_label_criteria_id`); otherwise it is spec-level — precision over
+    recall, since a spec-level file is still surfaced on the spec while a wrong
+    criterion binding actively misleads.
     """
-    events: list[tuple[int, str, str]] = []
-    for m in _CODE_RE.finditer(doc_html):
-        events.append((m.start(), "code", m.group(0)))
+    events: list[tuple[int, int, str]] = []
+    for m in _FILE_LABEL_RE.finditer(doc_html):
+        events.append((m.start(), 0, m.group(1)))
     for m in _FILE_RE.finditer(doc_html):
-        events.append((m.start(), "file", m.group(1)))
-    events.sort(key=lambda e: e[0])
+        events.append((m.start(), 1, m.group(1)))
+    events.sort(key=lambda e: (e[0], e[1]))
 
     files: list[dict[str, Any]] = []
     seen: set[str] = set()
-    current: str | None = None
+    pending_label: str | None = None
     for _pos, kind, value in events:
-        if kind == "code":
-            current = code_to_criteria.get(value)
+        if kind == 0:  # label
+            pending_label = value
             continue
+        label, pending_label = pending_label, None  # consume the label once
         if value in seen:
             continue
         seen.add(value)
@@ -129,7 +162,7 @@ def _associate_files(
             {
                 "file_uuid": value,
                 "gn_id": gn_id,
-                "criteria_id": current,
+                "criteria_id": _label_criteria_id(label, code_to_criteria),
                 "filename": _filename(headers),
                 "content_type": headers.get("content-type"),
                 "size_bytes": int(size) if size and size.isdigit() else None,
