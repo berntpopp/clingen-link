@@ -49,12 +49,18 @@ def test_entry_invariants() -> None:
         assert e["pmcid"] is None or e["pmcid"].startswith("PMC"), e["id"]
         assert isinstance(e.get("fulltext_access"), str) and e["fulltext_access"], e["id"]
         assert isinstance(e.get("artifacts"), list), e["id"]
+        # redistributable <-> CC BY: the pairing that gates fulltext reuse. This
+        # guards against mis-tagging a copyright-restricted paper as shareable.
+        if e["fulltext"] == "redistributable":
+            assert e["oa_license"] == "CC-BY-4.0", e["id"]
+        if e["oa_license"] == "CC-BY-4.0":
+            assert e["fulltext"] == "redistributable", e["id"]
 
 
 def test_verified_cc_by_entries_tagged() -> None:
-    """The two confirmed CC BY papers must be redistributable."""
+    """Every confirmed CC BY paper must be tagged redistributable."""
     m = {e["id"]: e for e in _manifest()["recommendations"]}
-    for slug in ("pp3-bp4-calibration", "ps3-bs3-functional"):
+    for slug in ("pp3-bp4-calibration", "ps3-bs3-functional", "pp1-bs4-pp4", "non-coding"):
         assert m[slug]["oa_license"] == "CC-BY-4.0", slug
         assert m[slug]["fulltext"] == "redistributable", slug
 

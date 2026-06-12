@@ -33,8 +33,7 @@
     "author-manuscript": "Free to read on PMC but copyright retained; do NOT redistribute fulltext. Reach by PMID via a literature MCP.",
     "copyright-restricted": "In PMC and free to read, but all rights reserved (no CC license); do NOT redistribute fulltext. Reach by PMID via a literature MCP.",
     "not-in-pmc": "No PMC fulltext; cite via the ClinGen doc page or publisher.",
-    "none": "No associated journal paper; ClinGen web recommendation only.",
-    "unverified": "License not yet confirmed; treat as read-only until verified."
+    "none": "No associated journal paper; ClinGen web recommendation only."
   },
   "note": "Pointers + provenance only; no paper fulltext is redistributed here. VCEP CSpecs (get_cspec) are the authoritative, gene-specific, machine-readable encoding of these criteria — prefer them whenever one exists for the gene. GN001 is the unmodified 2015 baseline.",
   "research_use_notice": "Research use only; not for clinical decision support.",
