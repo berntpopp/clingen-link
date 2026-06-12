@@ -72,6 +72,18 @@ def test_server_version_is_str() -> None:
     assert isinstance(_server_version(), str)
 
 
+def test_guidance_resource_shape() -> None:
+    from clingen_link.mcp.resources import get_guidance_resource
+
+    g = get_guidance_resource()
+    assert isinstance(g["recommendations"], list) and g["recommendations"]
+    assert g["unsafe_for_clinical_use"] is True
+    assert g["research_use_notice"]
+    assert g["baseline"]["gn_id"] == "GN001"
+    # Every entry carries a license tag the consumer can act on.
+    assert all(e["oa_license"] for e in g["recommendations"])
+
+
 def test_service_adapters_inject_and_reset(test_snapshot_path: object) -> None:
     from clingen_link.services.aggregator import ClingenServices as RealServices
 
