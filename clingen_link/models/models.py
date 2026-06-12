@@ -208,7 +208,7 @@ class GeneSummary(_Base):
             f"{counts.get('dosage_count', 0)} dosage, "
             f"{counts.get('actionability_count', 0)} actionability, "
             f"{counts.get('erepo_count', 0)} ERepo variant interpretations. "
-            "https://search.clinicalgenome.org/kb/genes/"
+            f"https://search.clinicalgenome.org/kb/genes/?search={symbol}"
         )
         return cls(
             symbol=symbol,

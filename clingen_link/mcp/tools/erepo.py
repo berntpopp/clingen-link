@@ -136,6 +136,7 @@ def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
                         for k, v in {
                             "gene": gene,
                             "condition": condition,
+                            "expert_panel": expert_panel,
                             "classification": classification,
                         }.items()
                         if v

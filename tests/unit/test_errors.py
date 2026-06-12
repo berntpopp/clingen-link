@@ -84,6 +84,22 @@ async def test_not_found_fallback_uses_gene_context() -> None:
     assert result["fallback_args"] == {"query": "BRCA1"}
 
 
+async def test_not_found_fallback_avoids_circular_recall() -> None:
+    # L3: when the failing query IS the gene (search_genes itself failed), do not re-suggest the
+    # identical search_genes call — steer to discovery instead.
+    async def call() -> dict[str, object]:
+        raise DataNotFoundError("absent")
+
+    result = await run_mcp_tool(
+        "search_genes",
+        call,
+        context=McpErrorContext(tool_name="search_genes", gene="NOPE", query="NOPE"),
+    )
+    assert result["fallback_tool"] == "get_server_capabilities"
+    first = result["_meta"]["next_commands"][0]
+    assert not (first["tool"] == "search_genes" and first["arguments"].get("query") == "NOPE")
+
+
 async def test_tool_input_error_message_surfaced() -> None:
     async def call() -> dict[str, object]:
         raise ToolInputError("gene parameter is required")

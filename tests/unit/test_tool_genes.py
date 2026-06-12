@@ -41,8 +41,14 @@ class TestSearchGenes:
         payload = await _call(tool_mcp, "search_genes", {"query": "ZZZNOPE"})
         assert payload["success"] is False
         assert payload["error_code"] == "not_found"
-        assert payload["fallback_tool"] == "search_genes"
         assert payload["_meta"]["next_commands"]
+
+    async def test_not_found_fallback_is_not_circular(self, tool_mcp: FastMCP) -> None:
+        # L3: a failed search_genes must not re-suggest search_genes with the identical query.
+        payload = await _call(tool_mcp, "search_genes", {"query": "ZZZNOPE"})
+        assert payload["fallback_tool"] == "get_server_capabilities"
+        first = payload["_meta"]["next_commands"][0]
+        assert not (first["tool"] == "search_genes" and first["arguments"].get("query") == "ZZZNOPE")
 
 
 class TestGeneSummary:
@@ -58,6 +64,11 @@ class TestGeneSummary:
         # M4: citation kept top-level + per-record; not duplicated into _meta.
         assert "recommended_citation" not in payload["_meta"]
         assert payload["recommended_citation"]
+
+    async def test_summary_citation_permalink_is_gene_specific(self, tool_mcp: FastMCP) -> None:
+        # L4: the summary permalink targets the gene, not a bare /kb/genes/ landing page.
+        payload = await _call(tool_mcp, "get_gene_summary", {"gene": "AARS1"})
+        assert "/kb/genes/?search=AARS1" in payload["recommended_citation"]
 
     async def test_next_commands_into_domains(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "get_gene_summary", {"gene": "AARS1"})

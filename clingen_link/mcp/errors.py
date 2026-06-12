@@ -98,14 +98,14 @@ def _safe_message(exc: BaseException) -> str:
 def _fallback_for(context: McpErrorContext) -> tuple[str, dict[str, Any] | None]:
     """Resolve the context-appropriate resolver tool for not_found / invalid_input.
 
-    Gene/disease/variant tools point at search_genes (the hub entrypoint), and
-    everything else at the discovery entrypoint. fallback_args are populated from
-    context so the LLM gets a ready-to-call next step.
+    Gene/disease/variant tools point at ``search_genes`` (the hub entrypoint) with the gene the
+    caller supplied — but never with the *exact* query that just failed, since re-running
+    ``search_genes`` with an identical failing query is a no-op loop (assessment L3). When the gene
+    and the failing query are the same value (i.e. ``search_genes`` itself failed to resolve), steer
+    to discovery instead so the LLM makes forward progress.
     """
-    if context.gene:
+    if context.gene and context.gene != context.query:
         return "search_genes", {"query": context.gene}
-    if context.query:
-        return "search_genes", {"query": context.query}
     return "get_server_capabilities", None
 
 

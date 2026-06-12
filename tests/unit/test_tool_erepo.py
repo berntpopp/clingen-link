@@ -47,6 +47,17 @@ class TestGetVariantInterpretations:
         assert trunc["kind"] == "pagination"
         assert trunc["dropped"] >= 1
 
+    async def test_truncation_echoes_expert_panel(self, tool_mcp: FastMCP) -> None:
+        # L1: PAH has 3 variants under one VCEP; size=1 forces truncation that must echo the filter.
+        payload = await _call(
+            tool_mcp,
+            "get_variant_interpretations",
+            {"expert_panel": "Phenylketonuria", "size": 1},
+        )
+        trunc = payload["_meta"]["truncated"]
+        assert trunc["dropped"] >= 1
+        assert trunc["filter"]["expert_panel"] == "Phenylketonuria"
+
     async def test_empty_result_has_next(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "get_variant_interpretations", {"gene": "ZZZNOPE"})
         assert payload["success"] is True
