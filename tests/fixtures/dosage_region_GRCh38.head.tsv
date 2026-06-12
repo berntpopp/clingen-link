@@ -1,0 +1,10 @@
+#ClinGen Region Curation Results
+#28 Apr,2026
+#Genomic Locations are reported on GRCh38 (hg38): GCF_000001405.36
+#https://www.ncbi.nlm.nih.gov/projects/dbvar/clingen
+#to create link: https://www.ncbi.nlm.nih.gov/projects/dbvar/clingen/clingen_region.cgi?id=key
+#ISCA ID	ISCA Region Name	cytoBand	Genomic Location	Haploinsufficiency Score	Haploinsufficiency Description	Haploinsufficiency PMID1	Haploinsufficiency PMID2	Haploinsufficiency PMID3	Haploinsufficiency PMID4	Haploinsufficiency PMID5	Haploinsufficiency PMID6	Triplosensitivity Score	Triplosensitivity Description	Triplosensitivity PMID1	Triplosensitivity PMID2	Triplosensitivity PMID3	Triplosensitivity PMID4	Triplosensitivity PMID5	Triplosensitivity PMID6	Date Last Evaluated	Haploinsufficiency Disease ID	Triplosensitivity Disease ID
+ISCA-46757	21q21.3 region (includes APP)	21q21.3	chr21:25734570-26573286	0	No evidence available							3	Sufficient evidence for dosage pathogenicity	19684239	21193246	37170141				2025-10-27		
+ISCA-46755	16p12.3 recurrent region (BP3-BP4) (includes XYLT1)	16p12.3	chr16:16762939-18073544	0	No evidence available							0	No evidence available							2025-06-06		
+ISCA-46754	2p11.2 recurrent region (includes EIF2AK3, RPIA)	2p11.2	chr2:87995627-88758069	0	No evidence available	31600545	31204702	25655429				0	No evidence available							2024-09-12		
+ISCA-46753	15q13.3q14 recurrent region (BP5-BP6) (includes GREM1)	15q13.3-q14	chr15:32607508-34378801	1	Little evidence for dosage pathogenicity	18561338	17163532	18458017				0	No evidence available	20610440						2025-01-09		

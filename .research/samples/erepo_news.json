@@ -1,0 +1,464 @@
+{
+  "data": [
+    {
+      "date": "2026-04-27T01:48:00.000Z",
+      "notes": [
+        "Expert Panel field values have been normalized to ensure consistent formatting and proper querying across the Evidence Repository",
+        "This normalization enables users to find classification records more efficiently when searching by Expert Panel criteria",
+        "Improves data consistency and search reliability for VCEP-related queries"
+      ],
+      "relatedVersion": "2.5.6",
+      "title": "Normalized Expert Panel values for improved search accuracy",
+      "type": "update"
+    },
+    {
+      "date": "2026-04-21T01:48:00.000Z",
+      "notes": [
+        "Optimized search algorithm for list fields (HGVS, met and unmet codes) to handle exponentially growing collections, improving query performance and preventing system crashes",
+        "Resolved compatibility issues enabling list field searches to function correctly alongside non-list field search criteria in both API and UI"
+      ],
+      "relatedVersion": "2.5.5",
+      "title": "Enhanced list field search performance and stability",
+      "type": "bug-fix"
+    },
+    {
+      "date": "2026-02-24T01:48:00.000Z",
+      "notes": [
+        "API and UI searches on list fields (like HGVS, met and unmet codes) now properly function with non-list field searches"
+      ],
+      "relatedVersion": "2.5.4",
+      "title": "Fix HGVS and other list related searches",
+      "type": "bug-fix"
+    },
+    {
+      "date": "2025-12-30T01:48:00.000Z",
+      "notes": [
+        "API service endpoints have now license and terms of use information"
+      ],
+      "relatedVersion": "2.5.3",
+      "title": "License and terms of use available through service endpoints",
+      "type": "new-feature"
+    },
+    {
+      "date": "2025-07-01T01:48:00.000Z",
+      "relatedVersion": "2.5.0",
+      "title": "Fixed bug when querying the same list field (Met, unmet, HGVS) with multiple values",
+      "type": "bug-fix"
+    },
+    {
+      "date": "2025-04-02T01:48:00.000Z",
+      "notes": [
+        "VCEP titles present in the \"Expert Panel\" heatmap are now cross-referenced with CSPEC API to ensure they use the latest titles/names",
+        "Legacy/Deprecated VCEP titles are thus aggregated into the current/newest titles",
+        "Search results for a given affiliation/organization ID might thus contain classification records with legacy VCEP titles"
+      ],
+      "relatedVersion": "2.4.2",
+      "title": "Expert Panel Titles Referenced From CSPEC",
+      "type": "update"
+    },
+    {
+      "date": "2025-03-18T01:48:00.000Z",
+      "notes": [
+        "For the \"Expert Panel\" heatmap, links are now using the new affiliation ID endpoint"
+      ],
+      "relatedVersion": "2.4.1",
+      "title": "Affiliation ID based Expert Panel links in the entry page",
+      "type": "new-feature"
+    },
+    {
+      "date": "2025-02-28T01:48:00.000Z",
+      "notes": [
+        "New \"Affiliation ID\" search field added to Advance Search in the Evidence Repository entry page",
+        "Purpose is to search for VCEPs based on their ClinGen affiliation IDs"
+      ],
+      "relatedVersion": "2.4.0",
+      "title": "Added new affiliation ID based search page",
+      "type": "new-feature"
+    },
+    {
+      "date": "2025-02-27T01:48:00.000Z",
+      "notes": [
+        "Entry page now defaults to showing ONLY published classifications in the entry page heatmap",
+        "Search page now includes additional search field switch to toggle between searching including unpublished classifications in results"
+      ],
+      "relatedVersion": "2.3.0",
+      "title": "Search for retracted/unpublished classifications",
+      "type": "new-feature"
+    },
+    {
+      "date": "2025-02-26T01:48:00.000Z",
+      "relatedVersion": "2.2.2",
+      "title": "Fixed incorrect \"View API Docs\" link",
+      "type": "bug-fix"
+    },
+    {
+      "date": "2025-02-13T01:48:00.000Z",
+      "relatedVersion": "2.2.1",
+      "title": "Fixed missing summary description information in TSV summary file for certain interpretations",
+      "type": "bug-fix"
+    },
+    {
+      "date": "2025-01-23T12:48:00.000Z",
+      "notes": [
+        "TSV summary file is now faster and present in both the entry page and the search results page.",
+        "The search results table is now sorted by Published Date column from latest to oldest interpretation updates"
+      ],
+      "relatedVersion": "2.2.0",
+      "title": "Improved summary tab-separated download process and changed search page results ordering",
+      "type": "new-feature"
+    },
+    {
+      "date": "2025-01-08T12:48:00.000Z",
+      "relatedVersion": "2.1.1",
+      "title": "Fixed improper publication date ordering in search table",
+      "type": "bug-fix"
+    },
+    {
+      "date": "2024-12-10T12:48:00.000Z",
+      "notes": [
+        "Allele interpretation evidence pages now accept either a full semver version or the typical \"major.minor\" version.",
+        "When not providing a full semver, the API now returns all matching version records, instead of only the latest matching version records."
+      ],
+      "relatedVersion": "2.1.0",
+      "title": "Increased API version endpoint flexibility for truncated version numbers that include only major and minor digits",
+      "type": "new-feature"
+    },
+    {
+      "date": "2024-10-30T12:48:00.000Z",
+      "notes": [
+        "Reconstructed all interpretation versions for the Evidence Repository",
+        "Interpretation pages now highlight the current version users are viewing",
+        "Each interpretation page now displays a summary table of all the versions for a given interpretation",
+        "Added in latest version to each lookup document when searching for interpretations"
+      ],
+      "relatedVersion": "2.0.0",
+      "title": "Integrated document versions for all interpretations.",
+      "type": "new-feature"
+    },
+    {
+      "date": "2024-07-05T12:48:00.000Z",
+      "notes": [
+        "Updated Classification pages to move \"Approved On\" and \"Published On\" dates at the top of the page instead of at the bottom"
+      ],
+      "relatedVersion": "1.0.31",
+      "title": "Moved Approval and Publication dates in each interpretation page",
+      "type": "new-feature"
+    },
+    {
+      "date": "2024-05-07T14:48:00.000Z",
+      "notes": [
+        "View API docs link has been changed to link to new Vitepress documentation page",
+        "Includes information on new updated API endpoints detailing their parameters and responses"
+      ],
+      "relatedVersion": "1.0.30",
+      "title": "Updated API documentation for Evidence Repository",
+      "type": "new-feature"
+    },
+    {
+      "date": "2024-04-02T10:48:00.000Z",
+      "notes": [
+        "Now providing versioning to our Evidence Repository documents",
+        "Overhauled backend ingestion system to utilize message queues, the VSS (dedicated versioning system), server-sent events to make this possible"
+      ],
+      "relatedVersion": "1.0.29",
+      "title": "Added document versioning system",
+      "type": "new-feature"
+    },
+    {
+      "date": "2023-06-16T10:48:00.000Z",
+      "relatedVersion": "1.0.28",
+      "title": "Enabled use of Google Analytics GA4 Tracking",
+      "type": "new-feature"
+    },
+    {
+      "date": "2023-03-24T10:48:00.000Z",
+      "notes": [
+        "Introduced new tabular search results page to Evidence Repository",
+        "Matches other ClinGen page results for more concise, optimized, and modular searching capabilities"
+      ],
+      "relatedVersion": "1.0.27",
+      "title": "Revamped search results page",
+      "type": "new-feature"
+    },
+    {
+      "date": "2022-08-16T10:48:00.000Z",
+      "relatedVersion": "1.0.26",
+      "title": "Fixed the \"View API Docs\" link in the entry page of Erepo",
+      "type": "bug-fix"
+    },
+    {
+      "date": "2022-08-16T10:48:00.000Z",
+      "notes": [
+        "Changed \"PAH VCEP\" to \"Phenylketonuria VCEP\"",
+        "Changed \"Rett Angelman VCEP\" to \"Rett and Angelman-like Disorders VCEP\""
+      ],
+      "relatedVersion": "1.0.25",
+      "title": "Change VCEP Labels",
+      "type": "new-feature"
+    },
+    {
+      "date": "2022-08-19T10:48:00.000Z",
+      "notes": [
+        "Allowing and validating the CSpec information for each interpretation submitted to the Evidence Repository",
+        "Will check to ensure the CSpec information is both valid and appropriate to the interpretation being submitted"
+      ],
+      "relatedVersion": "1.0.24",
+      "title": "Validating Specified CSpec Interpretation Information",
+      "type": "new-feature"
+    },
+    {
+      "date": "2022-05-31T10:48:00.000Z",
+      "notes": [
+        "Normalized colors for entry table page to be gray in nature instead of distinct for each type"
+      ],
+      "relatedVersion": "1.0.23",
+      "title": "Entry Heatmap Color Change",
+      "type": "new-feature"
+    },
+    {
+      "date": "2022-06-22T10:48:00.000Z",
+      "relatedVersion": "1.0.22",
+      "title": "Fixed Entry Page Bottom Search",
+      "type": "bug-fix"
+    },
+    {
+      "date": "2022-05-31T10:48:00.000Z",
+      "notes": [
+        "Normalized colors for entry table page to be gray in nature instead of distinct for each type"
+      ],
+      "relatedVersion": "1.0.21",
+      "title": "Entry Heatmap Color Change",
+      "type": "new-feature"
+    },
+    {
+      "date": "2021-09-27T10:48:00.000Z",
+      "notes": [
+        "Allowed for the ingestion of geneless interpretations into the Evidence Repository",
+        "Their gene label will be \"N/A\" in both the entry table and each interpretation page"
+      ],
+      "relatedVersion": "1.0.20",
+      "title": "Geneless interpretations now permitted in Evidence Repository",
+      "type": "new-feature"
+    },
+    {
+      "date": "2021-10-14T10:48:00.000Z",
+      "notes": [
+        "Augmented interpretation validation system by adding document validation checks",
+        "Tracking failure reasons for improper interpretations submitted to the Evidence Repository",
+        "Tracking warnings, such as missing gene, ClinVar or Cannonical Allele ID"
+      ],
+      "relatedVersion": "1.0.19",
+      "title": "Added document validation system",
+      "type": "new-feature"
+    },
+    {
+      "date": "2021-09-27T10:48:00.000Z",
+      "notes": [
+        "Validation of interpretations is now single handedly covered by the NodeJs portion of the process"
+      ],
+      "relatedVersion": "1.0.18",
+      "title": "Backend interpretation ingestion process overhaul",
+      "type": "bug-fix"
+    },
+    {
+      "date": "2021-06-11T10:48:00.000Z",
+      "notes": [
+        "CSpec links are now present for interpretations to the respective affiliation and rule sets"
+      ],
+      "relatedVersion": "1.0.17",
+      "title": "CSpec Linkouts present for all interpretations",
+      "type": "new-feature"
+    },
+    {
+      "date": "2021-05-06T10:48:00.000Z",
+      "notes": [
+        "Search results page with no explicit queries will no longer render out the query box"
+      ],
+      "relatedVersion": "1.0.16",
+      "title": "Fixed search results query box",
+      "type": "bug-fix"
+    },
+    {
+      "date": "2021-04-02T10:48:00.000Z",
+      "notes": [
+        "All Gene, Expert Panel, and Conditions are now labeled alphabetically"
+      ],
+      "relatedVersion": "1.0.15",
+      "title": "Entry table sorting change",
+      "type": "new-feature"
+    },
+    {
+      "date": "2021-04-02T09:48:00.000Z",
+      "notes": [
+        "The search results page will now render out a box detailing the queries of that particular search"
+      ],
+      "relatedVersion": "1.0.14",
+      "title": "Show search queries to users in the search results page",
+      "type": "new-feature"
+    },
+    {
+      "date": "2021-02-15T10:48:00.000Z",
+      "notes": [
+        "Upgraded Erepo to generate computed assertions using the Cspec Engine",
+        "Reprocessed failed VCI messages"
+      ],
+      "relatedVersion": "1.0.13",
+      "title": "Reprocessed and added computer assertions",
+      "type": "new-feature"
+    },
+    {
+      "date": "2021-01-25T10:48:00.000Z",
+      "notes": [
+        "Added affiliation links to the classification page",
+        "Erepo upgraded to respond to the new Criteria Specification from the 'Platelet Dosorders VCEP'"
+      ],
+      "relatedVersion": "1.0.12 ",
+      "title": "Reprocessed VCI messages, fixed bugs, and added features",
+      "type": "update"
+    },
+    {
+      "date": "2020-08-06T10:48:00.000Z",
+      "notes": [
+        "Reprocessed several uploaded VCI messages",
+        "Fixed bugs in the classification page which exposed some unhandled error",
+        "Tabbed limited data with separate columns for met and unmet criteria codes",
+        "Fixed the date column missing from the downloaded data"
+      ],
+      "relatedVersion": "1.0.11",
+      "title": "Implemented CSPEC and processed missing classifications",
+      "type": "update"
+    },
+    {
+      "date": "2020-07-13T10:48:00.000Z",
+      "notes": [
+        "Implemented use of Criteria Specification Registry replacing the use of Genboree KB backed Guidelines and Affiliations",
+        "Renamed the Expert Panel \"Storage Diseases VCEP\" to \"Lysosomal Storage Disorders VCEP\"",
+        "Fixed several bugs in consuming VCI messages, including rejecting messages that have evidence codes without any valid statement outcomes"
+      ],
+      "relatedVersion": "1.0.10",
+      "title": "Landing Page Changes",
+      "type": "bug-fix"
+    },
+    {
+      "date": "2019-07-16T10:48:00.000Z",
+      "notes": [
+        "Entry/Landing page has been overhauled to include heatmap style grids for genes/conditions/expert-panels instead of the older pie-charts",
+        "The new grids show all the data for a category instead of showing only a few genes/conditions/expert-panels with the most variants",
+        "New download button has been added for the search results page which will dump data matching the search criteria"
+      ],
+      "relatedVersion": "1.0.9",
+      "title": "Download feature bug fix and other notes",
+      "type": "bug-fix"
+    },
+    {
+      "date": "2019-04-15T10:48:00.000Z",
+      "notes": [
+        "New Download button has been added for downloading the entire repository in tab-delimited format",
+        "The download feature is also available via API",
+        "A new page for displaying the evidence-codes for a specific guideline has been implemented.",
+        "This page can be accessed from the variant classification page for a variant-disease pair."
+      ],
+      "relatedVersion": "1.0.8",
+      "title": "New tab-delimited download feature and dedicated evidence codes page",
+      "type": "update"
+    },
+    {
+      "date": "2019-01-24T10:48:00.000Z",
+      "notes": [
+        "All instances of 'interpretation' have been replaced with 'classification'",
+        "The link to the Hearing Loss expert panel has been fixed",
+        "Typo for Condition placeholder in the Advanced Search section has been fixed",
+        "The Evidence Repository sign at the top right corner in the header is now clickable and takes the user to the app landing page",
+        {
+          "The sentence": "only variants that can be registered in the Allele Registry are supported has been removed from the disclaimer at the top"
+        }
+      ],
+      "relatedVersion": "1.0.7",
+      "title": "Classification standardization, VCEP label fixes and other tweaks",
+      "type": "update"
+    },
+    {
+      "date": "2018-12-04T10:48:00.000Z",
+      "notes": [
+        "Specialized guidelines have been added such as ACMG derived guidelines for interpreting variants associated with PAH, PTEN, RASopathy, Hearing Loss and MYH7",
+        "Variant specific page now opens up a modal with the abstract of a PubMed article when clicked"
+      ],
+      "relatedVersion": "1.0.6",
+      "title": "Added support for Specified guidelines such as ACMG derived ones",
+      "type": "update"
+    },
+    {
+      "date": "2018-11-15T10:48:00.000Z",
+      "notes": [
+        "Support has been added to capture evidence for variants not supported by the Allele Registry",
+        "Variants not registered in the Allele Registry are expected to have a ClinVar variation ID.",
+        "When uploading evidence for variants that are supported by the Allele Registry, the system will search for a corresponding ClinVar variation ID and store this id so that the variant becomes searchable by both accessions"
+      ],
+      "relatedVersion": "1.0.5",
+      "title": "Added Allele Registry support to variants",
+      "type": "update"
+    },
+    {
+      "date": "2018-10-25T10:48:00.000Z",
+      "notes": [
+        "Variant specific page now shows additional information such as Population Allele Frequency, In-silico Prediction score, etc",
+        "API updated to capture these evidence types",
+        "SEPIO also updated to show these additional types of evidence",
+        "Summary of interpretation from Expert Panel now shown on the variant specific page",
+        "Added setting to control syncing of updates with Allele Registry"
+      ],
+      "relatedVersion": "1.0.4",
+      "title": "Augmented variant information via UI and API endpoints",
+      "type": "update"
+    },
+    {
+      "date": "2018-09-20T10:48:00.000Z",
+      "notes": [
+        "Implemented searching by expert panel",
+        "Implemented clickable 'expert-panel' pie"
+      ],
+      "relatedVersion": "1.0.3",
+      "title": "Search by expert panels",
+      "type": "update"
+    },
+    {
+      "date": "2018-07-23T10:48:00.000Z",
+      "notes": [
+        "Implemented searching by assertions",
+        "Search results will now display agent and combined assertions"
+      ],
+      "relatedVersion": "1.0.2",
+      "title": "Search by Assertion added",
+      "type": "update"
+    },
+    {
+      "date": "2018-07-06T10:48:00.000Z",
+      "notes": [
+        "Implemented news and version history"
+      ],
+      "relatedVersion": "1.0.1",
+      "title": "Implemented Version History page",
+      "type": "update"
+    },
+    {
+      "date": "2018-07-02T10:48:00.000Z",
+      "notes": [
+        "Implemented basic and advanced search.",
+        "Implemented Gene and Condition based clickable pie-charts"
+      ],
+      "relatedVersion": "1.0.0",
+      "title": "Basic search added",
+      "type": "update"
+    }
+  ],
+  "metadata": {
+    "rendered": {
+      "by": "https://erepo.genome.network/evrepo/api/summary/srvc",
+      "when": "2026-06-12T05:47:25.426Z"
+    }
+  },
+  "status": {
+    "code": 200,
+    "name": "OK"
+  }
+}

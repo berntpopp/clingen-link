@@ -1,0 +1,100 @@
+{
+  "gene-validity": [
+    {
+      "method": "POST",
+      "url": "https://region1.google-analytics.com/g/collect?v=2&tid=G-42X6JZ7PGF&gtm=45je66a1v9125579927za200zd9125579927&_p=1781242978249&gcd=13l3l3l2l1l1&npa=1&dma_cps=a&dma=1&_eu=EA&are=1&cid=1706242720.1781242979&frm=0&ir=1&pscdl=noapi&rcb=12&sr=1280x720&uaa=x86&uab=64&uafvl=Not%253AA-Brand%3B99.0.0.0%7CHeadlessChrome%3B145.0.7632.6%7CChromium%3B145.0.7632.6&uam=&uamb=0&uap=Linux&uapv=&uaw=0&ul=en-us&_s=1&tag_exp=115616986~115938466~115938469~119392696~119392704~119456239~119456247&sid=1781242978&sct=1&seg=0&dl=https%3A%2F%2Fsearch.clinicalgenome.org%2Fkb%2Fgene-validity%3Fpage%3D1%26size%3D25%26search%3D&dt=ClinGen%20Gene-Disease%20Validity%20Curations&en=page_view&_fv=1&_nsi=1&_ss=1&_ee=1&tfd=1928",
+      "rtype": "fetch",
+      "status": 204,
+      "ct": "text/plain",
+      "lm": "",
+      "etag": ""
+    },
+    {
+      "method": "GET",
+      "url": "https://search.clinicalgenome.org/api/validity?queryParams",
+      "rtype": "xhr",
+      "status": 200,
+      "ct": "application/json",
+      "lm": "",
+      "etag": ""
+    }
+  ],
+  "gene-dosage": [
+    {
+      "method": "POST",
+      "url": "https://region1.google-analytics.com/g/collect?v=2&tid=G-42X6JZ7PGF&gtm=45je66a1v9125579927za200zd9125579927&_p=1781242988288&gcd=13l3l3l2l1l1&npa=1&dma_cps=a&dma=1&_eu=EA&are=1&cid=1630366140.1781242989&frm=0&ir=1&pscdl=noapi&rcb=11&sr=1280x720&uaa=x86&uab=64&uafvl=Not%253AA-Brand%3B99.0.0.0%7CHeadlessChrome%3B145.0.7632.6%7CChromium%3B145.0.7632.6&uam=&uamb=0&uap=Linux&uapv=&uaw=0&ul=en-us&_s=1&tag_exp=115616985~115938466~115938469~119456239~119456247&sid=1781242988&sct=1&seg=0&dl=https%3A%2F%2Fsearch.clinicalgenome.org%2Fkb%2Fgene-dosage%3Fpage%3D1%26size%3D25%26search%3D&dt=Dosage%20Sensitivity%20Curations&en=page_view&_fv=1&_nsi=1&_ss=1&_ee=1&tfd=1469",
+      "rtype": "fetch",
+      "status": 204,
+      "ct": "text/plain",
+      "lm": "",
+      "etag": ""
+    },
+    {
+      "method": "GET",
+      "url": "https://search.clinicalgenome.org/api/dosage?queryParams",
+      "rtype": "xhr",
+      "status": 200,
+      "ct": "application/json",
+      "lm": "",
+      "etag": ""
+    }
+  ],
+  "erepo": [
+    {
+      "method": "GET",
+      "url": "https://erepo.clinicalgenome.org/evrepo/api/summary/classifications/summary/gene",
+      "rtype": "xhr",
+      "status": 200,
+      "ct": "application/json; charset=utf-8",
+      "lm": "",
+      "etag": ""
+    },
+    {
+      "method": "GET",
+      "url": "https://erepo.clinicalgenome.org/evrepo/api/summary/news/",
+      "rtype": "xhr",
+      "status": 200,
+      "ct": "application/json; charset=utf-8",
+      "lm": "",
+      "etag": ""
+    },
+    {
+      "method": "POST",
+      "url": "https://region1.google-analytics.com/g/collect?v=2&tid=G-4PY7Y3CEMG&gtm=45je66a1v9103573127za200zd9103573127&_p=1781242998547&gcd=13l3l3l2l1l1&npa=1&dma_cps=a&dma=1&are=1&cid=1606688003.1781242999&frm=0&pscdl=noapi&rcb=14&sr=1280x720&uaa=x86&uab=64&uafvl=Not%253AA-Brand%3B99.0.0.0%7CHeadlessChrome%3B145.0.7632.6%7CChromium%3B145.0.7632.6&uam=&uamb=0&uap=Linux&uapv=&uaw=0&ul=en-us&_s=1&tag_exp=115938466~115938468~117776793~119456239~119456247&sid=1781242998&sct=1&seg=0&dl=https%3A%2F%2Ferepo.clinicalgenome.org%2Fevrepo%2F&dt=Evidence%20Repository%20-%20Clinical%20Genome%20Resources&en=page_view&_fv=1&_nsi=1&_ss=1&_ee=1&tfd=3437",
+      "rtype": "fetch",
+      "status": 204,
+      "ct": "text/plain",
+      "lm": "",
+      "etag": ""
+    }
+  ],
+  "actionability": [
+    {
+      "method": "GET",
+      "url": "https://actionability.clinicalgenome.org/ac/api/summ/brief",
+      "rtype": "xhr",
+      "status": 200,
+      "ct": "application/json",
+      "lm": "",
+      "etag": ""
+    },
+    {
+      "method": "POST",
+      "url": "https://region1.google-analytics.com/g/collect?v=2&tid=G-39571QE752&gtm=45je66a1v9103518223za200zd9103518223&_p=1781243005676&gcd=13l3l3l2l1l1&npa=1&dma_cps=a&dma=1&are=1&cid=767610039.1781243006&frm=0&pscdl=noapi&rcb=18&sr=1280x720&uaa=x86&uab=64&uafvl=Not%253AA-Brand%3B99.0.0.0%7CHeadlessChrome%3B145.0.7632.6%7CChromium%3B145.0.7632.6&uam=&uamb=0&uap=Linux&uapv=&uaw=0&ul=en-us&_s=1&tag_exp=115616985~115938465~115938468~117776793~119456239~119456247&sid=1781243005&sct=1&seg=0&dl=https%3A%2F%2Factionability.clinicalgenome.org%2Fac%2F&dt=Merged%20Actionability%20Release%20-%20Clinical%20Genome%20Resources&en=page_view&_fv=1&_nsi=1&_ss=1&_ee=1&tfd=3171",
+      "rtype": "fetch",
+      "status": 204,
+      "ct": "text/plain",
+      "lm": "",
+      "etag": ""
+    },
+    {
+      "method": "POST",
+      "url": "https://region1.google-analytics.com/g/collect?v=2&tid=G-39571QE752&gtm=45je66a1v9103518223za200zd9103518223&_p=1781243005676&gcd=13l3l3l2l1l1&npa=1&dma_cps=a&dma=1&_eu=AEAAAAQ&ae=a&are=1&cid=767610039.1781243006&frm=0&pscdl=noapi&rcb=18&sr=1280x720&uaa=x86&uab=64&uafvl=Not%253AA-Brand%3B99.0.0.0%7CHeadlessChrome%3B145.0.7632.6%7CChromium%3B145.0.7632.6&uam=&uamb=0&uap=Linux&uapv=&uaw=0&ul=en-us&_s=2&tag_exp=115616985~115938465~115938468~117776793~119456239~119456247&sid=1781243005&sct=1&seg=0&dl=https%3A%2F%2Factionability.clinicalgenome.org%2Fac%2F&dt=Merged%20Actionability%20Release%20-%20Clinical%20Genome%20Resources&en=scroll&epn.percent_scrolled=90&_et=4&tfd=8176",
+      "rtype": "fetch",
+      "status": 204,
+      "ct": "text/plain",
+      "lm": "",
+      "etag": ""
+    }
+  ]
+}

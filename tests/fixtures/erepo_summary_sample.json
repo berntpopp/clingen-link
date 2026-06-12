@@ -1,0 +1,1379 @@
+{
+  "data": {
+    "ABCA4": {
+      "classifications": {
+        "Benign": 2,
+        "Likely Benign": 16,
+        "Likely Pathogenic": 11,
+        "Pathogenic": 85,
+        "Uncertain Significance": 25
+      }
+    },
+    "ABCD1": {
+      "classifications": {
+        "Benign": 8,
+        "Likely Benign": 8,
+        "Likely Pathogenic": 12,
+        "Pathogenic": 5,
+        "Uncertain Significance": 9
+      }
+    },
+    "ACADVL": {
+      "classifications": {
+        "Benign": 13,
+        "Likely Benign": 24,
+        "Likely Pathogenic": 130,
+        "Pathogenic": 41,
+        "Uncertain Significance": 74
+      }
+    },
+    "ACTA1": {
+      "classifications": {
+        "Benign": 5,
+        "Likely Benign": 2,
+        "Likely Pathogenic": 16,
+        "Pathogenic": 13,
+        "Uncertain Significance": 4
+      }
+    },
+    "ACTC1": {
+      "classifications": {
+        "Likely Pathogenic": 1,
+        "Pathogenic": 1,
+        "Uncertain Significance": 3
+      }
+    },
+    "ACVRL1": {
+      "classifications": {
+        "Likely Benign": 5,
+        "Likely Pathogenic": 6,
+        "Pathogenic": 6,
+        "Uncertain Significance": 7
+      }
+    },
+    "ADA": {
+      "classifications": {
+        "Benign": 3,
+        "Likely Benign": 3,
+        "Likely Pathogenic": 15,
+        "Pathogenic": 12,
+        "Uncertain Significance": 28
+      }
+    },
+    "AIPL1": {
+      "classifications": {
+        "Benign": 11,
+        "Likely Benign": 3,
+        "Likely Pathogenic": 9,
+        "Pathogenic": 13,
+        "Uncertain Significance": 16
+      }
+    },
+    "AKT3": {
+      "classifications": {
+        "Likely Benign": 2,
+        "Pathogenic": 1
+      }
+    },
+    "ANO5": {
+      "classifications": {
+        "Benign": 2,
+        "Likely Benign": 3,
+        "Likely Pathogenic": 3,
+        "Pathogenic": 13,
+        "Uncertain Significance": 5
+      }
+    },
+    "APC": {
+      "classifications": {
+        "Benign": 17,
+        "Likely Benign": 7,
+        "Likely Pathogenic": 33,
+        "Pathogenic": 21,
+        "Uncertain Significance": 30
+      }
+    },
+    "ATM": {
+      "classifications": {
+        "Benign": 11,
+        "Likely Benign": 6,
+        "Likely Pathogenic": 23,
+        "Pathogenic": 70,
+        "Uncertain Significance": 24
+      }
+    },
+    "BMPR2": {
+      "classifications": {
+        "Benign": 4,
+        "Likely Benign": 13,
+        "Likely Pathogenic": 26,
+        "Pathogenic": 16,
+        "Uncertain Significance": 24
+      }
+    },
+    "BRAF": {
+      "classifications": {
+        "Benign": 14,
+        "Likely Benign": 5,
+        "Likely Pathogenic": 5,
+        "Pathogenic": 20,
+        "Uncertain Significance": 1
+      }
+    },
+    "BRCA1": {
+      "classifications": {
+        "Benign": 9,
+        "Likely Benign": 1,
+        "Likely Pathogenic": 33,
+        "Pathogenic": 16,
+        "Uncertain Significance": 16
+      }
+    },
+    "BRCA2": {
+      "classifications": {
+        "Benign": 12,
+        "Likely Benign": 6,
+        "Likely Pathogenic": 26,
+        "Pathogenic": 10,
+        "Uncertain Significance": 14
+      }
+    },
+    "C11orf65": {
+      "classifications": {
+        "Pathogenic": 2
+      }
+    },
+    "C12orf43": {
+      "classifications": {
+        "Benign": 1,
+        "Likely Pathogenic": 3,
+        "Pathogenic": 1
+      }
+    },
+    "CAPN3": {
+      "classifications": {
+        "Benign": 4,
+        "Likely Benign": 4,
+        "Likely Pathogenic": 21,
+        "Pathogenic": 57,
+        "Uncertain Significance": 3
+      }
+    },
+    "CDH1": {
+      "classifications": {
+        "Benign": 61,
+        "Likely Benign": 72,
+        "Likely Pathogenic": 24,
+        "Pathogenic": 130,
+        "Uncertain Significance": 45
+      }
+    },
+    "CDH23": {
+      "classifications": {
+        "Benign": 3,
+        "Likely Benign": 1,
+        "Likely Pathogenic": 1,
+        "Pathogenic": 3,
+        "Uncertain Significance": 11
+      }
+    },
+    "CDKL5": {
+      "classifications": {
+        "Benign": 29,
+        "Likely Benign": 21,
+        "Likely Pathogenic": 21,
+        "Pathogenic": 18,
+        "Uncertain Significance": 21
+      }
+    },
+    "COCH": {
+      "classifications": {
+        "Benign": 3,
+        "Likely Pathogenic": 1,
+        "Pathogenic": 1,
+        "Uncertain Significance": 1
+      }
+    },
+    "CTLA4": {
+      "classifications": {
+        "Benign": 15,
+        "Likely Benign": 2,
+        "Likely Pathogenic": 6,
+        "Pathogenic": 9,
+        "Uncertain Significance": 5
+      }
+    },
+    "CYP1B1": {
+      "classifications": {
+        "Benign": 8,
+        "Likely Benign": 4,
+        "Likely Pathogenic": 10,
+        "Pathogenic": 26,
+        "Uncertain Significance": 11
+      }
+    },
+    "DCLRE1C": {
+      "classifications": {
+        "Benign": 7,
+        "Likely Benign": 6,
+        "Likely Pathogenic": 13,
+        "Pathogenic": 12,
+        "Uncertain Significance": 56
+      }
+    },
+    "DICER1": {
+      "classifications": {
+        "Benign": 12,
+        "Likely Benign": 44,
+        "Likely Pathogenic": 24,
+        "Pathogenic": 16,
+        "Uncertain Significance": 90
+      }
+    },
+    "DLG4": {
+      "classifications": {
+        "Benign": 1
+      }
+    },
+    "DNM2": {
+      "classifications": {
+        "Benign": 6,
+        "Likely Pathogenic": 5,
+        "Pathogenic": 7
+      }
+    },
+    "DYSF": {
+      "classifications": {
+        "Benign": 23,
+        "Likely Benign": 12,
+        "Likely Pathogenic": 34,
+        "Pathogenic": 159,
+        "Uncertain Significance": 13
+      }
+    },
+    "ENG": {
+      "classifications": {
+        "Benign": 2,
+        "Likely Benign": 7,
+        "Likely Pathogenic": 6,
+        "Pathogenic": 6,
+        "Uncertain Significance": 5
+      }
+    },
+    "ETHE1": {
+      "classifications": {
+        "Benign": 9,
+        "Pathogenic": 6,
+        "Uncertain Significance": 3
+      }
+    },
+    "F8": {
+      "classifications": {
+        "Benign": 13,
+        "Likely Benign": 10,
+        "Likely Pathogenic": 22,
+        "Pathogenic": 34,
+        "Uncertain Significance": 14
+      }
+    },
+    "F9": {
+      "classifications": {
+        "Benign": 14,
+        "Likely Benign": 3,
+        "Likely Pathogenic": 22,
+        "Pathogenic": 23,
+        "Uncertain Significance": 8
+      }
+    },
+    "FBN1": {
+      "classifications": {
+        "Benign": 5,
+        "Likely Benign": 3,
+        "Likely Pathogenic": 48,
+        "Pathogenic": 41,
+        "Uncertain Significance": 17
+      }
+    },
+    "FOXG1": {
+      "classifications": {
+        "Benign": 32,
+        "Likely Benign": 12,
+        "Likely Pathogenic": 7,
+        "Pathogenic": 6,
+        "Uncertain Significance": 11
+      }
+    },
+    "FOXN1": {
+      "classifications": {
+        "Benign": 3,
+        "Likely Benign": 11,
+        "Likely Pathogenic": 18,
+        "Pathogenic": 14,
+        "Uncertain Significance": 9
+      }
+    },
+    "GAA": {
+      "classifications": {
+        "Benign": 16,
+        "Likely Benign": 9,
+        "Likely Pathogenic": 108,
+        "Pathogenic": 193,
+        "Uncertain Significance": 68
+      }
+    },
+    "GALT": {
+      "classifications": {
+        "Likely Benign": 2,
+        "Likely Pathogenic": 6,
+        "Pathogenic": 2,
+        "Uncertain Significance": 4
+      }
+    },
+    "GAMT": {
+      "classifications": {
+        "Benign": 10,
+        "Likely Benign": 15,
+        "Likely Pathogenic": 35,
+        "Pathogenic": 35,
+        "Uncertain Significance": 28
+      }
+    },
+    "GATM": {
+      "classifications": {
+        "Benign": 15,
+        "Likely Benign": 8,
+        "Likely Pathogenic": 7,
+        "Pathogenic": 5,
+        "Uncertain Significance": 21
+      }
+    },
+    "GCK": {
+      "classifications": {
+        "Benign": 4,
+        "Likely Benign": 8,
+        "Likely Pathogenic": 177,
+        "Pathogenic": 190,
+        "Uncertain Significance": 84
+      }
+    },
+    "GJB2": {
+      "classifications": {
+        "Likely Pathogenic": 8,
+        "Pathogenic": 13,
+        "Uncertain Significance": 9
+      }
+    },
+    "GP1BA": {
+      "classifications": {
+        "Benign": 7,
+        "Likely Benign": 1,
+        "Likely Pathogenic": 38,
+        "Pathogenic": 7,
+        "Uncertain Significance": 14
+      }
+    },
+    "GP1BB": {
+      "classifications": {
+        "Benign": 4,
+        "Likely Benign": 1,
+        "Likely Pathogenic": 18,
+        "Pathogenic": 3,
+        "Uncertain Significance": 13
+      }
+    },
+    "GP9": {
+      "classifications": {
+        "Benign": 6,
+        "Likely Benign": 3,
+        "Likely Pathogenic": 13,
+        "Pathogenic": 3,
+        "Uncertain Significance": 12
+      }
+    },
+    "GUCY2D": {
+      "classifications": {
+        "Benign": 13,
+        "Likely Benign": 8,
+        "Likely Pathogenic": 16,
+        "Pathogenic": 23,
+        "Uncertain Significance": 9
+      }
+    },
+    "HBA2": {
+      "classifications": {
+        "Benign": 3,
+        "Likely Pathogenic": 2,
+        "Pathogenic": 6,
+        "Uncertain Significance": 2
+      }
+    },
+    "HBB": {
+      "classifications": {
+        "Benign": 4,
+        "Likely Benign": 1,
+        "Pathogenic": 11,
+        "Uncertain Significance": 4
+      }
+    },
+    "HNF1A": {
+      "classifications": {
+        "Benign": 20,
+        "Likely Benign": 14,
+        "Likely Pathogenic": 118,
+        "Pathogenic": 109,
+        "Uncertain Significance": 158
+      }
+    },
+    "HNF4A": {
+      "classifications": {
+        "Benign": 8,
+        "Likely Benign": 12,
+        "Likely Pathogenic": 52,
+        "Pathogenic": 50,
+        "Uncertain Significance": 106
+      }
+    },
+    "HRAS": {
+      "classifications": {
+        "Benign": 2,
+        "Likely Benign": 1,
+        "Likely Pathogenic": 3,
+        "Pathogenic": 2,
+        "Uncertain Significance": 5
+      }
+    },
+    "IDUA": {
+      "classifications": {
+        "Benign": 18,
+        "Likely Benign": 8,
+        "Likely Pathogenic": 47,
+        "Pathogenic": 73,
+        "Uncertain Significance": 40
+      }
+    },
+    "IL2RG": {
+      "classifications": {
+        "Benign": 1,
+        "Likely Benign": 10,
+        "Likely Pathogenic": 9,
+        "Pathogenic": 25,
+        "Uncertain Significance": 9
+      }
+    },
+    "IL7R": {
+      "classifications": {
+        "Benign": 8,
+        "Likely Benign": 9,
+        "Likely Pathogenic": 5,
+        "Pathogenic": 9,
+        "Uncertain Significance": 10
+      }
+    },
+    "ITGA2B": {
+      "classifications": {
+        "Benign": 17,
+        "Likely Benign": 26,
+        "Likely Pathogenic": 84,
+        "Pathogenic": 141,
+        "Uncertain Significance": 91
+      }
+    },
+    "ITGB3": {
+      "classifications": {
+        "Benign": 20,
+        "Likely Benign": 19,
+        "Likely Pathogenic": 54,
+        "Pathogenic": 94,
+        "Uncertain Significance": 65
+      }
+    },
+    "JAK3": {
+      "classifications": {
+        "Benign": 6,
+        "Likely Benign": 7,
+        "Likely Pathogenic": 6,
+        "Pathogenic": 6,
+        "Uncertain Significance": 7
+      }
+    },
+    "KCNQ1": {
+      "classifications": {
+        "Benign": 4,
+        "Likely Benign": 4,
+        "Likely Pathogenic": 8,
+        "Pathogenic": 4,
+        "Uncertain Significance": 17
+      }
+    },
+    "KCNQ4": {
+      "classifications": {
+        "Likely Benign": 1,
+        "Likely Pathogenic": 2,
+        "Pathogenic": 2
+      }
+    },
+    "KLLN": {
+      "classifications": {
+        "Benign": 3,
+        "Likely Benign": 3
+      }
+    },
+    "KRAS": {
+      "classifications": {
+        "Benign": 3,
+        "Likely Benign": 3,
+        "Likely Pathogenic": 1,
+        "Pathogenic": 7,
+        "Uncertain Significance": 1
+      }
+    },
+    "LDLR": {
+      "classifications": {
+        "Benign": 18,
+        "Likely Benign": 20,
+        "Likely Pathogenic": 134,
+        "Pathogenic": 78,
+        "Uncertain Significance": 311
+      }
+    },
+    "LRRC56": {
+      "classifications": {
+        "Benign": 8,
+        "Likely Benign": 1,
+        "Pathogenic": 2
+      }
+    },
+    "LZTR1": {
+      "classifications": {
+        "Benign": 1,
+        "Likely Benign": 3,
+        "Likely Pathogenic": 7,
+        "Pathogenic": 7,
+        "Uncertain Significance": 5
+      }
+    },
+    "MAP2K1": {
+      "classifications": {
+        "Benign": 11,
+        "Likely Benign": 4,
+        "Likely Pathogenic": 3,
+        "Pathogenic": 9
+      }
+    },
+    "MAP2K2": {
+      "classifications": {
+        "Benign": 25,
+        "Likely Benign": 9,
+        "Likely Pathogenic": 1,
+        "Pathogenic": 5,
+        "Uncertain Significance": 8
+      }
+    },
+    "MECP2": {
+      "classifications": {
+        "Benign": 68,
+        "Likely Benign": 52,
+        "Likely Pathogenic": 8,
+        "Pathogenic": 35,
+        "Uncertain Significance": 24
+      }
+    },
+    "MLH1": {
+      "classifications": {
+        "Benign": 3,
+        "Likely Benign": 2,
+        "Likely Pathogenic": 4,
+        "Pathogenic": 2,
+        "Uncertain Significance": 5
+      }
+    },
+    "MRAS": {
+      "classifications": {
+        "Benign": 3,
+        "Likely Pathogenic": 4
+      }
+    },
+    "MSH2": {
+      "classifications": {
+        "Likely Benign": 4,
+        "Likely Pathogenic": 2,
+        "Pathogenic": 6
+      }
+    },
+    "MSH6": {
+      "classifications": {
+        "Likely Benign": 1,
+        "Likely Pathogenic": 3,
+        "Uncertain Significance": 1
+      }
+    },
+    "MT-ATP6": {
+      "classifications": {
+        "Benign": 3,
+        "Likely Pathogenic": 8,
+        "Pathogenic": 4,
+        "Uncertain Significance": 17
+      }
+    },
+    "MT-ATP8": {
+      "classifications": {
+        "Likely Pathogenic": 1,
+        "Uncertain Significance": 3
+      }
+    },
+    "MT-CO1": {
+      "classifications": {
+        "Benign": 1,
+        "Likely Benign": 2,
+        "Likely Pathogenic": 2,
+        "Uncertain Significance": 10
+      }
+    },
+    "MT-CO2": {
+      "classifications": {
+        "Likely Pathogenic": 2,
+        "Pathogenic": 1,
+        "Uncertain Significance": 5
+      }
+    },
+    "MT-CO3": {
+      "classifications": {
+        "Likely Pathogenic": 3,
+        "Uncertain Significance": 4
+      }
+    },
+    "MT-CYB": {
+      "classifications": {
+        "Benign": 1,
+        "Likely Pathogenic": 3,
+        "Uncertain Significance": 8
+      }
+    },
+    "MT-ND1": {
+      "classifications": {
+        "Likely Pathogenic": 8,
+        "Pathogenic": 1,
+        "Uncertain Significance": 15
+      }
+    },
+    "MT-ND2": {
+      "classifications": {
+        "Benign": 1,
+        "Likely Benign": 1,
+        "Likely Pathogenic": 1,
+        "Uncertain Significance": 10
+      }
+    },
+    "MT-ND3": {
+      "classifications": {
+        "Likely Benign": 1,
+        "Likely Pathogenic": 1,
+        "Pathogenic": 2,
+        "Uncertain Significance": 1
+      }
+    },
+    "MT-ND4": {
+      "classifications": {
+        "Benign": 1,
+        "Likely Pathogenic": 1,
+        "Pathogenic": 1,
+        "Uncertain Significance": 2
+      }
+    },
+    "MT-ND4L": {
+      "classifications": {
+        "Uncertain Significance": 2
+      }
+    },
+    "MT-ND5": {
+      "classifications": {
+        "Benign": 1,
+        "Likely Benign": 1,
+        "Likely Pathogenic": 5,
+        "Pathogenic": 3,
+        "Uncertain Significance": 8
+      }
+    },
+    "MT-ND6": {
+      "classifications": {
+        "Likely Pathogenic": 8,
+        "Pathogenic": 3,
+        "Uncertain Significance": 2
+      }
+    },
+    "MT-RNR1": {
+      "classifications": {
+        "Likely Benign": 1,
+        "Likely Pathogenic": 1,
+        "Pathogenic": 1
+      }
+    },
+    "MT-T1": {
+      "classifications": {
+        "Uncertain Significance": 1
+      }
+    },
+    "MT-TA": {
+      "classifications": {
+        "Likely Pathogenic": 1,
+        "Uncertain Significance": 3
+      }
+    },
+    "MT-TC": {
+      "classifications": {
+        "Likely Benign": 1,
+        "Uncertain Significance": 1
+      }
+    },
+    "MT-TD": {
+      "classifications": {
+        "Uncertain Significance": 1
+      }
+    },
+    "MT-TE": {
+      "classifications": {
+        "Likely Pathogenic": 2,
+        "Uncertain Significance": 5
+      }
+    },
+    "MT-TF": {
+      "classifications": {
+        "Likely Pathogenic": 2,
+        "Uncertain Significance": 10
+      }
+    },
+    "MT-TG": {
+      "classifications": {
+        "Benign": 2,
+        "Uncertain Significance": 3
+      }
+    },
+    "MT-TH": {
+      "classifications": {
+        "Likely Pathogenic": 2,
+        "Uncertain Significance": 2
+      }
+    },
+    "MT-TI": {
+      "classifications": {
+        "Likely Pathogenic": 1,
+        "Uncertain Significance": 7
+      }
+    },
+    "MT-TK": {
+      "classifications": {
+        "Likely Pathogenic": 4,
+        "Pathogenic": 1,
+        "Uncertain Significance": 6
+      }
+    },
+    "MT-TL1": {
+      "classifications": {
+        "Likely Pathogenic": 12,
+        "Pathogenic": 1,
+        "Uncertain Significance": 5
+      }
+    },
+    "MT-TL2": {
+      "classifications": {
+        "Benign": 1,
+        "Likely Pathogenic": 2,
+        "Uncertain Significance": 6
+      }
+    },
+    "MT-TM": {
+      "classifications": {
+        "Likely Pathogenic": 1,
+        "Uncertain Significance": 1
+      }
+    },
+    "MT-TN": {
+      "classifications": {
+        "Likely Pathogenic": 2,
+        "Pathogenic": 1,
+        "Uncertain Significance": 4
+      }
+    },
+    "MT-TP": {
+      "classifications": {
+        "Likely Pathogenic": 1,
+        "Uncertain Significance": 1
+      }
+    },
+    "MT-TQ": {
+      "classifications": {
+        "Uncertain Significance": 3
+      }
+    },
+    "MT-TR": {
+      "classifications": {
+        "Uncertain Significance": 6
+      }
+    },
+    "MT-TS1": {
+      "classifications": {
+        "Benign": 1,
+        "Likely Pathogenic": 5,
+        "Pathogenic": 2,
+        "Uncertain Significance": 4
+      }
+    },
+    "MT-TS2": {
+      "classifications": {
+        "Benign": 1,
+        "Likely Pathogenic": 1,
+        "Uncertain Significance": 6
+      }
+    },
+    "MT-TT": {
+      "classifications": {
+        "Likely Pathogenic": 1,
+        "Uncertain Significance": 1
+      }
+    },
+    "MT-TV": {
+      "classifications": {
+        "Benign": 1,
+        "Likely Pathogenic": 2,
+        "Uncertain Significance": 6
+      }
+    },
+    "MT-TW": {
+      "classifications": {
+        "Likely Pathogenic": 3,
+        "Pathogenic": 1,
+        "Uncertain Significance": 9
+      }
+    },
+    "MT-TY": {
+      "classifications": {
+        "Uncertain Significance": 3
+      }
+    },
+    "MTM1": {
+      "classifications": {
+        "Benign": 4,
+        "Likely Pathogenic": 6,
+        "Pathogenic": 6,
+        "Uncertain Significance": 3
+      }
+    },
+    "MTOR": {
+      "classifications": {
+        "Benign": 1,
+        "Likely Benign": 5,
+        "Likely Pathogenic": 2,
+        "Pathogenic": 8,
+        "Uncertain Significance": 8
+      }
+    },
+    "MYBPC3": {
+      "classifications": {
+        "Benign": 1,
+        "Likely Benign": 1,
+        "Likely Pathogenic": 3,
+        "Pathogenic": 2,
+        "Uncertain Significance": 4
+      }
+    },
+    "MYH7": {
+      "classifications": {
+        "Benign": 48,
+        "Likely Benign": 6,
+        "Likely Pathogenic": 25,
+        "Pathogenic": 30,
+        "Uncertain Significance": 65
+      }
+    },
+    "MYL2": {
+      "classifications": {
+        "Likely Pathogenic": 1,
+        "Uncertain Significance": 4
+      }
+    },
+    "MYL3": {
+      "classifications": {
+        "Uncertain Significance": 5
+      }
+    },
+    "MYO15A": {
+      "classifications": {
+        "Benign": 2,
+        "Likely Benign": 5,
+        "Likely Pathogenic": 4,
+        "Pathogenic": 5
+      }
+    },
+    "MYO6": {
+      "classifications": {
+        "Benign": 3,
+        "Likely Pathogenic": 1,
+        "Pathogenic": 1
+      }
+    },
+    "MYO7A": {
+      "classifications": {
+        "Benign": 2,
+        "Likely Benign": 2,
+        "Likely Pathogenic": 14,
+        "Pathogenic": 4,
+        "Uncertain Significance": 9
+      }
+    },
+    "MYOC": {
+      "classifications": {
+        "Benign": 11,
+        "Likely Benign": 45,
+        "Likely Pathogenic": 35,
+        "Pathogenic": 14,
+        "Uncertain Significance": 166
+      }
+    },
+    "NEB": {
+      "classifications": {
+        "Benign": 2,
+        "Likely Benign": 4,
+        "Likely Pathogenic": 3,
+        "Pathogenic": 5,
+        "Uncertain Significance": 3
+      }
+    },
+    "NRAS": {
+      "classifications": {
+        "Benign": 2,
+        "Likely Benign": 3,
+        "Likely Pathogenic": 1,
+        "Pathogenic": 4,
+        "Uncertain Significance": 5
+      }
+    },
+    "OTC": {
+      "classifications": {
+        "Benign": 7,
+        "Likely Benign": 2,
+        "Likely Pathogenic": 4,
+        "Pathogenic": 10,
+        "Uncertain Significance": 8
+      }
+    },
+    "OTOF": {
+      "classifications": {
+        "Benign": 2,
+        "Likely Benign": 2,
+        "Likely Pathogenic": 4,
+        "Pathogenic": 3,
+        "Uncertain Significance": 2
+      }
+    },
+    "PAH": {
+      "classifications": {
+        "Benign": 17,
+        "Likely Benign": 4,
+        "Likely Pathogenic": 296,
+        "Pathogenic": 322,
+        "Uncertain Significance": 174
+      }
+    },
+    "PALB2": {
+      "classifications": {
+        "Benign": 5,
+        "Likely Benign": 3,
+        "Likely Pathogenic": 5,
+        "Pathogenic": 12,
+        "Uncertain Significance": 14
+      }
+    },
+    "PDHA1": {
+      "classifications": {
+        "Benign": 3,
+        "Likely Pathogenic": 1,
+        "Pathogenic": 4,
+        "Uncertain Significance": 1
+      }
+    },
+    "PIK3CA": {
+      "classifications": {
+        "Benign": 2,
+        "Likely Benign": 2,
+        "Likely Pathogenic": 1,
+        "Pathogenic": 4,
+        "Uncertain Significance": 2
+      }
+    },
+    "PIK3CD": {
+      "classifications": {
+        "Benign": 5,
+        "Likely Benign": 19,
+        "Likely Pathogenic": 9,
+        "Pathogenic": 3,
+        "Uncertain Significance": 18
+      }
+    },
+    "PIK3R2": {
+      "classifications": {
+        "Benign": 1,
+        "Likely Benign": 3,
+        "Pathogenic": 1
+      }
+    },
+    "PMS2": {
+      "classifications": {
+        "Likely Pathogenic": 3,
+        "Pathogenic": 1,
+        "Uncertain Significance": 2
+      }
+    },
+    "POLG": {
+      "classifications": {
+        "Benign": 6,
+        "Likely Pathogenic": 5,
+        "Pathogenic": 1,
+        "Uncertain Significance": 11
+      }
+    },
+    "PPP1CB": {
+      "classifications": {
+        "Benign": 3,
+        "Likely Pathogenic": 2,
+        "Pathogenic": 3
+      }
+    },
+    "PTEN": {
+      "classifications": {
+        "Benign": 9,
+        "Likely Benign": 29,
+        "Likely Pathogenic": 48,
+        "Pathogenic": 71,
+        "Uncertain Significance": 55
+      }
+    },
+    "PTPN11": {
+      "classifications": {
+        "Benign": 13,
+        "Likely Benign": 6,
+        "Likely Pathogenic": 2,
+        "Pathogenic": 19,
+        "Uncertain Significance": 4
+      }
+    },
+    "RAF1": {
+      "classifications": {
+        "Benign": 18,
+        "Likely Benign": 10,
+        "Likely Pathogenic": 2,
+        "Pathogenic": 9,
+        "Uncertain Significance": 4
+      }
+    },
+    "RAG1": {
+      "classifications": {
+        "Benign": 9,
+        "Likely Benign": 4,
+        "Likely Pathogenic": 4,
+        "Pathogenic": 18,
+        "Uncertain Significance": 17
+      }
+    },
+    "RAG2": {
+      "classifications": {
+        "Benign": 3,
+        "Likely Benign": 3,
+        "Likely Pathogenic": 12,
+        "Pathogenic": 7,
+        "Uncertain Significance": 20
+      }
+    },
+    "RIT1": {
+      "classifications": {
+        "Pathogenic": 1,
+        "Uncertain Significance": 2
+      }
+    },
+    "RMRP": {
+      "classifications": {
+        "Benign": 3,
+        "Likely Benign": 1,
+        "Likely Pathogenic": 11,
+        "Pathogenic": 5,
+        "Uncertain Significance": 8
+      }
+    },
+    "RPE65": {
+      "classifications": {
+        "Benign": 8,
+        "Likely Benign": 18,
+        "Likely Pathogenic": 57,
+        "Pathogenic": 88,
+        "Uncertain Significance": 11
+      }
+    },
+    "RPGR": {
+      "classifications": {
+        "Benign": 59,
+        "Likely Benign": 20,
+        "Likely Pathogenic": 46,
+        "Pathogenic": 117,
+        "Uncertain Significance": 20
+      }
+    },
+    "RRAS2": {
+      "classifications": {
+        "Benign": 1,
+        "Likely Pathogenic": 1,
+        "Pathogenic": 3
+      }
+    },
+    "RS1": {
+      "classifications": {
+        "Benign": 8,
+        "Likely Benign": 11,
+        "Likely Pathogenic": 15,
+        "Pathogenic": 29,
+        "Uncertain Significance": 20
+      }
+    },
+    "RUNX1": {
+      "classifications": {
+        "Benign": 110,
+        "Likely Benign": 491,
+        "Likely Pathogenic": 106,
+        "Pathogenic": 122,
+        "Uncertain Significance": 819
+      }
+    },
+    "RYR1": {
+      "classifications": {
+        "Benign": 23,
+        "Likely Benign": 19,
+        "Likely Pathogenic": 65,
+        "Pathogenic": 42,
+        "Uncertain Significance": 226
+      }
+    },
+    "SCN1A": {
+      "classifications": {
+        "Benign": 1,
+        "Likely Benign": 3,
+        "Likely Pathogenic": 10,
+        "Pathogenic": 4,
+        "Uncertain Significance": 4
+      }
+    },
+    "SCN1B": {
+      "classifications": {
+        "Pathogenic": 1
+      }
+    },
+    "SCN2A": {
+      "classifications": {
+        "Benign": 4,
+        "Likely Benign": 2,
+        "Likely Pathogenic": 6,
+        "Pathogenic": 3,
+        "Uncertain Significance": 7
+      }
+    },
+    "SCN3A": {
+      "classifications": {
+        "Benign": 3,
+        "Pathogenic": 3,
+        "Uncertain Significance": 1
+      }
+    },
+    "SCN8A": {
+      "classifications": {
+        "Benign": 2,
+        "Likely Benign": 1,
+        "Likely Pathogenic": 6,
+        "Pathogenic": 3
+      }
+    },
+    "SERPINC1": {
+      "classifications": {
+        "Benign": 6,
+        "Likely Benign": 17,
+        "Likely Pathogenic": 15,
+        "Pathogenic": 29,
+        "Uncertain Significance": 38
+      }
+    },
+    "SGCA": {
+      "classifications": {
+        "Benign": 2,
+        "Likely Benign": 2,
+        "Likely Pathogenic": 14,
+        "Pathogenic": 14,
+        "Uncertain Significance": 1
+      }
+    },
+    "SGCB": {
+      "classifications": {
+        "Benign": 3,
+        "Likely Benign": 6,
+        "Likely Pathogenic": 2,
+        "Pathogenic": 6,
+        "Uncertain Significance": 1
+      }
+    },
+    "SGCD": {
+      "classifications": {
+        "Likely Benign": 1,
+        "Pathogenic": 2,
+        "Uncertain Significance": 3
+      }
+    },
+    "SGCG": {
+      "classifications": {
+        "Benign": 2,
+        "Likely Benign": 3,
+        "Likely Pathogenic": 3,
+        "Pathogenic": 7,
+        "Uncertain Significance": 4
+      }
+    },
+    "SHOC2": {
+      "classifications": {
+        "Benign": 8,
+        "Likely Benign": 6,
+        "Pathogenic": 2,
+        "Uncertain Significance": 3
+      }
+    },
+    "SLC26A4": {
+      "classifications": {
+        "Benign": 4,
+        "Likely Benign": 5,
+        "Likely Pathogenic": 7,
+        "Pathogenic": 7,
+        "Uncertain Significance": 4
+      }
+    },
+    "SLC6A8": {
+      "classifications": {
+        "Benign": 10,
+        "Likely Benign": 20,
+        "Likely Pathogenic": 37,
+        "Pathogenic": 46,
+        "Uncertain Significance": 61
+      }
+    },
+    "SLC9A6": {
+      "classifications": {
+        "Benign": 11,
+        "Likely Benign": 11,
+        "Pathogenic": 3,
+        "Uncertain Significance": 5
+      }
+    },
+    "SOS1": {
+      "classifications": {
+        "Benign": 26,
+        "Likely Benign": 17,
+        "Likely Pathogenic": 5,
+        "Pathogenic": 11,
+        "Uncertain Significance": 11
+      }
+    },
+    "SOS2": {
+      "classifications": {
+        "Benign": 1,
+        "Likely Benign": 1,
+        "Likely Pathogenic": 1,
+        "Uncertain Significance": 4
+      }
+    },
+    "TCF4": {
+      "classifications": {
+        "Benign": 11,
+        "Likely Benign": 14,
+        "Likely Pathogenic": 9,
+        "Pathogenic": 7,
+        "Uncertain Significance": 5
+      }
+    },
+    "TECTA": {
+      "classifications": {
+        "Benign": 2,
+        "Likely Benign": 7,
+        "Pathogenic": 1
+      }
+    },
+    "TNNI3": {
+      "classifications": {
+        "Likely Pathogenic": 2,
+        "Pathogenic": 1,
+        "Uncertain Significance": 2
+      }
+    },
+    "TNNT2": {
+      "classifications": {
+        "Likely Benign": 1,
+        "Likely Pathogenic": 3,
+        "Pathogenic": 1,
+        "Uncertain Significance": 1
+      }
+    },
+    "TP53": {
+      "classifications": {
+        "Benign": 24,
+        "Likely Benign": 54,
+        "Likely Pathogenic": 27,
+        "Pathogenic": 44,
+        "Uncertain Significance": 33
+      }
+    },
+    "TPM1": {
+      "classifications": {
+        "Benign": 1,
+        "Likely Benign": 1,
+        "Uncertain Significance": 3
+      }
+    },
+    "UBE3A": {
+      "classifications": {
+        "Benign": 14,
+        "Likely Benign": 12,
+        "Likely Pathogenic": 5,
+        "Pathogenic": 9,
+        "Uncertain Significance": 14
+      }
+    },
+    "USH2A": {
+      "classifications": {
+        "Benign": 6,
+        "Likely Benign": 7,
+        "Likely Pathogenic": 8,
+        "Pathogenic": 15,
+        "Uncertain Significance": 13
+      }
+    },
+    "VHL": {
+      "classifications": {
+        "Benign": 8,
+        "Likely Benign": 1,
+        "Likely Pathogenic": 1,
+        "Pathogenic": 14,
+        "Uncertain Significance": 7
+      }
+    },
+    "VWF": {
+      "classifications": {
+        "Benign": 13,
+        "Likely Benign": 19,
+        "Likely Pathogenic": 22,
+        "Pathogenic": 35,
+        "Uncertain Significance": 30
+      }
+    }
+  },
+  "metadata": {
+    "rendered": {
+      "by": "https://erepo.genome.network/evrepo/api/summary/srvc",
+      "when": "2026-06-12T05:47:25.470Z"
+    }
+  },
+  "status": {
+    "code": 200,
+    "name": "OK"
+  }
+}

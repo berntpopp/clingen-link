@@ -1,0 +1,626 @@
+[
+ {
+  "docId": "AC1034",
+  "iri": "https://actionability.clinicalgenome.org/ac/api/doc/AC1034",
+  "curationType": "Gene-Condition",
+  "metadata": {
+   "lastUpdated": "Wed, 20 May 2026 17:53:34 -0000",
+   "lastAuthor": "Gilmore Mari"
+  },
+  "disease": "SCN1A-related seizure disorders",
+  "modesOfInheritance": [
+   "Autosomal Dominant"
+  ],
+  "context": {
+   "Adult": {
+    "@id": "https://actionability.clinicalgenome.org/ac/Adult/api/sepio/doc/AC1034",
+    "release": {
+     "date": "Wed, 20 May 2026 00:00:00 -0000"
+    },
+    "status": {
+     "overall": "Released",
+     "stg1": "Failed",
+     "stg2": "Incomplete",
+     "scoring": "Incomplete",
+     "assertion": "Incomplete"
+    }
+   },
+   "Pediatric": {
+    "@id": "https://actionability.clinicalgenome.org/ac/Pediatric/api/sepio/doc/AC1034",
+    "release": {
+     "number": "1.0.1",
+     "date": "Wed, 20 May 2026 00:00:00 -0000"
+    },
+    "genes": [
+     {
+      "gene": "SCN1A",
+      "geneOmim": "182389",
+      "diseases": [
+       {
+        "label": "GENERALIZED EPILEPSY WITH FEBRILE SEIZURES PLUS, TYPE 2; GEFSP2",
+        "omim": "604403",
+        "preferredMondo": "0100135"
+       },
+       {
+        "label": "DRAVET SYNDROME; DRVT",
+        "omim": "607208",
+        "preferredMondo": "0100135"
+       },
+       {
+        "label": "DEVELOPMENTAL AND EPILEPTIC ENCEPHALOPATHY 6B; DEE6B",
+        "omim": "619317",
+        "preferredMondo": "0100135"
+       }
+      ]
+     }
+    ],
+    "searchDates": [
+     "Wed, 21 May 2025 00:00:00 -0000"
+    ],
+    "status": {
+     "overall": "Released",
+     "stg1": "Complete",
+     "stg2": "Complete",
+     "scoring": "Complete",
+     "assertion": "Incomplete"
+    }
+   }
+  }
+ },
+ {
+  "docId": "AC009",
+  "iri": "https://actionability.clinicalgenome.org/ac/api/doc/AC009",
+  "curationType": "Gene-Condition",
+  "metadata": {
+   "lastUpdated": "Thu, 07 May 2026 20:50:27 -0000",
+   "lastAuthor": "Catlin Chris"
+  },
+  "disease": "Hypophosphatemic rickets, X-linked dominant",
+  "modesOfInheritance": [
+   "X-linked"
+  ],
+  "context": {
+   "Adult": {
+    "@id": "https://actionability.clinicalgenome.org/ac/Adult/api/sepio/doc/AC009",
+    "genes": [
+     {
+      "gene": "PHEX",
+      "geneOmim": "300550",
+      "diseases": [
+       {
+        "label": "HYPOPHOSPHATEMIC RICKETS, X-LINKED DOMINANT; XLHRD",
+        "omim": "307800",
+        "preferredMondo": "0010619"
+       }
+      ]
+     }
+    ],
+    "status": {
+     "overall": "In Preparation",
+     "stg1": "Complete",
+     "stg2": "Incomplete",
+     "scoring": "Incomplete",
+     "assertion": "Incomplete"
+    }
+   },
+   "Pediatric": {
+    "@id": "https://actionability.clinicalgenome.org/ac/Pediatric/api/sepio/doc/AC009",
+    "release": {
+     "number": "1.2.3",
+     "date": "Wed, 09 Feb 2022 00:00:00 -0000"
+    },
+    "genes": [
+     {
+      "gene": "PHEX",
+      "geneOmim": "300550",
+      "diseases": [
+       {
+        "label": "HYPOPHOSPHATEMIC RICKETS, X-LINKED DOMINANT; XLHR",
+        "omim": "307800",
+        "preferredMondo": "0010619"
+       }
+      ]
+     }
+    ],
+    "searchDates": [
+     "Mon, 05 Nov 2018 00:00:00 -0000"
+    ],
+    "status": {
+     "overall": "Released - Under Revision",
+     "stg1": "Complete",
+     "stg2": "Complete",
+     "scoring": "Complete",
+     "assertion": "Incomplete"
+    }
+   }
+  }
+ },
+ {
+  "docId": "AC154",
+  "iri": "https://actionability.clinicalgenome.org/ac/api/doc/AC154",
+  "curationType": "Gene-Condition",
+  "metadata": {
+   "lastUpdated": "Fri, 06 Mar 2026 00:35:59 -0000",
+   "lastAuthor": "Gilmore Mari"
+  },
+  "disease": "Hereditary mixed polyposis syndrome 1",
+  "modesOfInheritance": [
+   "Autosomal Dominant"
+  ],
+  "context": {
+   "Adult": {
+    "@id": "https://actionability.clinicalgenome.org/ac/Adult/api/sepio/doc/AC154",
+    "release": {
+     "number": "1.2.3",
+     "date": "Wed, 09 Feb 2022 00:00:00 -0000"
+    },
+    "genes": [
+     {
+      "gene": "GREM1",
+      "geneOmim": "603054",
+      "diseases": [
+       {
+        "label": "POLYPOSIS SYNDROME, HEREDITARY MIXED, 1; HMPS1",
+        "omim": "601228",
+        "preferredMondo": "0042486"
+       }
+      ]
+     }
+    ],
+    "searchDates": [
+     "Fri, 03 Aug 2018 00:00:00 -0000"
+    ],
+    "status": {
+     "overall": "Released - Under Revision",
+     "stg1": "Complete",
+     "stg2": "Complete",
+     "scoring": "Complete",
+     "assertion": "Incomplete"
+    }
+   },
+   "Pediatric": {
+    "@id": "https://actionability.clinicalgenome.org/ac/Pediatric/api/sepio/doc/AC154",
+    "release": {
+     "number": "1.0.0",
+     "date": "Thu, 05 Mar 2026 00:00:00 -0000"
+    },
+    "genes": [
+     {
+      "gene": "GREM1",
+      "geneOmim": "603054",
+      "diseases": [
+       {
+        "label": "POLYPOSIS SYNDROME, HEREDITARY MIXED, 1; HMPS1",
+        "omim": "601228",
+        "preferredMondo": "0042486"
+       }
+      ]
+     }
+    ],
+    "searchDates": [
+     "Wed, 04 Mar 2026 00:00:00 -0000"
+    ],
+    "status": {
+     "overall": "Released",
+     "stg1": "Failed",
+     "stg2": "Incomplete",
+     "scoring": "Incomplete",
+     "assertion": "Incomplete"
+    }
+   }
+  }
+ },
+ {
+  "docId": "AC1060",
+  "iri": "https://actionability.clinicalgenome.org/ac/api/doc/AC1060",
+  "curationType": "Gene-Condition",
+  "metadata": {
+   "lastUpdated": "Fri, 06 Mar 2026 00:31:20 -0000",
+   "lastAuthor": "Gilmore Mari"
+  },
+  "disease": "Cutaneous malignant melanoma-3 (CMM3)",
+  "context": {
+   "Adult": {
+    "@id": "https://actionability.clinicalgenome.org/ac/Adult/api/sepio/doc/AC1060",
+    "release": {
+     "number": "0.0.0",
+     "date": "Mon, 08 May 2023 00:00:00 -0000"
+    },
+    "genes": [
+     {
+      "gene": "CDK4",
+      "geneOmim": "123829",
+      "diseases": [
+       {
+        "label": "MELANOMA, CUTANEOUS MALIGNANT, SUSCEPTIBILITY TO, 3; CMM3",
+        "omim": "609048",
+        "preferredMondo": "0012183"
+       }
+      ]
+     }
+    ],
+    "status": {
+     "overall": "In Preparation",
+     "stg1": "Complete",
+     "stg2": "Incomplete",
+     "scoring": "Incomplete",
+     "assertion": "Incomplete"
+    }
+   },
+   "Pediatric": {
+    "@id": "https://actionability.clinicalgenome.org/ac/Pediatric/api/sepio/doc/AC1060",
+    "release": {
+     "number": "1.0.0",
+     "date": "Thu, 05 Mar 2026 00:00:00 -0000"
+    },
+    "genes": [
+     {
+      "gene": "CDK4",
+      "geneOmim": "123829",
+      "diseases": [
+       {
+        "label": "MELANOMA, CUTANEOUS MALIGNANT, SUSCEPTIBILITY TO, 3; CMM3",
+        "omim": "609048",
+        "preferredMondo": "0012183"
+       }
+      ]
+     }
+    ],
+    "searchDates": [
+     "Wed, 04 Mar 2026 00:00:00 -0000"
+    ],
+    "status": {
+     "overall": "Released",
+     "stg1": "Failed",
+     "stg2": "Incomplete",
+     "scoring": "Incomplete",
+     "assertion": "Incomplete"
+    }
+   }
+  }
+ },
+ {
+  "docId": "AC138",
+  "iri": "https://actionability.clinicalgenome.org/ac/api/doc/AC138",
+  "curationType": "Gene-Condition",
+  "metadata": {
+   "lastUpdated": "Tue, 24 Feb 2026 19:30:33 -0000",
+   "lastAuthor": "Cope Heidi"
+  },
+  "disease": "Dilated cardiomyopathy",
+  "modesOfInheritance": [
+   "Autosomal Dominant",
+   "X-linked"
+  ],
+  "context": {
+   "Adult": {
+    "@id": "https://actionability.clinicalgenome.org/ac/Adult/api/sepio/doc/AC138",
+    "release": {
+     "number": "3.0.0",
+     "date": "Tue, 24 Feb 2026 00:00:00 -0000"
+    },
+    "genes": [
+     {
+      "gene": "BAG3",
+      "geneOmim": "603883",
+      "diseases": [
+       {
+        "label": "CARDIOMYOPATHY, DILATED, 1HH; CMD1HH",
+        "omim": "613881",
+        "preferredMondo": "0013479"
+       }
+      ]
+     },
+     {
+      "gene": "DES",
+      "geneOmim": "125660",
+      "diseases": [
+       {
+        "label": "CARDIOMYOPATHY, DILATED, 1I; CMD1I",
+        "omim": "604765",
+        "preferredMondo": "0011482"
+       }
+      ]
+     },
+     {
+      "gene": "DMD",
+      "geneOmim": "300377",
+      "diseases": [
+       {
+        "label": "CARDIOMYOPATHY, DILATED, 3B; CMD3B",
+        "omim": "302045",
+        "preferredMondo": "0010542"
+       }
+      ]
+     },
+     {
+      "gene": "DSP",
+      "geneOmim": "125647",
+      "diseases": [
+       {
+        "label": "CARDIOMYOPATHY, DILATED, WITH WOOLLY HAIR, KERATODERMA, AND TOOTH AGENESIS; DCWHKTA",
+        "omim": "615821",
+        "preferredMondo": "0014355"
+       }
+      ]
+     },
+     {
+      "gene": "FLNC",
+      "geneOmim": "102565",
+      "diseases": [
+       {
+        "label": "CARDIOMYOPATHY, FAMILIAL HYPERTROPHIC, 26; CMH26",
+        "omim": "617047",
+        "preferredMondo": "0014883"
+       }
+      ]
+     },
+     {
+      "gene": "LMNA",
+      "geneOmim": "150330",
+      "diseases": [
+       {
+        "label": "CARDIOMYOPATHY, DILATED, 1A; CMD1A",
+        "omim": "115200",
+        "preferredMondo": "0007269"
+       }
+      ]
+     },
+     {
+      "gene": "MYH7",
+      "geneOmim": "160760",
+      "diseases": [
+       {
+        "label": "CARDIOMYOPATHY, DILATED, 1S; CMD1S",
+        "omim": "613426",
+        "preferredMondo": "0013262"
+       }
+      ]
+     },
+     {
+      "gene": "PLN",
+      "geneOmim": "172405",
+      "diseases": [
+       {
+        "label": "CARDIOMYOPATHY, DILATED, 1P; CMD1P",
+        "omim": "609909",
+        "preferredMondo": "0012362"
+       }
+      ]
+     },
+     {
+      "gene": "RBM20",
+      "geneOmim": "613171",
+      "diseases": [
+       {
+        "label": "CARDIOMYOPATHY, DILATED, 1DD; CMD1DD",
+        "omim": "613172",
+        "preferredMondo": "0013168"
+       }
+      ]
+     },
+     {
+      "gene": "SCN5A",
+      "geneOmim": "600163",
+      "diseases": [
+       {
+        "label": "CARDIOMYOPATHY, DILATED, 1E; CMD1E",
+        "omim": "601154",
+        "preferredMondo": "0011003"
+       }
+      ]
+     },
+     {
+      "gene": "TNNC1",
+      "geneOmim": "191040",
+      "diseases": [
+       {
+        "label": "CARDIOMYOPATHY, DILATED, 1Z; CMD1Z",
+        "omim": "611879",
+        "preferredMondo": "0012745"
+       }
+      ]
+     },
+     {
+      "gene": "TNNT2",
+      "geneOmim": "191045",
+      "diseases": [
+       {
+        "label": "CARDIOMYOPATHY, DILATED, 1D; CMD1D",
+        "omim": "601494",
+        "preferredMondo": "0011095"
+       }
+      ]
+     },
+     {
+      "gene": "TTN",
+      "geneOmim": "188840",
+      "diseases": [
+       {
+        "label": "CARDIOMYOPATHY, DILATED, 1G; CMD1G",
+        "omim": "604145",
+        "preferredMondo": "0011400"
+       }
+      ]
+     }
+    ],
+    "searchDates": [
+     "Thu, 21 Aug 2025 00:00:00 -0000",
+     "Mon, 12 May 2025 00:00:00 -0000",
+     "Wed, 29 Jul 2015 00:00:00 -0000",
+     "Mon, 14 Aug 2017 00:00:00 -0000"
+    ],
+    "status": {
+     "overall": "Released",
+     "stg1": "Complete",
+     "stg2": "Complete",
+     "scoring": "Complete",
+     "assertion": "Incomplete"
+    }
+   },
+   "Pediatric": {
+    "@id": "https://actionability.clinicalgenome.org/ac/Pediatric/api/sepio/doc/AC138",
+    "release": {
+     "number": "1.0.0",
+     "date": "Tue, 24 Feb 2026 00:00:00 -0000"
+    },
+    "genes": [
+     {
+      "gene": "BAG3",
+      "geneOmim": "603883",
+      "diseases": [
+       {
+        "label": "CARDIOMYOPATHY, DILATED, 1HH; CMD1HH",
+        "omim": "613881",
+        "preferredMondo": "0013479"
+       }
+      ]
+     },
+     {
+      "gene": "DES",
+      "geneOmim": "125660",
+      "diseases": [
+       {
+        "label": "CARDIOMYOPATHY, DILATED, 1I; CMD1I",
+        "omim": "604765",
+        "preferredMondo": "0011482"
+       }
+      ]
+     },
+     {
+      "gene": "DMD",
+      "geneOmim": "300377",
+      "diseases": [
+       {
+        "label": "CARDIOMYOPATHY, DILATED, 3B; CMD3B",
+        "omim": "302045",
+        "preferredMondo": "0010542"
+       }
+      ]
+     },
+     {
+      "gene": "DSP",
+      "geneOmim": "125647",
+      "diseases": [
+       {
+        "label": "CARDIOMYOPATHY, DILATED, WITH WOOLLY HAIR, KERATODERMA, AND TOOTH AGENESIS; DCWHKTA",
+        "omim": "615821",
+        "preferredMondo": "0014355"
+       }
+      ]
+     },
+     {
+      "gene": "FLNC",
+      "geneOmim": "102565",
+      "diseases": [
+       {
+        "label": "CARDIOMYOPATHY, FAMILIAL HYPERTROPHIC, 26; CMH26",
+        "omim": "617047",
+        "preferredMondo": "0014883"
+       }
+      ]
+     },
+     {
+      "gene": "LMNA",
+      "geneOmim": "150330",
+      "diseases": [
+       {
+        "label": "CARDIOMYOPATHY, DILATED, 1A; CMD1A",
+        "omim": "115200",
+        "preferredMondo": "0007269"
+       }
+      ]
+     },
+     {
+      "gene": "MYH7",
+      "geneOmim": "160760",
+      "diseases": [
+       {
+        "label": "CARDIOMYOPATHY, DILATED, 1S; CMD1S",
+        "omim": "613426",
+        "preferredMondo": "0013262"
+       }
+      ]
+     },
+     {
+      "gene": "PLN",
+      "geneOmim": "172405",
+      "diseases": [
+       {
+        "label": "CARDIOMYOPATHY, DILATED, 1P; CMD1P",
+        "omim": "609909",
+        "preferredMondo": "0012362"
+       }
+      ]
+     },
+     {
+      "gene": "RBM20",
+      "geneOmim": "613171",
+      "diseases": [
+       {
+        "label": "CARDIOMYOPATHY, DILATED, 1DD; CMD1DD",
+        "omim": "613172",
+        "preferredMondo": "0013168"
+       }
+      ]
+     },
+     {
+      "gene": "SCN5A",
+      "geneOmim": "600163",
+      "diseases": [
+       {
+        "label": "CARDIOMYOPATHY, DILATED, 1E; CMD1E",
+        "omim": "601154",
+        "preferredMondo": "0011003"
+       }
+      ]
+     },
+     {
+      "gene": "TNNC1",
+      "geneOmim": "191040",
+      "diseases": [
+       {
+        "label": "CARDIOMYOPATHY, DILATED, 1Z; CMD1Z",
+        "omim": "611879",
+        "preferredMondo": "0012745"
+       }
+      ]
+     },
+     {
+      "gene": "TNNT2",
+      "geneOmim": "191045",
+      "diseases": [
+       {
+        "label": "CARDIOMYOPATHY, DILATED, 1D; CMD1D",
+        "omim": "601494",
+        "preferredMondo": "0011095"
+       }
+      ]
+     },
+     {
+      "gene": "TTN",
+      "geneOmim": "188840",
+      "diseases": [
+       {
+        "label": "CARDIOMYOPATHY, DILATED, 1G; CMD1G",
+        "omim": "604145",
+        "preferredMondo": "0011400"
+       }
+      ]
+     }
+    ],
+    "searchDates": [
+     "Thu, 21 Aug 2025 00:00:00 -0000",
+     "Mon, 12 May 2025 00:00:00 -0000"
+    ],
+    "status": {
+     "overall": "Released",
+     "stg1": "Complete",
+     "stg2": "Complete",
+     "scoring": "Complete",
+     "assertion": "Incomplete"
+    }
+   }
+  }
+ }
+]
