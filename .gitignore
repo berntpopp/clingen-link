@@ -228,3 +228,6 @@ clingen_link/data/clingen.sqlite
 clingen_link/data/*.sqlite-wal
 clingen_link/data/*.sqlite-shm
 clingen_link/data/*.tmp
+
+# Local docker env (keep examples only)
+.env.docker
