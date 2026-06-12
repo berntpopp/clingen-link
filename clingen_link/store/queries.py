@@ -373,7 +373,7 @@ def search_genes(conn: sqlite3.Connection, query: str, *, limit: int = 25) -> li
         rows = conn.execute(
             f"SELECT {cols} FROM gene g WHERE g.hgnc_id = ? COLLATE NOCASE "  # noqa: S608 - fixed cols
             "UNION "
-            f"SELECT {cols} FROM gene g "  # noqa: S608 - fixed cols
+            f"SELECT {cols} FROM gene g "
             "JOIN gene_alias a ON a.symbol = g.symbol WHERE a.alias = ? COLLATE NOCASE "
             "ORDER BY symbol LIMIT ?",
             (hgnc, hgnc, limit),
@@ -383,7 +383,7 @@ def search_genes(conn: sqlite3.Connection, query: str, *, limit: int = 25) -> li
     rows = conn.execute(
         f"SELECT {cols} FROM gene g WHERE g.symbol LIKE ? COLLATE NOCASE "  # noqa: S608 - fixed cols
         "UNION "
-        f"SELECT {cols} FROM gene g "  # noqa: S608 - fixed cols
+        f"SELECT {cols} FROM gene g "
         "JOIN gene_alias a ON a.symbol = g.symbol WHERE a.alias LIKE ? COLLATE NOCASE "
         "ORDER BY symbol LIMIT ?",
         (like, like, limit),

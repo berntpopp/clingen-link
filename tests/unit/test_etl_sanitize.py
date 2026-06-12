@@ -12,7 +12,9 @@ def test_strip_html_removes_tags_and_collapses_ws() -> None:
 
 
 def test_strip_html_unescapes_entities() -> None:
-    assert sanitize.strip_html("Pendred&nbsp;syndrome &amp; deafness") == "Pendred syndrome & deafness"
+    assert (
+        sanitize.strip_html("Pendred&nbsp;syndrome &amp; deafness") == "Pendred syndrome & deafness"
+    )
 
 
 def test_strip_html_none_and_blank() -> None:
@@ -21,7 +23,7 @@ def test_strip_html_none_and_blank() -> None:
 
 
 def test_is_obsolete_label_detects_marker() -> None:
-    assert sanitize.is_obsolete_label('x <span>Obsolete Term</span>') is True
+    assert sanitize.is_obsolete_label("x <span>Obsolete Term</span>") is True
     assert sanitize.is_obsolete_label("obsolete glaucoma 1, open angle, F") is True
     assert sanitize.is_obsolete_label("dilated cardiomyopathy") is False
     assert sanitize.is_obsolete_label(None) is False

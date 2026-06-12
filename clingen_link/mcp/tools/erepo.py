@@ -59,6 +59,7 @@ _DETAIL_SCHEMA = relax_output_schema(
             "headline": {"type": "string"},
             "interpretation": {"type": "object"},
             "source": {"type": "string"},
+            "notice": {"type": ["string", "null"]},
             "recommended_citation": {"type": ["string", "null"]},
             "_meta": {"type": "object"},
         },
@@ -228,29 +229,32 @@ def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
             # clinvar_variation_id is snapshot-only (the live API keys on caid/hgvs).
             if clinvar_variation_id and not refresh:
                 model = _by_clinvar(services, clinvar_variation_id)
-                source = "snapshot"
+                source, notice = "snapshot", None
             else:
-                model = await services.erepo.get_interpretation(
+                model, source, notice = await services.erepo.get_interpretation(
                     caid=caid, hgvs=hgvs, refresh=refresh
                 )
-                source = "live" if refresh else "snapshot"
-            interpretation = shape_record(model, domain="erepo", response_mode=response_mode)
+            shaped = shape_record(model, domain="erepo", response_mode=response_mode)
+            # minimal omits the per-record body (headline + source only), matching the other tools.
+            interpretation = {} if response_mode == "minimal" else shaped
             headline = (
                 f"{model.caid or model.gene or 'variant'}: {model.assertion or 'n/a'}"
                 + (f" by {model.expert_panel}" if model.expert_panel else "")
                 + "."
             )
+            meta_block = build_meta(
+                data_version=data_version_for(services.meta(), "erepo"),
+                next_commands=[cmd("get_variant_interpretations", gene=model.gene or "BRCA1")],
+            )
+            if notice:
+                meta_block["notice"] = notice
             return {
                 "headline": headline,
                 "interpretation": interpretation,
                 "source": source,
+                "notice": notice,
                 "recommended_citation": model.recommended_citation,
-                "_meta": build_meta(
-                    data_version=data_version_for(services.meta(), "erepo"),
-                    next_commands=[
-                        cmd("get_variant_interpretations", gene=model.gene or "BRCA1"),
-                    ],
-                ),
+                "_meta": meta_block,
             }
 
         return await run_mcp_tool(

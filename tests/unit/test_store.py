@@ -22,7 +22,7 @@ class TestMetaRecordCount:
                 ("actionability", "actionability"),
                 ("erepo", "erepo"),
             ):
-                actual = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                actual = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]  # noqa: S608
                 assert meta[domain]["record_count"] == actual
 
     def test_dosage_count_is_rows_not_etag_count(self, store: Store) -> None:

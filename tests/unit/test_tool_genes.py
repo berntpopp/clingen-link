@@ -48,7 +48,9 @@ class TestSearchGenes:
         payload = await _call(tool_mcp, "search_genes", {"query": "ZZZNOPE"})
         assert payload["fallback_tool"] == "get_server_capabilities"
         first = payload["_meta"]["next_commands"][0]
-        assert not (first["tool"] == "search_genes" and first["arguments"].get("query") == "ZZZNOPE")
+        assert not (
+            first["tool"] == "search_genes" and first["arguments"].get("query") == "ZZZNOPE"
+        )
 
 
 class TestGeneSummary:

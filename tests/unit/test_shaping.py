@@ -119,10 +119,11 @@ class TestHgvsTrim:
     """M2: the big erepo hgvs[] is trimmed in compact/minimal, whole in standard/full."""
 
     def test_compact_trims_hgvs_and_adds_count(self) -> None:
-        big = (
-            ["NC_000017.11:g.43045761A>C", "NM_007294.4:c.5509T>G", "NP_009225.1:p.Cys1837Gly"]
-            + [f"NM_{i}.1:c.{i}A>G" for i in range(40)]
-        )
+        big = [
+            "NC_000017.11:g.43045761A>C",
+            "NM_007294.4:c.5509T>G",
+            "NP_009225.1:p.Cys1837Gly",
+        ] + [f"NM_{i}.1:c.{i}A>G" for i in range(40)]
         out = shape_record(_erepo(big), domain="erepo", response_mode="compact")
         assert len(out["hgvs"]) <= 3
         assert out["hgvs_count"] == 43
@@ -163,7 +164,9 @@ class TestResponseModeLattice:
             # Synthetic compact-tier helpers (e.g. hgvs_count) are not data fields.
             return {k for k in shaped if not k.endswith("_count")}
 
-        minimal, compact, standard, full = (keys(m) for m in ("minimal", "compact", "standard", "full"))
+        minimal, compact, standard, full = (
+            keys(m) for m in ("minimal", "compact", "standard", "full")
+        )
         assert minimal <= compact, f"{domain}: minimal not ⊆ compact"
         assert compact <= standard, f"{domain}: compact not ⊆ standard"
         assert standard <= full, f"{domain}: standard not ⊆ full"
