@@ -221,3 +221,10 @@ Desktop.ini
 /data/
 /temp/
 /tmp/
+
+# ClinGen snapshot: ship the compressed bundle (.zst) + checksum (.sha256);
+# the raw uncompressed DB is built on demand by `clingen-link refresh`.
+clingen_link/data/clingen.sqlite
+clingen_link/data/*.sqlite-wal
+clingen_link/data/*.sqlite-shm
+clingen_link/data/*.tmp
