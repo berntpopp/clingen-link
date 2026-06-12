@@ -2,7 +2,8 @@
 
 Catalog comes from the documented paged list endpoint (non-``/api/``); structured
 criteria from the per-spec JSON-LD (``/api/.../id/<GN>``); attachment links from the
-rendered doc page; file metadata from a HEAD request.
+rendered doc page; file metadata from a streaming GET that reads only the response
+headers (the File endpoint rejects ``HEAD`` with HTTP 400).
 
 These functions hit the live ``cspec.genome.network`` registry and are invoked
 solely by ``clingen-link refresh`` — **never** on the MCP request path. They raise
@@ -65,14 +66,16 @@ def fetch_doc_page(client: httpx.Client, gn_id: str) -> str:
 
 
 def head_file(client: httpx.Client, url: str) -> dict[str, str]:
-    """Return lower-cased response headers for an attachment URL (HEAD)."""
+    """Return lower-cased response headers for an attachment URL.
+
+    The registry's File endpoint rejects ``HEAD`` (HTTP 400), so this issues a
+    streaming ``GET`` and reads only the response headers, closing the stream
+    before the (potentially multi-MB) body is downloaded.
+    """
     try:
-        resp = client.head(url, timeout=_TIMEOUT, follow_redirects=True)
-        resp.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        raise SourceFetchError(
-            f"cspec: HTTP {exc.response.status_code} from {url}", source="cspec"
-        ) from exc
+        with client.stream("GET", url, timeout=_TIMEOUT, follow_redirects=True) as resp:
+            if resp.status_code >= 400:
+                raise SourceFetchError(f"cspec: HTTP {resp.status_code} from {url}", source="cspec")
+            return {k.lower(): v for k, v in resp.headers.items()}
     except httpx.HTTPError as exc:
-        raise SourceFetchError(f"cspec: {exc}", source="cspec") from exc
-    return {k.lower(): v for k, v in resp.headers.items()}
+        raise SourceFetchError(f"cspec: transport error for {url}", source="cspec") from exc

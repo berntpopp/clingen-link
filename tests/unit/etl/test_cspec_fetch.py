@@ -40,8 +40,10 @@ def test_fetch_spec_jsonld_and_doc_page() -> None:
 
 @respx.mock
 def test_head_file_returns_lowercased_headers() -> None:
+    # The File endpoint rejects HEAD (400) but serves GET, so head_file uses a
+    # streaming GET; mock the GET route accordingly.
     url = f"{_BASE}/cspec/File/id/abc/data"
-    respx.head(url).mock(
+    respx.get(url).mock(
         return_value=httpx.Response(
             200, headers={"Content-Type": "application/pdf", "Content-Length": "10"}
         )
@@ -50,6 +52,39 @@ def test_head_file_returns_lowercased_headers() -> None:
         headers = cspec_fetch.head_file(client, url)
     assert headers["content-type"] == "application/pdf"
     assert headers["content-length"] == "10"
+
+
+@respx.mock
+def test_head_file_streams_headers_without_consuming_body() -> None:
+    # head_file must read only the response headers and never download the body
+    # (attachment files can be multiple MB). A large body must not be required.
+    url = f"{_BASE}/cspec/File/id/big/data"
+    route = respx.get(url).mock(
+        return_value=httpx.Response(
+            200,
+            headers={
+                "Content-Type": "application/octet-stream",
+                "Content-Disposition": "attachment; filename=spec.pdf",
+                "Content-Length": "5242880",
+            },
+            content=b"x" * 5_242_880,
+        )
+    )
+    with httpx.Client() as client:
+        headers = cspec_fetch.head_file(client, url)
+    assert route.called
+    assert headers["content-type"] == "application/octet-stream"
+    assert headers["content-disposition"] == "attachment; filename=spec.pdf"
+    assert headers["content-length"] == "5242880"
+
+
+@respx.mock
+def test_head_file_400_raises_source_fetch_error() -> None:
+    # A GET that returns >=400 (the real registry returns 400 to HEAD) must raise.
+    url = f"{_BASE}/cspec/File/id/bad/data"
+    respx.get(url).mock(return_value=httpx.Response(400, json={"error": "bad request"}))
+    with httpx.Client() as client, pytest.raises(SourceFetchError):
+        cspec_fetch.head_file(client, url)
 
 
 @respx.mock
@@ -82,7 +117,7 @@ def test_fetch_catalog_bad_shape_raises() -> None:
 @respx.mock
 def test_head_file_404_raises_source_fetch_error() -> None:
     url = f"{_BASE}/cspec/File/id/missing/data"
-    respx.head(url).mock(return_value=httpx.Response(404))
+    respx.get(url).mock(return_value=httpx.Response(404))
     with httpx.Client() as client, pytest.raises(SourceFetchError):
         cspec_fetch.head_file(client, url)
 
