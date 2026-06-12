@@ -38,6 +38,16 @@ from ..exceptions import SnapshotUnavailableError
 # the bounded concurrency of the live layer without unbounded fd growth.
 _POOL_SIZE = 4
 
+# Domain → backing table whose live ``COUNT(*)`` is the authoritative record count surfaced in
+# capabilities / diagnostics / every tool's data_version. Recomputing it at serve time keeps the
+# count honest even if a stored meta value drifted (e.g. an ETL that derived it from a filename).
+_DOMAIN_TABLE: dict[str, str] = {
+    "validity": "validity",
+    "dosage": "dosage",
+    "actionability": "actionability",
+    "erepo": "erepo",
+}
+
 _REFRESH_HINT = "Run `clingen-link refresh` to (re)build the snapshot, then restart the server."
 
 
@@ -212,6 +222,10 @@ class Store:
         Each value carries ``source_url, fetched_at, signal_type, signal_value,
         content_sha256, record_count, snapshot_version`` — the provenance surfaced
         in ``get_server_capabilities`` and every tool's ``_meta.data_version``.
+
+        ``record_count`` is recomputed from the backing table's ``COUNT(*)`` so it always reflects
+        the rows actually served, even if the stored meta value drifted (assessment H2 — the dosage
+        count had been derived from the source filenames, not the row count).
         """
         out: dict[str, dict[str, Any]] = {}
         with self.connection() as conn:
@@ -219,5 +233,11 @@ class Store:
                 "SELECT domain, source_url, fetched_at, signal_type, signal_value, "
                 "content_sha256, record_count, snapshot_version FROM meta"
             ):
-                out[str(row["domain"])] = dict(row)
+                entry = dict(row)
+                table = _DOMAIN_TABLE.get(str(row["domain"]))
+                if table is not None:
+                    count = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()  # noqa: S608
+                    if count is not None:
+                        entry["record_count"] = int(count[0])
+                out[str(row["domain"])] = entry
         return out

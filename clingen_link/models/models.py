@@ -28,6 +28,7 @@ class ValidityAssertion(_Base):
     symbol: str
     hgnc_id: str | None = None
     disease_name: str | None = None
+    disease_obsolete: bool = False
     mondo: str | None = None
     moi: str | None = None
     classification: str | None = None
@@ -41,9 +42,23 @@ class ValidityAssertion(_Base):
 
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> ValidityAssertion:
-        """Build from a ``validity`` store row."""
-        permalink, citation = citations.validity_citation(row)
-        return cls(permalink=permalink, recommended_citation=citation, **_pick(row, cls))
+        """Build from a ``validity`` store row (disease_name HTML-sanitized).
+
+        Defense-in-depth: the ETL also sanitizes labels at build time, but sanitizing here too means
+        an older snapshot that still carries ``<span>…Obsolete Term</span>`` markup never leaks raw
+        HTML into the citation, and ``disease_obsolete`` is derived from the label when the snapshot
+        lacks the structured column (assessment M1).
+        """
+        from ..etl.sanitize import is_obsolete_label, strip_html
+
+        raw_disease = row.get("disease_name")
+        clean = dict(row)
+        clean["disease_name"] = strip_html(raw_disease) or None
+        clean["disease_obsolete"] = bool(row.get("disease_obsolete")) or is_obsolete_label(
+            raw_disease
+        )
+        permalink, citation = citations.validity_citation(clean)
+        return cls(permalink=permalink, recommended_citation=citation, **_pick(clean, cls))
 
 
 class DosageRecord(_Base):
