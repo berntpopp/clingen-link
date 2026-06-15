@@ -1,18 +1,19 @@
-"""Tests for clingen_link.logging_config."""
+"""Tests for clingen_link.logging_config (structlog canon)."""
 
 from __future__ import annotations
 
+import json
 import logging
-import os
 
 import pytest
+import structlog
 
-from clingen_link import logging_config
+from clingen_link import __version__, logging_config
 
 
 @pytest.fixture(autouse=True)
 def _restore_root_logging():
-    """Save and restore the root logger handlers/level around each test."""
+    """Save and restore root logger handlers/level and structlog config."""
     saved_handlers = logging.root.handlers[:]
     saved_level = logging.root.level
     yield
@@ -21,27 +22,58 @@ def _restore_root_logging():
     for handler in saved_handlers:
         logging.root.addHandler(handler)
     logging.root.setLevel(saved_level)
+    structlog.reset_defaults()
+    structlog.contextvars.clear_contextvars()
 
 
-def test_configure_logging_stdio_uses_stderr_and_suppresses_banner() -> None:
-    logging_config.configure_logging("stdio")
+def test_configure_logging_returns_bound_logger() -> None:
+    logger = logging_config.configure_logging("INFO", "json")
+    assert logger is not None
     assert logging.root.handlers
-    assert os.environ.get("FASTMCP_DISABLE_BANNER") == "1"
-    assert os.environ.get("NO_COLOR") == "1"
-    assert logging.getLogger("fastmcp").level == logging.WARNING
 
 
-def test_configure_logging_http_uses_level() -> None:
-    logging_config.configure_logging("http", "DEBUG")
+def test_configure_logging_sets_level() -> None:
+    logging_config.configure_logging("DEBUG", "json")
     assert logging.root.level == logging.DEBUG
 
 
-def test_transport_logger_prefixes_message() -> None:
-    adapter = logging_config.get_server_logger("unified")
-    msg, _kwargs = adapter.process("hello", {})
-    assert msg == "[unified] hello"
+def test_json_renderer_emits_static_fields(capsys) -> None:
+    logging_config.configure_logging("INFO", "json")
+    logger = logging_config.get_server_logger()
+    logger.info("hello", foo="bar")
+    out = capsys.readouterr().out.strip().splitlines()[-1]
+    payload = json.loads(out)
+    assert payload["service"] == "clingen-link"
+    assert payload["version"] == __version__
+    assert payload["event"] == "hello"
+    assert payload["foo"] == "bar"
+    assert payload["level"] == "info"
+    assert "timestamp" in payload
 
 
-def test_logger_getters_return_adapters() -> None:
-    assert logging_config.get_mcp_logger("stdio") is not None
-    assert logging_config.get_api_logger("http") is not None
+def test_console_renderer_human_readable(capsys) -> None:
+    logging_config.configure_logging("INFO", "console")
+    logger = logging_config.get_server_logger()
+    logger.info("readable event")
+    out = capsys.readouterr().out
+    assert "readable event" in out
+
+
+def test_correlation_id_merged_via_contextvars(capsys) -> None:
+    logging_config.configure_logging("INFO", "json")
+    structlog.contextvars.bind_contextvars(correlation_id="abc-123")
+    try:
+        logging_config.get_server_logger().info("with-cid")
+        out = capsys.readouterr().out.strip().splitlines()[-1]
+        payload = json.loads(out)
+        assert payload["correlation_id"] == "abc-123"
+    finally:
+        structlog.contextvars.clear_contextvars()
+
+
+def test_default_format_is_json(capsys) -> None:
+    logging_config.configure_logging("INFO")
+    logging_config.get_server_logger().info("default-format")
+    out = capsys.readouterr().out.strip().splitlines()[-1]
+    # JSON renderer produces a parseable object.
+    assert json.loads(out)["event"] == "default-format"

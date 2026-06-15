@@ -20,7 +20,7 @@ services:
       CLINGEN_LINK_MCP_TRANSPORT: unified
       CLINGEN_LINK_MCP_PATH: /mcp
       CLINGEN_LINK_LOG_LEVEL: INFO
-    command: ["clingen-link", "--transport", "unified", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["clingen-link", "serve", "--transport", "unified", "--host", "0.0.0.0", "--port", "8000"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s

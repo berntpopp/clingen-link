@@ -1,160 +1,151 @@
-"""Command line interface for the clingen-link server.
+"""Command line interface for clingen-link (GeneFoundry CLI Standard v1).
 
-Phase 1 provides the argparse parser and config translation used by the
-``clingen-link`` entry point (``server:main``), plus ``config`` and ``health``
-subcommands. Phase 2 adds the ETL ``refresh`` subcommand (offline snapshot
-build / staleness check), delegating to :mod:`clingen_link.etl.refresh`.
+A single ``typer`` application exposing ``serve``, ``config``, ``health``,
+``version``, and the ETL ``refresh`` command. The console script
+``clingen-link`` resolves to :data:`app`; there is no bare-serve and no stdio
+transport (Streamable HTTP only).
 """
 
 from __future__ import annotations
 
-import argparse
-import sys
+import asyncio
 
 import httpx
+import typer
+from rich.console import Console
+from rich.table import Table
 
+from . import __version__
 from .config import ServerConfig, settings
 
+app = typer.Typer(
+    name="clingen-link",
+    add_completion=False,
+    no_args_is_help=True,
+    help="clingen-link — MCP server grounding gene/disease/variant questions in ClinGen.",
+)
 
-def create_parser() -> argparse.ArgumentParser:
-    """Create the argument parser for the server."""
-    parser = argparse.ArgumentParser(
-        description="clingen-link unified server",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Transport Options:
-  unified  - FastAPI host (/health) + MCP HTTP (default)
-  http     - alias for unified
-  stdio    - MCP STDIO only (for AI assistants)
+console = Console()
 
-Examples:
-  uv run python server.py --transport unified --port 8000
-  uv run python server.py --transport stdio
-        """,
-    )
-    parser.add_argument(
-        "--transport",
-        choices=["unified", "http", "stdio"],
-        default="unified",
-        help="Transport mode (default: unified)",
-    )
-    parser.add_argument("--host", default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)")
-    parser.add_argument("--port", type=int, default=8000, help="Port to bind to (default: 8000)")
-    parser.add_argument("--mcp-path", default="/mcp", help="MCP endpoint path (default: /mcp)")
-    parser.add_argument(
-        "--log-level",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        default="INFO",
-        help="Log level (default: INFO)",
-    )
-    parser.add_argument(
-        "--disable-docs", action="store_true", help="Disable API documentation endpoints"
-    )
+TransportOption = typer.Option("unified", "--transport", help="Transport mode (unified or http).")
 
-    subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
-    config_parser = subparsers.add_parser("config", help="Show configuration")
-    config_parser.add_argument("--validate", action="store_true", help="Validate configuration")
+@app.command()
+def serve(
+    transport: str = TransportOption,
+    host: str = typer.Option("127.0.0.1", "--host", help="Host to bind to."),
+    port: int = typer.Option(8000, "--port", help="Port to bind to."),
+    mcp_path: str = typer.Option("/mcp", "--mcp-path", help="MCP endpoint path."),
+    log_level: str = typer.Option("INFO", "--log-level", help="Log level."),
+    disable_docs: bool = typer.Option(False, "--disable-docs", help="Disable API docs."),
+    dev: bool = typer.Option(False, "--dev", help="Development mode (console logs, reload-ready)."),
+) -> None:
+    """Start the unified FastAPI host (/health) with the MCP HTTP app at /mcp."""
+    if transport not in {"unified", "http"}:
+        console.print(f"[red]Invalid transport {transport!r}; choose 'unified' or 'http'.[/red]")
+        raise typer.Exit(code=2)
+    if not mcp_path.startswith("/"):
+        console.print("[red]MCP path must start with '/'.[/red]")
+        raise typer.Exit(code=2)
 
-    health_parser = subparsers.add_parser("health", help="Check server health")
-    health_parser.add_argument(
-        "--url",
-        default="http://127.0.0.1:8000",
-        help="Server URL to check (default: http://127.0.0.1:8000)",
+    config = ServerConfig(
+        transport="unified" if transport == "unified" else "http",
+        host=host,
+        port=port,
+        mcp_path=mcp_path,
+        enable_docs=not disable_docs,
+        log_level=log_level,
+        dev=dev,
     )
 
-    refresh_parser = subparsers.add_parser(
-        "refresh", help="Build or check the bundled ClinGen SQLite snapshot"
-    )
-    _add_refresh_arguments(refresh_parser)
+    from .server_manager import UnifiedServerManager
 
-    return parser
-
-
-def _add_refresh_arguments(parser: argparse.ArgumentParser) -> None:
-    """Attach refresh options (delegated to the ETL package)."""
-    from .etl.refresh import add_refresh_arguments
-
-    add_refresh_arguments(parser)
-
-
-def create_config_from_args(args: argparse.Namespace) -> ServerConfig:
-    """Create server configuration from command line arguments."""
-    return ServerConfig(
-        transport=args.transport,
-        host=args.host,
-        port=args.port,
-        mcp_path=args.mcp_path,
-        enable_docs=not args.disable_docs,
-        log_level=args.log_level,
-    )
-
-
-def handle_config_command(args: argparse.Namespace) -> None:
-    """Handle the config subcommand."""
-    config = create_config_from_args(args)
-    print("=== clingen-link Configuration ===")
-    print(f"Transport: {config.transport}")
-    print(f"Host: {config.host}")
-    print(f"Port: {config.port}")
-    print(f"MCP Path: {config.mcp_path}")
-    print(f"Log Level: {config.log_level}")
-    print()
-    print("=== Environment Settings ===")
-    print(f"validity_api_base: {settings.validity_api_base}")
-    print(f"dosage_ftp_base: {settings.dosage_ftp_base}")
-    print(f"actionability_api_base: {settings.actionability_api_base}")
-    print(f"erepo_api_base: {settings.erepo_api_base}")
-    print(f"snapshot_path: {settings.snapshot_path}")
-    print()
-    if args.validate:
-        print("=== Configuration Validation ===")
-        if config.port < 1 or config.port > 65535:
-            print("Invalid port number")
-            sys.exit(1)
-        if not config.mcp_path.startswith("/"):
-            print("MCP path must start with '/'")
-            sys.exit(1)
-        print("Configuration is valid")
-
-
-def handle_health_command(args: argparse.Namespace) -> None:
-    """Handle the health subcommand."""
+    manager = UnifiedServerManager()
     try:
-        response = httpx.get(f"{args.url}/health", timeout=5)
-    except httpx.HTTPError as e:
-        print(f"Failed to connect to server: {e}")
-        sys.exit(1)
-    if response.status_code == 200:
-        data = response.json()
-        print("Server is healthy")
-        print(f"Transport: {data.get('transport', 'unknown')}")
-        print(f"Status: {data.get('status', 'unknown')}")
-    else:
-        print(f"Server returned status {response.status_code}")
-        sys.exit(1)
+        asyncio.run(manager.start_server(config))
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Shutdown requested by user[/yellow]")
+        raise typer.Exit(code=0) from None
 
 
-def handle_refresh_command(args: argparse.Namespace) -> None:
-    """Handle the refresh subcommand (delegates to the ETL package)."""
-    from .etl.refresh import handle_refresh
+@app.command()
+def config(
+    validate: bool = typer.Option(False, "--validate", help="Validate configuration."),
+) -> None:
+    """Show (and optionally validate) the resolved configuration."""
+    cfg = ServerConfig.from_env()
 
-    sys.exit(handle_refresh(args))
+    table = Table(title="clingen-link configuration")
+    table.add_column("Setting", style="cyan")
+    table.add_column("Value", style="green")
+    table.add_row("transport", cfg.transport)
+    table.add_row("host", cfg.host)
+    table.add_row("port", str(cfg.port))
+    table.add_row("mcp_path", cfg.mcp_path)
+    table.add_row("enable_docs", str(cfg.enable_docs))
+    table.add_row("log_level", cfg.log_level)
+    table.add_row("log_format", settings.LOG_FORMAT)
+    table.add_row("validity_api_base", settings.validity_api_base)
+    table.add_row("dosage_ftp_base", settings.dosage_ftp_base)
+    table.add_row("actionability_api_base", settings.actionability_api_base)
+    table.add_row("erepo_api_base", settings.erepo_api_base)
+    table.add_row("snapshot_path", settings.snapshot_path)
+    console.print(table)
+
+    if validate:
+        if cfg.port < 1 or cfg.port > 65535:
+            console.print("[red]Invalid port number[/red]")
+            raise typer.Exit(code=1)
+        if not cfg.mcp_path.startswith("/"):
+            console.print("[red]MCP path must start with '/'[/red]")
+            raise typer.Exit(code=1)
+        console.print("[green]Configuration is valid[/green]")
 
 
-def main() -> None:
-    """Execute CLI subcommands."""
-    parser = create_parser()
-    args = parser.parse_args()
-    if args.command == "config":
-        handle_config_command(args)
-    elif args.command == "health":
-        handle_health_command(args)
-    elif args.command == "refresh":
-        handle_refresh_command(args)
-    else:
-        parser.print_help()
+@app.command()
+def health(
+    url: str = typer.Option("http://127.0.0.1:8000", "--url", help="Server base URL to check."),
+) -> None:
+    """Check the running server's /health endpoint."""
+    try:
+        response = httpx.get(f"{url}/health", timeout=5)
+    except httpx.HTTPError as exc:
+        console.print(f"[red]Failed to connect to server: {exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    if response.status_code != 200:
+        console.print(f"[red]Server returned status {response.status_code}[/red]")
+        raise typer.Exit(code=1)
+    data = response.json()
+    console.print("[green]Server is healthy[/green]")
+    console.print(f"Transport: {data.get('transport', 'unknown')}")
+    console.print(f"Status: {data.get('status', 'unknown')}")
+
+
+@app.command()
+def refresh(
+    check: bool = typer.Option(
+        False, "--check", help="Dry-run: report snapshot staleness, write nothing."
+    ),
+    out: str | None = typer.Option(
+        None, "--out", help="Snapshot output path (default: bundled snapshot)."
+    ),
+) -> None:
+    """Build or check the bundled ClinGen SQLite snapshot."""
+    from pathlib import Path
+
+    from .etl.build import default_snapshot_path
+    from .etl.refresh import run_check, run_refresh
+
+    out_path = Path(out) if out else default_snapshot_path()
+    code = run_check(out_path) if check else run_refresh(out_path)
+    raise typer.Exit(code=code)
+
+
+@app.command()
+def version() -> None:
+    """Print the clingen-link version."""
+    console.print(__version__)
 
 
 if __name__ == "__main__":
-    main()
+    app()

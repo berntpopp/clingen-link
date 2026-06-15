@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "clingen-link"
-version = "1.0.0"
+version = "2.0.0"
 description = "An MCP server grounding gene/disease/variant questions in ClinGen's four curated datasets."
 readme = "README.md"
 authors = [{ name = "Bernt Popp" }]
@@ -56,9 +56,7 @@ dev = [
 ]
 
 [project.scripts]
-clingen-link = "server:main"
-clingen-link-mcp = "mcp_server:main"
-clingen-link-refresh = "clingen_link.etl.refresh:main"
+clingen-link = "clingen_link.cli:app"
 
 [project.urls]
 Homepage = "https://github.com/berntpopp/clingen-link"
@@ -67,10 +65,6 @@ Issues = "https://github.com/berntpopp/clingen-link/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["clingen_link"]
-include = [
-    "server.py",
-    "mcp_server.py",
-]
 
 [tool.ruff]
 line-length = 100

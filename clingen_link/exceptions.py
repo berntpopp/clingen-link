@@ -48,10 +48,6 @@ class HTTPTransportError(TransportError):
     """Exception for HTTP transport errors."""
 
 
-class STDIOTransportError(TransportError):
-    """Exception for STDIO transport errors."""
-
-
 # ---------------------------------------------------------------------------
 # ClinGen data / upstream fault taxonomy
 # ---------------------------------------------------------------------------

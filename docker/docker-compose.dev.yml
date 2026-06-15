@@ -22,11 +22,9 @@ services:
       # The bundled snapshot ships in the image; the mount overlays code only.
       - ../clingen_link:/home/app/web/clingen_link
       - ../tests:/home/app/web/tests
-      - ../server.py:/home/app/web/server.py:ro
-      - ../mcp_server.py:/home/app/web/mcp_server.py:ro
       - ../pyproject.toml:/home/app/web/pyproject.toml:ro
       - ../README.md:/home/app/web/README.md:ro
-    command: ["clingen-link", "--transport", "unified", "--host", "0.0.0.0", "--port", "8000", "--log-level", "DEBUG"]
+    command: ["clingen-link", "serve", "--transport", "unified", "--host", "0.0.0.0", "--port", "8000", "--log-level", "DEBUG", "--dev"]
     user: root
     working_dir: /home/app/web
     restart: unless-stopped

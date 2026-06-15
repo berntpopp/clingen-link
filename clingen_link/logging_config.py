@@ -1,92 +1,103 @@
-"""Logging configuration for the clingen-link server.
+"""Structured logging configuration for clingen-link.
 
-Transport-aware: stdio sends all logging to stderr (so JSON-RPC framing on
-stdout stays clean) and suppresses FastMCP/uvicorn banners and color via the
-environment. HTTP transports log to stdout at the configured level.
+Follows the GeneFoundry Logging & CLI Standard v1: structlog with a fixed
+processor chain (``merge_contextvars → add_log_level → TimeStamper(iso) →
+StackInfoRenderer → format_exc_info → static fields``), a JSON renderer in
+production and a human-friendly console renderer in development (selected by
+``LOG_FORMAT``, default ``json``). Correlation ids set by the
+``asgi-correlation-id`` middleware are merged into every event via
+``merge_contextvars``.
 """
 
 from __future__ import annotations
 
 import logging
-import os
 import sys
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+import structlog
+
+from . import __version__
 from .config import settings
 
+if TYPE_CHECKING:
+    from structlog.typing import FilteringBoundLogger
 
-class TransportAwareFormatter(logging.Formatter):
-    """Formatter that includes transport context in log messages."""
-
-    def format(self, record: logging.LogRecord) -> str:
-        """Format a log record, prefixing the transport name when available."""
-        if hasattr(record, "transport"):
-            record.msg = f"[{record.transport}] {record.msg}"
-        return super().format(record)
+_SERVICE_NAME = "clingen-link"
 
 
-def _configure_stdio_environment() -> None:
-    """Suppress banners and color so stdout carries only clean JSON-RPC framing."""
-    os.environ.setdefault("FASTMCP_DISABLE_BANNER", "1")
-    os.environ.setdefault("NO_COLOR", "1")
-    os.environ.setdefault("TERM", "dumb")
+def _add_static_fields(_logger: Any, _name: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+    """Attach ``service`` and ``version`` to every log event."""
+    event_dict.setdefault("service", _SERVICE_NAME)
+    event_dict.setdefault("version", __version__)
+    return event_dict
 
 
-def configure_logging(transport: str, level: str | None = None) -> None:
-    """Configure logging for a specific transport."""
-    if level is None:
-        level = settings.STDIO_LOG_LEVEL if transport == "stdio" else settings.MCP_LOG_LEVEL
+def _configure_stdlib_logging(level: str) -> None:
+    """Route stdlib logging to stdout and tame noisy third-party loggers."""
+    root_logger = logging.getLogger()
+    root_logger.setLevel(getattr(logging, level.upper()))
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
 
-    for existing in logging.root.handlers[:]:
-        logging.root.removeHandler(existing)
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    handler.setLevel(getattr(logging, level.upper()))
+    root_logger.addHandler(handler)
 
-    formatter = TransportAwareFormatter(
-        fmt="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+    is_debug = level.upper() == "DEBUG"
+    for name, noisy_level in {
+        "httpx": "WARNING",
+        "httpcore": "WARNING",
+        "uvicorn.access": "INFO" if is_debug else "WARNING",
+        "uvicorn.error": "INFO",
+        "fastmcp": "INFO" if is_debug else "WARNING",
+        "mcp": "INFO" if is_debug else "WARNING",
+    }.items():
+        logging.getLogger(name).setLevel(getattr(logging, noisy_level))
+
+
+def _configure_structlog(level: str, log_format: str) -> None:
+    """Configure structlog with the canonical processor chain."""
+    shared_processors = [
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        _add_static_fields,
+    ]
+
+    processors: list[Any]
+    if log_format == "json":
+        processors = [*shared_processors, structlog.processors.JSONRenderer()]
+    else:
+        colors = level.upper() == "DEBUG"
+        processors = [*shared_processors, structlog.dev.ConsoleRenderer(colors=colors)]
+
+    structlog.configure(
+        processors=processors,
+        wrapper_class=structlog.make_filtering_bound_logger(getattr(logging, level.upper())),
+        logger_factory=structlog.PrintLoggerFactory(file=sys.stdout),
+        cache_logger_on_first_use=True,
     )
 
-    handler: logging.Handler
-    if transport == "stdio":
-        # STDIO transport: only stderr, minimal logging, banners suppressed.
-        _configure_stdio_environment()
-        handler = logging.StreamHandler(sys.stderr)
-        handler.setLevel(logging.WARNING)
 
-        logging.getLogger("fastmcp").setLevel(logging.WARNING)
-        logging.getLogger("fastmcp.utilities.openapi").setLevel(logging.WARNING)
-        logging.getLogger("uvicorn").setLevel(logging.WARNING)
-        logging.getLogger("fastapi").setLevel(logging.WARNING)
-    else:
-        handler = logging.StreamHandler(sys.stdout)
-        handler.setLevel(getattr(logging, level.upper()))
+def configure_logging(
+    level: str | None = None, log_format: str | None = None
+) -> FilteringBoundLogger:
+    """Configure stdlib + structlog and return the package logger.
 
-    handler.setFormatter(formatter)
-
-    logging.root.setLevel(getattr(logging, level.upper()))
-    logging.root.addHandler(handler)
+    ``level`` defaults to ``settings.LOG_LEVEL`` and ``log_format`` to
+    ``settings.LOG_FORMAT`` (``json`` in production, ``console`` in dev).
+    """
+    resolved_level = (level or settings.LOG_LEVEL).upper()
+    resolved_format = (log_format or settings.LOG_FORMAT).lower()
+    _configure_stdlib_logging(resolved_level)
+    _configure_structlog(resolved_level, resolved_format)
+    return get_server_logger()
 
 
-def get_transport_logger(name: str, transport: str) -> Any:
-    """Get a logger that prefixes messages with the transport context."""
-    logger = logging.getLogger(name)
-
-    class TransportLoggerAdapter(logging.LoggerAdapter[logging.Logger]):
-        def process(self, msg: Any, kwargs: Any) -> tuple[Any, Any]:
-            return f"[{transport}] {msg}", kwargs
-
-    return TransportLoggerAdapter(logger, {})
-
-
-def get_server_logger(transport: str) -> Any:
-    """Get the server logger with transport context."""
-    return get_transport_logger("clingen_server", transport)
-
-
-def get_mcp_logger(transport: str) -> Any:
-    """Get the MCP logger with transport context."""
-    return get_transport_logger("clingen_mcp", transport)
-
-
-def get_api_logger(transport: str) -> Any:
-    """Get the API logger with transport context."""
-    return get_transport_logger("clingen_api", transport)
+def get_server_logger() -> FilteringBoundLogger:
+    """Return the bound server logger."""
+    return structlog.get_logger("clingen_link")  # type: ignore[no-any-return]

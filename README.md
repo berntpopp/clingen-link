@@ -6,7 +6,7 @@ evidence, across all four of ClinGen's data domains.
 
 Part of the `*-link` family of MCP servers. Built on the `gnomad-link` house
 style: a hand-authored FastMCP v3 facade with the full canonical response
-envelope, three transports (unified / http / stdio), and a self-contained
+envelope, Streamable-HTTP transport (unified / http), and a self-contained
 SQLite snapshot for offline, token-efficient queries plus a thin live HTTP
 layer for single-record drill-down.
 
@@ -33,9 +33,10 @@ layer for single-record drill-down.
   per-record `recommended_citation`, and `unsafe_for_clinical_use: true`.
 - **Freshness tracking + refresh CLI.** Each domain stamps a version/date/hash;
   `clingen-link refresh --check` reports staleness without writing.
-- **Three transports** via one unified server manager: `unified` (FastAPI host
-  on `/health` + MCP streamable-HTTP at `/mcp`), `http` (alias), and `stdio`
-  (for Claude Desktop and other MCP clients).
+- **Streamable HTTP** via one unified server manager: `unified` (FastAPI host
+  on `/health` + MCP streamable-HTTP at `/mcp`) and its `http` alias. Structured
+  `structlog` logging (JSON in production, console in `--dev`) with per-request
+  correlation ids.
 
 ## Quick start
 
@@ -51,16 +52,16 @@ make ci-local           # format-check, lint, lint-loc, typecheck, test (the gat
 ```bash
 # Unified HTTP host (FastAPI /health + MCP streamable-HTTP at /mcp) on port 8000
 make dev
-# equivalently:
-uv run clingen-link --transport unified --host 127.0.0.1 --port 8000
+# equivalently (console logs):
+uv run clingen-link serve --transport unified --host 127.0.0.1 --port 8000 --dev
 
-# stdio MCP server (the Claude Desktop / MCP-client target)
-uv run clingen-link-mcp
-# equivalently:
-make mcp-serve
+# Production-style invocation (JSON logs, all interfaces):
+uv run clingen-link serve --transport unified --host 0.0.0.0 --port 8000
 ```
 
-Once the unified server is up, check health and the MCP endpoint:
+The CLI is a single `typer` app; run `uv run clingen-link --help` to list the
+`serve`, `config`, `health`, `refresh`, and `version` commands. Once the unified
+server is up, check health and the MCP endpoint:
 
 ```bash
 curl http://127.0.0.1:8000/health
@@ -83,8 +84,8 @@ uv run clingen-link refresh --check
 uv run clingen-link refresh
 uv run clingen-link refresh --out /tmp/clingen.sqlite
 
-# Same ETL via the standalone console script:
-uv run clingen-link-refresh --check
+# Same ETL via the module entry point:
+uv run python -m clingen_link.etl refresh --check
 ```
 
 **Freshness model.** A `meta` table holds one row per domain
@@ -148,32 +149,28 @@ symbol or `HGNC:<id>`); `search_genes` keeps free-text **`query`**;
 `_meta` flags omitted rows. This deviation is documented per the standard's
 pagination clause.
 
-## Claude Desktop configuration
+## MCP client configuration (Streamable HTTP)
 
-Add clingen-link as a stdio MCP server. Replace `/abs/path/to/clingen-link`
-with the absolute path to your checkout:
+clingen-link is **Streamable-HTTP only** — there is no stdio transport. Run the
+unified server and point an MCP client at the `/mcp` endpoint:
+
+```bash
+uv run clingen-link serve --transport unified --host 127.0.0.1 --port 8000
+```
 
 ```json
 {
   "mcpServers": {
     "clingen-link": {
-      "command": "uv",
-      "args": [
-        "--project",
-        "/abs/path/to/clingen-link",
-        "run",
-        "clingen-link-mcp"
-      ],
-      "env": {
-        "CLINGEN_LINK_LOG_LEVEL": "WARNING"
-      }
+      "type": "http",
+      "url": "http://127.0.0.1:8000/mcp"
     }
   }
 }
 ```
 
-The stdio entry point keeps stdout clean (banners/color suppressed, logging to
-stderr) so JSON-RPC framing stays intact.
+Behind the [`genefoundry-router`](https://github.com/berntpopp/genefoundry-router)
+gateway, clients connect to the gateway rather than to this server directly.
 
 ## Docker
 
@@ -205,17 +202,18 @@ optional `.env`; see [`.env.example`](.env.example)).
 | `CLINGEN_LINK_CACHE_SIZE` | `512` | Service-layer LRU cache size. |
 | `CLINGEN_LINK_CACHE_TTL_MINUTES` | `60` | General service cache TTL. |
 | `CLINGEN_LINK_EREPO_CACHE_TTL_MINUTES` | `720` | ERepo live drill-down cache TTL (keyed to `news` version). |
-| `CLINGEN_LINK_MCP_TRANSPORT` | `unified` | Transport: `unified` / `http` / `stdio`. |
+| `CLINGEN_LINK_MCP_TRANSPORT` | `unified` | Transport: `unified` / `http` (Streamable HTTP only). |
 | `CLINGEN_LINK_MCP_HOST` | `127.0.0.1` | Bind host. |
 | `CLINGEN_LINK_MCP_PORT` | `8000` | Bind port. |
 | `CLINGEN_LINK_MCP_PATH` | `/mcp` | MCP endpoint path. |
 | `CLINGEN_LINK_LOG_LEVEL` | `INFO` | Log level. |
-| `CLINGEN_LINK_STDIO_LOG_LEVEL` | `WARNING` | Reduced log level for stdio transport. |
+| `CLINGEN_LINK_LOG_FORMAT` | `json` | Log renderer: `json` (prod) or `console` (dev). |
 | `CLINGEN_LINK_CORS_ORIGINS` | `*` | Comma-separated allowed CORS origins. |
 | `CLINGEN_LINK_MAX_PAGE_SIZE` | `100` | Maximum page size for search tools. |
 
-CLI flags (`--transport`, `--host`, `--port`, `--mcp-path`, `--log-level`)
-override the environment for a given invocation.
+`clingen-link serve` flags (`--transport`, `--host`, `--port`, `--mcp-path`,
+`--log-level`, `--disable-docs`, `--dev`) override the environment for a given
+invocation.
 
 ## Documentation
 

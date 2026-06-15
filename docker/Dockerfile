@@ -58,7 +58,7 @@ WORKDIR /home/app/web
 # Application code plus the bundled snapshot .zst (and its .sha256) ship inside
 # the package directory, so this COPY carries the data into the image.
 COPY --chown=app:app ./clingen_link ./clingen_link
-COPY --chown=app:app ./server.py ./mcp_server.py ./pyproject.toml ./README.md ./
+COPY --chown=app:app ./pyproject.toml ./README.md ./
 
 RUN /opt/venv/bin/pip install . --no-deps
 
@@ -67,4 +67,4 @@ USER app
 EXPOSE 8000
 
 # Unified transport: FastAPI host (/health) + MCP streamable-HTTP at /mcp on one port.
-CMD ["clingen-link", "--transport", "unified", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["clingen-link", "serve", "--transport", "unified", "--host", "0.0.0.0", "--port", "8000"]

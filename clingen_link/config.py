@@ -21,14 +21,19 @@ _DEFAULT_SNAPSHOT_PATH = str(Path(__file__).resolve().parent / "data" / "clingen
 
 @dataclass
 class ServerConfig:
-    """Server configuration with transport selection."""
+    """Server configuration with transport selection.
 
-    transport: Literal["unified", "http", "stdio"] = "unified"
+    Streamable HTTP only — ``unified`` (FastAPI host + mounted MCP HTTP) and its
+    ``http`` alias. There is no stdio transport.
+    """
+
+    transport: Literal["unified", "http"] = "unified"
     host: str = "127.0.0.1"
     port: int = 8000
     mcp_path: str = "/mcp"
     enable_docs: bool = True
     log_level: str = "INFO"
+    dev: bool = False
 
     @classmethod
     def from_env(cls) -> ServerConfig:
@@ -76,7 +81,9 @@ class Settings(BaseSettings):
     erepo_cache_ttl_minutes: int = 720
 
     # ---- Transport ----
-    MCP_TRANSPORT: Literal["unified", "http", "stdio"] = "unified"
+    # Streamable HTTP only: ``unified`` (FastAPI host + mounted MCP HTTP) and the
+    # ``http`` alias. No stdio.
+    MCP_TRANSPORT: Literal["unified", "http"] = "unified"
     MCP_HOST: str = "127.0.0.1"
     MCP_PORT: int = 8000
     MCP_PATH: str = "/mcp"
@@ -84,7 +91,9 @@ class Settings(BaseSettings):
     # ---- Logging ----
     LOG_LEVEL: str = "INFO"
     MCP_LOG_LEVEL: str = "INFO"
-    STDIO_LOG_LEVEL: str = "WARNING"  # reduced for STDIO compatibility
+    # Renderer: ``json`` (production, structured) or ``console`` (human-friendly
+    # dev). Defaults to JSON per the GeneFoundry Logging Standard v1.
+    LOG_FORMAT: Literal["json", "console"] = "json"
 
     # ---- Server ----
     CORS_ORIGINS: str = "*"  # comma-separated list of allowed origins
