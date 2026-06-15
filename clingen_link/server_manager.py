@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastmcp import FastMCP
 
+from clingen_link import __version__
 from clingen_link.config import ServerConfig, settings
 from clingen_link.exceptions import ConfigurationError, MCPIntegrationError, StartupError
 from clingen_link.logging_config import configure_logging, get_server_logger
@@ -58,7 +59,7 @@ class UnifiedServerManager:
         app = FastAPI(
             title="clingen-link MCP Host",
             description="Thin FastAPI host that exposes /health and mounts the MCP HTTP app at /mcp.",
-            version="0.1.0",
+            version=__version__,
             lifespan=lifespan,
             docs_url=None,
             redoc_url=None,

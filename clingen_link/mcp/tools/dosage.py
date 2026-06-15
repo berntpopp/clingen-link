@@ -83,7 +83,7 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
         tags={"dosage"},
     )
     async def get_gene_dosage(
-        gene: Annotated[
+        gene_symbol: Annotated[
             str,
             Field(
                 description="Gene symbol or HGNC id (resolve with search_genes first).",
@@ -102,10 +102,11 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
 
         async def call() -> dict[str, Any]:
             services = service_factory()
-            symbol = services.gene.resolve(gene)
+            symbol = services.gene.resolve(gene_symbol)
             if symbol is None:
                 raise DataNotFoundError(
-                    f"Gene '{gene}' is not in the ClinGen snapshot. Resolve with search_genes."
+                    f"Gene '{gene_symbol}' is not in the ClinGen snapshot. "
+                    "Resolve with search_genes."
                 )
             models = await services.dosage.for_gene(symbol)
             # The gene resolved; an empty domain is success+0 (not not_found) — that is reserved for
@@ -134,8 +135,8 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
                 "_meta": build_meta(
                     data_version=data_version_for(services.meta(), "dosage"),
                     next_commands=[
-                        cmd("get_gene_summary", gene=symbol),
-                        cmd("get_gene_validity", gene=symbol),
+                        cmd("get_gene_summary", gene_symbol=symbol),
+                        cmd("get_gene_validity", gene_symbol=symbol),
                     ],
                     record_count=len(models),
                 ),
@@ -144,7 +145,7 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
         return await run_mcp_tool(
             "get_gene_dosage",
             call,
-            context=McpErrorContext(tool_name="get_gene_dosage", gene=gene),
+            context=McpErrorContext(tool_name="get_gene_dosage", gene=gene_symbol),
         )
 
     @mcp.tool(
@@ -229,7 +230,7 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
             )
             first_gene = next((m.symbol for m in models if m.symbol), None)
             next_commands = (
-                [cmd("get_gene_dosage", gene=first_gene)]
+                [cmd("get_gene_dosage", gene_symbol=first_gene)]
                 if first_gene
                 else [cmd("get_server_capabilities")]
             )

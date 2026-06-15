@@ -64,7 +64,7 @@ def register_validity_tools(
         tags={"validity"},
     )
     async def get_gene_validity(
-        gene: Annotated[
+        gene_symbol: Annotated[
             str,
             Field(
                 description="Gene symbol or HGNC id (resolve with search_genes first).",
@@ -94,10 +94,11 @@ def register_validity_tools(
 
         async def call() -> dict[str, Any]:
             services = service_factory()
-            symbol = services.gene.resolve(gene)
+            symbol = services.gene.resolve(gene_symbol)
             if symbol is None:
                 raise DataNotFoundError(
-                    f"Gene '{gene}' is not in the ClinGen snapshot. Resolve with search_genes."
+                    f"Gene '{gene_symbol}' is not in the ClinGen snapshot. "
+                    "Resolve with search_genes."
                 )
             models = await services.validity.for_gene(
                 symbol, classification=classification, moi=moi
@@ -117,8 +118,8 @@ def register_validity_tools(
                 "_meta": build_meta(
                     data_version=data_version_for(services.meta(), "validity"),
                     next_commands=[
-                        cmd("get_gene_summary", gene=symbol),
-                        cmd("get_variant_interpretations", gene=symbol),
+                        cmd("get_gene_summary", gene_symbol=symbol),
+                        cmd("get_variant_interpretations", gene_symbol=symbol),
                     ],
                     record_count=len(models),
                 ),
@@ -127,7 +128,7 @@ def register_validity_tools(
         return await run_mcp_tool(
             "get_gene_validity",
             call,
-            context=McpErrorContext(tool_name="get_gene_validity", gene=gene),
+            context=McpErrorContext(tool_name="get_gene_validity", gene=gene_symbol),
         )
 
     @mcp.tool(
@@ -156,7 +157,7 @@ def register_validity_tools(
             _CLASSIFICATION | None, Field(description="Filter to one classification.")
         ] = None,
         moi: Annotated[_MOI | None, Field(description="Filter to one mode of inheritance.")] = None,
-        gene: Annotated[
+        gene_symbol: Annotated[
             str | None,
             Field(description="Restrict to one gene symbol.", examples=["BRCA1"]),
         ] = None,
@@ -171,11 +172,11 @@ def register_validity_tools(
 
         async def call() -> dict[str, Any]:
             services = service_factory()
-            resolved_gene = services.gene.resolve(gene) if gene else None
+            resolved_gene = services.gene.resolve(gene_symbol) if gene_symbol else None
             models, total = await services.validity.search(
                 text=disease,
                 mondo=mondo,
-                gene=resolved_gene or gene,
+                gene=resolved_gene or gene_symbol,
                 expert_panel=expert_panel,
                 classification=classification,
                 moi=moi,
@@ -206,7 +207,7 @@ def register_validity_tools(
                 else None
             )
             next_commands = (
-                [cmd("get_gene_validity", gene=models[0].symbol)]
+                [cmd("get_gene_validity", gene_symbol=models[0].symbol)]
                 if models
                 else [cmd("get_server_capabilities")]
             )
@@ -229,6 +230,6 @@ def register_validity_tools(
             "search_validity",
             call,
             context=McpErrorContext(
-                tool_name="search_validity", gene=gene, disease=disease, mondo=mondo
+                tool_name="search_validity", gene=gene_symbol, disease=disease, mondo=mondo
             ),
         )

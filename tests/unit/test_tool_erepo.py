@@ -19,7 +19,7 @@ async def _call(mcp: FastMCP, name: str, args: dict[str, object]) -> dict[str, o
 
 class TestGetVariantInterpretations:
     async def test_by_gene(self, tool_mcp: FastMCP) -> None:
-        payload = await _call(tool_mcp, "get_variant_interpretations", {"gene": "BRAF"})
+        payload = await _call(tool_mcp, "get_variant_interpretations", {"gene_symbol": "BRAF"})
         assert payload["success"] is True
         assert payload["total"] == 1
         rec = payload["records"][0]
@@ -35,13 +35,15 @@ class TestGetVariantInterpretations:
         payload = await _call(
             tool_mcp,
             "get_variant_interpretations",
-            {"gene": "PAH", "classification": "Pathogenic"},
+            {"gene_symbol": "PAH", "classification": "Pathogenic"},
         )
         assert payload["success"] is True
         assert all(r["assertion"] == "Pathogenic" for r in payload["records"])
 
     async def test_pagination_truncated(self, tool_mcp: FastMCP) -> None:
-        payload = await _call(tool_mcp, "get_variant_interpretations", {"gene": "PAH", "size": 1})
+        payload = await _call(
+            tool_mcp, "get_variant_interpretations", {"gene_symbol": "PAH", "size": 1}
+        )
         assert payload["total"] >= 2
         trunc = payload["_meta"]["truncated"]
         assert trunc["kind"] == "pagination"
@@ -59,7 +61,7 @@ class TestGetVariantInterpretations:
         assert trunc["filter"]["expert_panel"] == "Phenylketonuria"
 
     async def test_empty_result_has_next(self, tool_mcp: FastMCP) -> None:
-        payload = await _call(tool_mcp, "get_variant_interpretations", {"gene": "ZZZNOPE"})
+        payload = await _call(tool_mcp, "get_variant_interpretations", {"gene_symbol": "ZZZNOPE"})
         assert payload["success"] is True
         assert payload["total"] == 0
         for c in payload["_meta"]["next_commands"]:

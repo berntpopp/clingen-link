@@ -15,7 +15,7 @@ async def _call(mcp: FastMCP, name: str, args: dict[str, object]) -> dict[str, o
 
 class TestGetGeneValidity:
     async def test_lists_assertions(self, tool_mcp: FastMCP) -> None:
-        payload = await _call(tool_mcp, "get_gene_validity", {"gene": "AARS1"})
+        payload = await _call(tool_mcp, "get_gene_validity", {"gene_symbol": "AARS1"})
         assert payload["success"] is True
         assert payload["total"] == 1
         rec = payload["records"][0]
@@ -27,24 +27,24 @@ class TestGetGeneValidity:
 
     async def test_classification_filter(self, tool_mcp: FastMCP) -> None:
         payload = await _call(
-            tool_mcp, "get_gene_validity", {"gene": "AARS1", "classification": "Refuted"}
+            tool_mcp, "get_gene_validity", {"gene_symbol": "AARS1", "classification": "Refuted"}
         )
         assert payload["success"] is True
         assert payload["total"] == 0
         assert payload["records"] == []
 
     async def test_moi_filter_matches(self, tool_mcp: FastMCP) -> None:
-        payload = await _call(tool_mcp, "get_gene_validity", {"gene": "AARS1", "moi": "AD"})
+        payload = await _call(tool_mcp, "get_gene_validity", {"gene_symbol": "AARS1", "moi": "AD"})
         assert payload["total"] == 1
 
     async def test_unknown_gene_not_found(self, tool_mcp: FastMCP) -> None:
-        payload = await _call(tool_mcp, "get_gene_validity", {"gene": "ZZZNOPE"})
+        payload = await _call(tool_mcp, "get_gene_validity", {"gene_symbol": "ZZZNOPE"})
         assert payload["success"] is False
         assert payload["error_code"] == "not_found"
         assert payload["fallback_tool"] == "search_genes"
 
     async def test_next_commands_non_empty_args(self, tool_mcp: FastMCP) -> None:
-        payload = await _call(tool_mcp, "get_gene_validity", {"gene": "AARS1"})
+        payload = await _call(tool_mcp, "get_gene_validity", {"gene_symbol": "AARS1"})
         cmds = payload["_meta"]["next_commands"]
         assert cmds
         for c in cmds:
@@ -76,6 +76,6 @@ class TestSearchValidity:
         assert all(r["classification"] == "Definitive" for r in payload["records"])
 
     async def test_gene_filter(self, tool_mcp: FastMCP) -> None:
-        payload = await _call(tool_mcp, "search_validity", {"gene": "AARS1"})
+        payload = await _call(tool_mcp, "search_validity", {"gene_symbol": "AARS1"})
         assert payload["total"] == 1
         assert payload["records"][0]["symbol"] == "AARS1"

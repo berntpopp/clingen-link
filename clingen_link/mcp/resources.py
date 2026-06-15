@@ -48,7 +48,7 @@ _TOOLS: dict[str, str] = {
     "get_cspec_criterion": "~1-4kB",
     "search_cspec": "~1-6kB (size-dependent)",
     "list_expert_panels": "~1-5kB",
-    "get_clingen_diagnostics": "<1kB",
+    "get_diagnostics": "<1kB",
 }
 
 _RESOURCES: dict[str, str] = {
@@ -203,7 +203,7 @@ def get_reference_resource() -> dict[str, Any]:
             "upstream_unavailable": "A live ClinGen endpoint failed transiently; retry with backoff.",
             "snapshot_unavailable": "Bundled snapshot missing/unreadable; operator runs refresh.",
             "output_validation_failed": "Tool output did not match its declared schema.",
-            "internal_error": "Unexpected failure; call get_clingen_diagnostics.",
+            "internal_error": "Unexpected failure; call get_diagnostics.",
         },
         "recovery_actions": ["retry_backoff", "reformulate_input", "switch_tool"],
         "truncation_contract": {

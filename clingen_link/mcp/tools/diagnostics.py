@@ -20,7 +20,7 @@ def register_diagnostics_tools(
     service_factory: Callable[[], ClingenServices],
 ) -> None:
     @mcp.tool(
-        name="get_clingen_diagnostics",
+        name="get_diagnostics",
         title="Get clingen-link Diagnostics",
         annotations=READ_ONLY_CLOSED_WORLD,
         tags={"metadata", "diagnostics"},
@@ -46,7 +46,7 @@ def register_diagnostics_tools(
             }
         ),
     )
-    async def get_clingen_diagnostics() -> dict[str, Any]:
+    async def get_diagnostics() -> dict[str, Any]:
         """Use this when an LLM hits repeated errors or needs server health information; returns recent error history, server version, snapshot freshness, and recent_schema_drift entries so an LLM that hit output_validation_failed can self-diagnose. Returns <1kB."""
 
         async def call() -> dict[str, Any]:
@@ -67,7 +67,7 @@ def register_diagnostics_tools(
                 },
             }
 
-        return await run_mcp_tool("get_clingen_diagnostics", call)
+        return await run_mcp_tool("get_diagnostics", call)
 
 
 def _snapshot_health(service_factory: Callable[[], ClingenServices]) -> dict[str, Any]:

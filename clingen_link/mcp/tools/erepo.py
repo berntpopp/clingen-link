@@ -109,11 +109,11 @@ def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
         tags={"erepo", "variant"},
     )
     async def get_variant_interpretations(
-        gene: Annotated[
+        gene_symbol: Annotated[
             str | None,
             Field(description="Gene symbol (resolve with search_genes first).", examples=["BRCA1"]),
         ] = None,
-        condition: Annotated[
+        disease: Annotated[
             str | None,
             Field(
                 description="Disease text (FTS) or MONDO id.",
@@ -137,16 +137,16 @@ def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
             ),
         ] = "compact",
     ) -> dict[str, Any]:
-        """Use this to list ClinGen ERepo expert-panel variant interpretations by gene, condition (disease text/MONDO), expert panel, or classification. Returns each variant's CAID, canonical HGVS, MONDO, ACMG classification, VCEP, dates, and permalink. Drill into one with get_variant_interpretation. Paginated. Returns ~2-12kB."""
+        """Use this to list ClinGen ERepo expert-panel variant interpretations by gene, disease (disease text/MONDO), expert panel, or classification. Returns each variant's CAID, canonical HGVS, MONDO, ACMG classification, VCEP, dates, and permalink. Drill into one with get_variant_interpretation. Paginated. Returns ~2-12kB."""
 
         async def call() -> dict[str, Any]:
             services = service_factory()
-            resolved_gene = services.gene.resolve(gene) if gene else None
-            mondo = condition if condition and condition.startswith("MONDO:") else None
-            text = condition if condition and not mondo else None
+            resolved_gene = services.gene.resolve(gene_symbol) if gene_symbol else None
+            mondo = disease if disease and disease.startswith("MONDO:") else None
+            text = disease if disease and not mondo else None
             models, total = await services.erepo.search(
                 text=text,
-                gene=resolved_gene or gene,
+                gene=resolved_gene or gene_symbol,
                 mondo=mondo,
                 expert_panel=expert_panel,
                 assertion=classification,
@@ -166,8 +166,8 @@ def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
                     filter_applied={
                         k: v
                         for k, v in {
-                            "gene": gene,
-                            "condition": condition,
+                            "gene_symbol": gene_symbol,
+                            "disease": disease,
                             "expert_panel": expert_panel,
                             "classification": classification,
                         }.items()
@@ -181,7 +181,7 @@ def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
             next_commands = (
                 [cmd("get_variant_interpretation", caid=first_caid)]
                 if first_caid
-                else [cmd("search_genes", query=gene or condition or "BRCA1")]
+                else [cmd("search_genes", query=gene_symbol or disease or "BRCA1")]
             )
             return {
                 "headline": (
@@ -204,7 +204,7 @@ def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
             "get_variant_interpretations",
             call,
             context=McpErrorContext(
-                tool_name="get_variant_interpretations", gene=gene, query=condition
+                tool_name="get_variant_interpretations", gene=gene_symbol, query=disease
             ),
         )
 
@@ -273,7 +273,7 @@ def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
                 + (f" by {model.expert_panel}" if model.expert_panel else "")
                 + "."
             )
-            next_cmds = [cmd("get_variant_interpretations", gene=model.gene or "BRCA1")]
+            next_cmds = [cmd("get_variant_interpretations", gene_symbol=model.gene or "BRCA1")]
             extra = cspec_next_command(
                 model.guideline_cspec,
                 gene=model.gene,

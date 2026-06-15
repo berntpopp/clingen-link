@@ -126,7 +126,7 @@ def register_gene_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenSe
                 if resolved
                 else f"'{query}' did not resolve to one gene; {len(candidates)} candidate(s)."
             )
-            next_commands = [cmd("get_gene_summary", gene=resolved or query)]
+            next_commands = [cmd("get_gene_summary", gene_symbol=resolved or query)]
             return {
                 "headline": headline,
                 "query": query,
@@ -153,7 +153,7 @@ def register_gene_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenSe
         tags={"gene"},
     )
     async def get_gene_summary(
-        gene: _GENE_ARG,
+        gene_symbol: _GENE_ARG,
         response_mode: Annotated[
             _RESPONSE_MODE,
             Field(
@@ -168,10 +168,11 @@ def register_gene_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenSe
 
         async def call() -> dict[str, Any]:
             services = service_factory()
-            symbol = services.gene.resolve(gene)
+            symbol = services.gene.resolve(gene_symbol)
             if symbol is None:
                 raise DataNotFoundError(
-                    f"Gene '{gene}' is not in the ClinGen snapshot. Resolve with search_genes."
+                    f"Gene '{gene_symbol}' is not in the ClinGen snapshot. "
+                    "Resolve with search_genes."
                 )
             summary = await services.gene.get_summary(symbol)
             if summary is None:
@@ -189,10 +190,10 @@ def register_gene_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenSe
                 "variant interpretations."
             )
             next_commands = [
-                cmd("get_gene_validity", gene=symbol),
-                cmd("get_gene_dosage", gene=symbol),
-                cmd("get_gene_actionability", gene=symbol),
-                cmd("get_variant_interpretations", gene=symbol),
+                cmd("get_gene_validity", gene_symbol=symbol),
+                cmd("get_gene_dosage", gene_symbol=symbol),
+                cmd("get_gene_actionability", gene_symbol=symbol),
+                cmd("get_variant_interpretations", gene_symbol=symbol),
             ]
             result: dict[str, Any] = {
                 "headline": headline,
@@ -222,5 +223,5 @@ def register_gene_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenSe
         return await run_mcp_tool(
             "get_gene_summary",
             call,
-            context=McpErrorContext(tool_name="get_gene_summary", gene=gene),
+            context=McpErrorContext(tool_name="get_gene_summary", gene=gene_symbol),
         )

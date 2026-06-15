@@ -57,7 +57,7 @@ def register_actionability_tools(
         tags={"actionability"},
     )
     async def get_gene_actionability(
-        gene: Annotated[
+        gene_symbol: Annotated[
             str,
             Field(
                 description="Gene symbol or HGNC id (resolve with search_genes first).",
@@ -87,10 +87,11 @@ def register_actionability_tools(
 
         async def call() -> dict[str, Any]:
             services = service_factory()
-            symbol = services.gene.resolve(gene)
+            symbol = services.gene.resolve(gene_symbol)
             if symbol is None:
                 raise DataNotFoundError(
-                    f"Gene '{gene}' is not in the ClinGen snapshot. Resolve with search_genes."
+                    f"Gene '{gene_symbol}' is not in the ClinGen snapshot. "
+                    "Resolve with search_genes."
                 )
             models = await services.actionability.for_gene(symbol, context=context)
             # The gene resolved; an empty domain is success+0 (not not_found) — reserved for a gene
@@ -116,8 +117,8 @@ def register_actionability_tools(
                 "_meta": build_meta(
                     data_version=data_version_for(services.meta(), "actionability"),
                     next_commands=[
-                        cmd("get_gene_summary", gene=symbol),
-                        cmd("get_gene_validity", gene=symbol),
+                        cmd("get_gene_summary", gene_symbol=symbol),
+                        cmd("get_gene_validity", gene_symbol=symbol),
                     ],
                     record_count=len(models),
                 ),
@@ -126,7 +127,7 @@ def register_actionability_tools(
         return await run_mcp_tool(
             "get_gene_actionability",
             call,
-            context=McpErrorContext(tool_name="get_gene_actionability", gene=gene),
+            context=McpErrorContext(tool_name="get_gene_actionability", gene=gene_symbol),
         )
 
     @mcp.tool(
@@ -141,7 +142,7 @@ def register_actionability_tools(
             str | None,
             Field(description="Free-text disease name (FTS).", examples=["melanoma"]),
         ] = None,
-        gene: Annotated[
+        gene_symbol: Annotated[
             str | None,
             Field(description="Gene symbol that the curation lists.", examples=["SCN1A"]),
         ] = None,
@@ -164,9 +165,9 @@ def register_actionability_tools(
 
         async def call() -> dict[str, Any]:
             services = service_factory()
-            resolved_gene = services.gene.resolve(gene) if gene else None
+            resolved_gene = services.gene.resolve(gene_symbol) if gene_symbol else None
             models, total = await services.actionability.search(
-                text=disease, gene=resolved_gene or gene, page=page, size=size
+                text=disease, gene=resolved_gene or gene_symbol, page=page, size=size
             )
             if assertion:
                 models = [
@@ -186,15 +187,19 @@ def register_actionability_tools(
                     to_restore=f"page={page + 1}",
                     to_disable="raise size",
                     filter_applied={
-                        k: v for k, v in {"disease": disease, "gene": gene}.items() if v
+                        k: v
+                        for k, v in {"disease": disease, "gene_symbol": gene_symbol}.items()
+                        if v
                     },
                 )
                 if dropped > 0
                 else None
             )
-            first_gene = next((g for m in models for g in m.genes if g), resolved_gene or gene)
+            first_gene = next(
+                (g for m in models for g in m.genes if g), resolved_gene or gene_symbol
+            )
             next_commands = (
-                [cmd("get_gene_actionability", gene=first_gene)]
+                [cmd("get_gene_actionability", gene_symbol=first_gene)]
                 if first_gene
                 else [cmd("get_server_capabilities")]
             )
@@ -217,5 +222,7 @@ def register_actionability_tools(
         return await run_mcp_tool(
             "search_actionability",
             call,
-            context=McpErrorContext(tool_name="search_actionability", gene=gene, disease=disease),
+            context=McpErrorContext(
+                tool_name="search_actionability", gene=gene_symbol, disease=disease
+            ),
         )

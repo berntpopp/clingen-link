@@ -68,7 +68,7 @@ async def test_error_classification(
     assert result["success"] is False
     assert result["error_code"] == expected_code
     assert result["retryable"] is expected_retryable
-    assert result["_meta"]["next_commands"][-1]["tool"] == "get_clingen_diagnostics"
+    assert result["_meta"]["next_commands"][-1]["tool"] == "get_diagnostics"
 
 
 async def test_not_found_fallback_uses_gene_context() -> None:

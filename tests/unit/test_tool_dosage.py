@@ -15,7 +15,7 @@ async def _call(mcp: FastMCP, name: str, args: dict[str, object]) -> dict[str, o
 
 class TestGetGeneDosage:
     async def test_haplo_triplo_interpretation(self, tool_mcp: FastMCP) -> None:
-        payload = await _call(tool_mcp, "get_gene_dosage", {"gene": "AAGAB"})
+        payload = await _call(tool_mcp, "get_gene_dosage", {"gene_symbol": "AAGAB"})
         assert payload["success"] is True
         rec = payload["records"][0]
         assert rec["record_type"] == "gene"
@@ -28,13 +28,13 @@ class TestGetGeneDosage:
 
     async def test_resolvable_gene_no_dosage_is_success_zero(self, tool_mcp: FastMCP) -> None:
         # M5: ABCA3 resolves (validity fixture) but has no dosage record → success+0, not not_found.
-        payload = await _call(tool_mcp, "get_gene_dosage", {"gene": "ABCA3"})
+        payload = await _call(tool_mcp, "get_gene_dosage", {"gene_symbol": "ABCA3"})
         assert payload["success"] is True
         assert payload["total"] == 0
         assert payload["records"] == []
 
     async def test_unknown_gene_not_found(self, tool_mcp: FastMCP) -> None:
-        payload = await _call(tool_mcp, "get_gene_dosage", {"gene": "ZZZNOPE"})
+        payload = await _call(tool_mcp, "get_gene_dosage", {"gene_symbol": "ZZZNOPE"})
         assert payload["success"] is False
         assert payload["error_code"] == "not_found"
         assert payload["fallback_tool"] == "search_genes"

@@ -26,7 +26,7 @@ class TestSearchGenes:
         # next_commands must reference a real tool with non-empty args.
         nxt = payload["_meta"]["next_commands"]
         assert nxt[0]["tool"] == "get_gene_summary"
-        assert nxt[0]["arguments"] == {"gene": "AARS1"}
+        assert nxt[0]["arguments"] == {"gene_symbol": "AARS1"}
 
     async def test_alias_resolution(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "search_genes", {"query": "HGNC:20"})
@@ -55,7 +55,7 @@ class TestSearchGenes:
 
 class TestGeneSummary:
     async def test_returns_all_sections(self, tool_mcp: FastMCP) -> None:
-        payload = await _call(tool_mcp, "get_gene_summary", {"gene": "AARS1"})
+        payload = await _call(tool_mcp, "get_gene_summary", {"gene_symbol": "AARS1"})
         assert payload["success"] is True
         assert payload["symbol"] == "AARS1"
         assert payload["counts"]["validity"] == 1
@@ -69,11 +69,11 @@ class TestGeneSummary:
 
     async def test_summary_citation_permalink_is_gene_specific(self, tool_mcp: FastMCP) -> None:
         # L4: the summary permalink targets the gene, not a bare /kb/genes/ landing page.
-        payload = await _call(tool_mcp, "get_gene_summary", {"gene": "AARS1"})
+        payload = await _call(tool_mcp, "get_gene_summary", {"gene_symbol": "AARS1"})
         assert "/kb/genes/?search=AARS1" in payload["recommended_citation"]
 
     async def test_next_commands_into_domains(self, tool_mcp: FastMCP) -> None:
-        payload = await _call(tool_mcp, "get_gene_summary", {"gene": "AARS1"})
+        payload = await _call(tool_mcp, "get_gene_summary", {"gene_symbol": "AARS1"})
         tools = {c["tool"] for c in payload["_meta"]["next_commands"]}
         assert {
             "get_gene_validity",
@@ -82,18 +82,18 @@ class TestGeneSummary:
             "get_variant_interpretations",
         } <= tools
         for c in payload["_meta"]["next_commands"]:
-            assert c["arguments"] == {"gene": "AARS1"}
+            assert c["arguments"] == {"gene_symbol": "AARS1"}
 
     async def test_minimal_drops_lists(self, tool_mcp: FastMCP) -> None:
         payload = await _call(
-            tool_mcp, "get_gene_summary", {"gene": "AARS1", "response_mode": "minimal"}
+            tool_mcp, "get_gene_summary", {"gene_symbol": "AARS1", "response_mode": "minimal"}
         )
         assert payload["success"] is True
         assert "validity" not in payload
         assert payload["counts"]["validity"] == 1
 
     async def test_unknown_gene_not_found(self, tool_mcp: FastMCP) -> None:
-        payload = await _call(tool_mcp, "get_gene_summary", {"gene": "ZZZNOPE"})
+        payload = await _call(tool_mcp, "get_gene_summary", {"gene_symbol": "ZZZNOPE"})
         assert payload["success"] is False
         assert payload["error_code"] == "not_found"
         assert payload["fallback_tool"] == "search_genes"
