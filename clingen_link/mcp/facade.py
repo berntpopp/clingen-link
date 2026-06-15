@@ -55,9 +55,9 @@ def create_clingen_mcp(
 ) -> FastMCP:
     """Build the clingen-link MCP server.
 
-    ``service_factory`` is a lazy callable so HTTP mode can defer to
-    ``app.state`` and stdio mode can hold a directly constructed instance. When
-    omitted it defaults to the process-wide :func:`get_services` singleton.
+    ``service_factory`` is a lazy callable so the FastAPI host can defer to
+    ``app.state`` (per-request shared services). When omitted it defaults to the
+    process-wide :func:`get_services` singleton.
     """
     factory = service_factory or get_services
     mcp = FastMCP(

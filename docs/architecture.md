@@ -65,7 +65,7 @@ is never done in the request path.
   │        ▼                                                               │
   │  mcp/facade.py → FastMCP(name="clingen-link", instructions=...)        │
   │        ▼                                                               │
-  │  server_manager.py  unified (FastAPI /health + MCP /mcp) | http | stdio│
+  │  server_manager.py  unified (FastAPI /health + MCP /mcp) | http alias  │
   └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -79,7 +79,7 @@ is never done in the request path.
 | Services | `clingen_link/services/*.py` | Merge store rows (+ live drill-down) into Pydantic models; `async-lru` caching; build `recommended_citation`. |
 | Models | `clingen_link/models/*.py` | Pydantic response models per domain. |
 | MCP surface | `clingen_link/mcp/**` | Facade, canonical envelope, next-commands, resources, shaping, and the 17 tools. |
-| Transports | `clingen_link/server_manager.py`, `server.py`, `mcp_server.py` | unified / http / stdio. stdio logs to stderr with banners/color suppressed. |
+| Transport / CLI | `clingen_link/server_manager.py`, `clingen_link/cli.py` (`typer`) | Streamable HTTP only: `unified` (FastAPI `/health` + mounted MCP `/mcp`) and its `http` alias. `structlog` logging (JSON prod / console dev) with `asgi-correlation-id`. |
 
 ## Snapshot schema (overview)
 

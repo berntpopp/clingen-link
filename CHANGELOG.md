@@ -2,6 +2,49 @@
 
 All notable changes to clingen-link are documented here.
 
+## [2.0.0] - 2026-06-15
+
+Adopt the **GeneFoundry Logging & CLI Standard v1**. This is a **breaking**
+release with no deprecation shims (pre-alpha, per the standard's Rule 7). The
+MCP tool surface, services, and the `/health` / `/mcp` endpoints are unchanged,
+so the `genefoundry-router` gateway is unaffected.
+
+### Changed (BREAKING)
+
+- **CLI: `argparse` → `typer`.** A single `typer` app (`clingen_link/cli.py`)
+  replaces the old argparse parser. Commands: `serve`, `config`, `health`,
+  `refresh`, `version`. There is no bare-serve — start the server with
+  `clingen-link serve …`. `serve` options: `--transport {unified,http}`
+  (default `unified`), `--host`, `--port`, `--mcp-path`, `--log-level`,
+  `--disable-docs`, `--dev`.
+- **Single console script.** `clingen-link = "clingen_link.cli:app"`. The old
+  `clingen-link` (`server:main`), `clingen-link-mcp` (`mcp_server:main`), and
+  `clingen-link-refresh` (`clingen_link.etl.refresh:main`) entry points are
+  removed. The root `server.py` and `mcp_server.py` modules are deleted. The ETL
+  is now reachable via `clingen-link refresh` or `python -m clingen_link.etl
+  refresh`.
+- **stdio removed.** The server is **Streamable HTTP only** (`unified` and its
+  `http` alias). The `stdio` transport, its config Literals
+  (`CLINGEN_LINK_STDIO_LOG_LEVEL` setting and the stdio transport value),
+  `start_stdio_server`, and `STDIOTransportError` are gone. MCP clients connect
+  to the `/mcp` HTTP endpoint (directly or via the gateway).
+- **Logging: stdlib `logging` → `structlog`.** `clingen_link/logging_config.py`
+  follows the fleet canon (`merge_contextvars → add_log_level → TimeStamper(iso)
+  → StackInfoRenderer → format_exc_info → static fields service/version`), with a
+  JSON renderer in production and a `ConsoleRenderer` in development selected by
+  `CLINGEN_LINK_LOG_FORMAT` (default `json`; `--dev` forces `console`).
+  Per-request correlation ids are bound via the `asgi-correlation-id`
+  middleware and merged into every log event.
+
+### Migration
+
+- Replace `clingen-link --transport unified …` with `clingen-link serve
+  --transport unified …`.
+- Replace `clingen-link-mcp` (stdio) usage with the HTTP `/mcp` endpoint.
+- Replace `clingen-link-refresh …` with `clingen-link refresh …`.
+- Set `CLINGEN_LINK_LOG_FORMAT=console` for human-readable dev logs (default is
+  JSON); `CLINGEN_LINK_STDIO_LOG_LEVEL` no longer exists.
+
 ## [1.0.0] - 2026-06-15
 
 Adopt the **GeneFoundry Tool-Naming Standard v1** so the server composes cleanly

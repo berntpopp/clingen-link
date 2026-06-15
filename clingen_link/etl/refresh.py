@@ -1,7 +1,7 @@
 """``refresh`` command implementation: fetch → build, or ``--check`` staleness.
 
-This is the operator-facing ETL entry point, wired both as a console script
-(``clingen-link-refresh``) and via ``python -m clingen_link.etl refresh``. It is
+This is the operator-facing ETL entry point, exposed as ``clingen-link refresh``
+(the typer CLI) and via ``python -m clingen_link.etl refresh``. It is
 deliberately separate from :mod:`clingen_link.etl.build` so the heavy pure-build
 logic stays import-light and under the LOC cap.
 
@@ -269,9 +269,9 @@ def handle_refresh(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Console-script entry point for ``clingen-link-refresh``."""
+    """Programmatic entry point (``python -m clingen_link.etl refresh`` shares this)."""
     parser = argparse.ArgumentParser(
-        prog="clingen-link-refresh",
+        prog="python -m clingen_link.etl refresh",
         description="Build or check the bundled ClinGen SQLite snapshot.",
     )
     add_refresh_arguments(parser)

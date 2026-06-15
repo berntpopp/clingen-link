@@ -21,7 +21,7 @@ services:
       - CLINGEN_LINK_CACHE_TTL_MINUTES=${CLINGEN_CACHE_TTL_MINUTES:-120}
       - CLINGEN_LINK_CORS_ORIGINS=${CLINGEN_CORS_ORIGINS:-*}
     # env_file is provided via the --env-file flag for consistency with siblings.
-    command: ["clingen-link", "--transport", "unified", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["clingen-link", "serve", "--transport", "unified", "--host", "0.0.0.0", "--port", "8000"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s

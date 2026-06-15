@@ -3,7 +3,7 @@
 The MCP tools obtain their backing services through a ``service_factory``
 callable rather than importing a concrete instance, so that:
 
-* HTTP mode can defer to ``app.state`` and stdio mode can hold a direct instance,
+* the FastAPI host defers to ``app.state`` (per-request shared services),
 * tests can inject fakes via :func:`set_services` / reset via :func:`reset_services`,
 * construction is lazy (built on first use, then cached).
 

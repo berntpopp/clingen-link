@@ -10,14 +10,15 @@ in [ClinGen](https://clinicalgenome.org/) curated evidence across four domains:
 gene-disease validity, gene dosage, clinical actionability, and variant
 pathogenicity (ERepo). It is built on the `gnomad-link` house style: a
 hand-authored FastMCP v3 facade with the full canonical response envelope and
-three transports (unified / http / stdio). Data is served from a self-contained,
+Streamable-HTTP transport (unified / http). Data is served from a self-contained,
 read-only SQLite snapshot (bundled in the package), with a thin live HTTP layer
 for single-record drill-down.
 
 Primary areas (under `clingen_link/`):
 
 - `etl/` — offline snapshot builder (fetch → parse → freshness → build). Never
-  in the request path. Entry: `clingen-link refresh` / `clingen-link-refresh`.
+  in the request path. Entry: `clingen-link refresh` (or `python -m
+  clingen_link.etl refresh`).
 - `store/` — read-only SQLite query layer (gene resolution/alias, per-domain
   queries). Opens the bundled snapshot read-only.
 - `api/` — live HTTP layer (`httpx.AsyncClient`) for ERepo / actionability SEPIO
@@ -30,8 +31,10 @@ Primary areas (under `clingen_link/`):
   (canonical envelope + `run_mcp_tool`), `next_commands.py`, `resources.py`,
   `shaping.py`, and `tools/*.py` (13 tools grouped by domain).
 
-Top-level entry points: `server.py` (argparse `--transport`), `mcp_server.py`
-(thin stdio entry). Other areas:
+Entry point: a single `typer` app at `clingen_link/cli.py` (`clingen-link` console
+script → `clingen_link.cli:app`) with `serve` / `config` / `health` / `refresh` /
+`version` commands. Logging is `structlog` (`clingen_link/logging_config.py`,
+JSON in prod / console in `--dev`, with `asgi-correlation-id`). Other areas:
 
 - `tests/` — `unit/` (default fast path) and `integration/` (live drift tests,
   `@pytest.mark.integration`, excluded from the default path).
@@ -77,8 +80,8 @@ Useful focused commands:
 - `make typecheck` / `make typecheck-fast`
 - `make test` / `make test-fast` / `make test-cov`
 - `make test-integration` — live ClinGen drift tests (network required)
-- `make dev` — unified HTTP host (`/health` + MCP `/mcp`)
-- `make mcp-serve` — stdio MCP server
+- `make dev` — unified HTTP host (`/health` + MCP `/mcp`, console logs)
+- `make run-prod` — unified HTTP host bound to all interfaces (JSON logs)
 - `make docker-build` / `make docker-up` / `make docker-down`
 
 ## Coding standards
@@ -99,9 +102,9 @@ Useful focused commands:
 
 ## File size discipline
 
-Hard cap: **600 lines per Python module** in `clingen_link/`, `server.py`, and
-`mcp_server.py`. Enforced by `make lint-loc` (`scripts/check_file_size.py`),
-which is wired into `make ci-local` and pre-commit. Tests are exempt.
+Hard cap: **600 lines per Python module** in `clingen_link/`. Enforced by
+`make lint-loc` (`scripts/check_file_size.py`), which is wired into
+`make ci-local` and pre-commit. Tests are exempt.
 
 Why: large modules concentrate complexity, slow static analysis, and make
 LLM-assisted changes riskier. When a file approaches 500 lines, plan a cohesive

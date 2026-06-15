@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from typing import Any, cast
 
 import uvicorn
+from asgi_correlation_id import CorrelationIdMiddleware
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastmcp import FastMCP
@@ -72,6 +73,9 @@ class UnifiedServerManager:
             allow_methods=["*"],
             allow_headers=["*"],
         )
+        # Bind a correlation id per request and expose it to structlog via
+        # contextvars (merged into every log event by ``merge_contextvars``).
+        app.add_middleware(CorrelationIdMiddleware)
 
         @app.get("/health")
         async def health() -> dict[str, str]:
@@ -116,8 +120,9 @@ class UnifiedServerManager:
     async def start_unified_server(self, config: ServerConfig) -> None:
         try:
             self._current_transport = "unified"
-            configure_logging("unified", config.log_level)
-            self.logger = get_server_logger("unified")
+            log_format = "console" if config.dev else settings.LOG_FORMAT
+            configure_logging(config.log_level, log_format)
+            self.logger = get_server_logger()
 
             self.app = await self._create_fastapi_app(config)
 
@@ -151,26 +156,9 @@ class UnifiedServerManager:
         """Alias for the unified server (FastAPI host + mounted MCP HTTP)."""
         await self.start_unified_server(config)
 
-    async def start_stdio_server(self, config: ServerConfig) -> None:
-        try:
-            self._current_transport = "stdio"
-            configure_logging("stdio", config.log_level)
-            self.logger = get_server_logger("stdio")
-
-            services = self._create_services()
-            self.mcp = self._create_mcp_server(lambda: services)
-            # show_banner=False keeps stderr clean for stdio clients (Claude
-            # Desktop); the FASTMCP_DISABLE_BANNER env var is not honored by
-            # FastMCP 3.4.2's run_async, so pass the flag explicitly.
-            await self.mcp.run_async(transport="stdio", show_banner=False)
-        except Exception as e:
-            raise StartupError(f"Failed to start STDIO server: {e}", "stdio") from e
-
     async def start_server(self, config: ServerConfig) -> None:
         if config.transport in {"unified", "http"}:
             await self.start_unified_server(config)
-        elif config.transport == "stdio":
-            await self.start_stdio_server(config)
         else:
             raise ConfigurationError(f"Unknown transport: {config.transport}")
 
@@ -179,6 +167,6 @@ def create_app() -> FastAPI:
     """Module-level ASGI factory for gunicorn/uvicorn (clingen_link.server_manager:create_app)."""
     manager = UnifiedServerManager()
     manager._current_transport = "unified"
-    configure_logging("unified", settings.LOG_LEVEL)
-    manager.logger = get_server_logger("unified")
+    configure_logging(settings.LOG_LEVEL, settings.LOG_FORMAT)
+    manager.logger = get_server_logger()
     return manager.create_app()
