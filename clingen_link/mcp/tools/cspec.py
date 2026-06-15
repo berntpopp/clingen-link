@@ -65,7 +65,7 @@ def register_cspec_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
         tags={"cspec"},
     )
     async def list_cspecs(
-        gene: Annotated[
+        gene_symbol: Annotated[
             str | None,
             Field(
                 description="Gene symbol covered by the spec (resolve with search_genes first).",
@@ -96,7 +96,7 @@ def register_cspec_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
     ) -> dict[str, Any]:
         """Use this to browse ClinGen criteria-specification (CSpec) headers, filtered by gene, curating affiliation (VCEP), or lifecycle status. Each row carries the GN id, affiliation, label, version, and status. Drill into one with get_cspec. Paginated; returns ~1-8kB."""
         return await _list_cspecs_impl(
-            gene=gene,
+            gene=gene_symbol,
             affiliation=affiliation,
             status=status,
             page=page,
@@ -128,7 +128,7 @@ def register_cspec_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
                 examples=["50087"],
             ),
         ] = None,
-        gene: Annotated[
+        gene_symbol: Annotated[
             str | None,
             Field(
                 description="Gene symbol (narrows an affiliation, or finds spec(s) covering it).",
@@ -145,7 +145,7 @@ def register_cspec_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
         return await _get_cspec_impl(
             gn_id=gn_id,
             affiliation=affiliation,
-            gene=gene,
+            gene=gene_symbol,
             response_mode=response_mode,
             service_factory=service_factory,
         )
@@ -258,7 +258,7 @@ async def _list_cspecs_impl(
                 filter_applied={
                     k: v
                     for k, v in {
-                        "gene": gene,
+                        "gene_symbol": gene,
                         "affiliation": affiliation,
                         "status": status,
                     }.items()

@@ -24,8 +24,8 @@ async def test_capabilities_tool_callable(mcp: FastMCP) -> None:
 
 @pytest.mark.asyncio
 async def test_diagnostics_tool_callable(mcp: FastMCP) -> None:
-    """get_clingen_diagnostics returns a success envelope with the recent-error ring."""
-    result = await mcp.call_tool("get_clingen_diagnostics", {})
+    """get_diagnostics returns a success envelope with the recent-error ring."""
+    result = await mcp.call_tool("get_diagnostics", {})
     payload = result.structured_content or {}
 
     assert payload.get("success") is True, payload
@@ -41,4 +41,4 @@ async def test_facade_lists_expected_tools(mcp: FastMCP) -> None:
     """The facade registers exactly the Phase 1 discovery + diagnostics tools."""
     tools = await mcp.list_tools()
     names = {tool.name for tool in tools}
-    assert {"get_server_capabilities", "get_clingen_diagnostics"} <= names
+    assert {"get_server_capabilities", "get_diagnostics"} <= names

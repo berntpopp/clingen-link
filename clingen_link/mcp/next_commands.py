@@ -18,8 +18,8 @@ def cmd(tool: str, **arguments: Any) -> dict[str, Any]:
 def for_gene(symbol: str) -> list[dict[str, Any]]:
     """Standard follow-ups for a resolved gene: cross-domain summary first."""
     return [
-        cmd("get_gene_summary", gene=symbol),
-        cmd("get_gene_validity", gene=symbol),
+        cmd("get_gene_summary", gene_symbol=symbol),
+        cmd("get_gene_validity", gene_symbol=symbol),
     ]
 
 
@@ -27,7 +27,7 @@ def for_disease(mondo: str) -> list[dict[str, Any]]:
     """Standard follow-ups for a disease: validity then variant interpretations."""
     return [
         cmd("search_validity", mondo=mondo),
-        cmd("get_variant_interpretations", condition=mondo),
+        cmd("get_variant_interpretations", disease=mondo),
     ]
 
 

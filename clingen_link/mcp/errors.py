@@ -42,8 +42,8 @@ _BASE_META: dict[str, Any] = {
 }
 
 # Fallback tool used in validation and output-validation error envelopes.
-# Points to get_clingen_diagnostics for rich health context on error recovery.
-_FALLBACK_TOOL = "get_clingen_diagnostics"
+# Points to get_diagnostics for rich health context on error recovery.
+_FALLBACK_TOOL = "get_diagnostics"
 
 
 @dataclass
@@ -126,21 +126,21 @@ def _classify(
     if isinstance(exc, SnapshotUnavailableError):
         # The bundled snapshot is missing/unreadable. The caller cannot fix this;
         # steer to diagnostics so the operator can run `clingen-link refresh`.
-        return "snapshot_unavailable", False, "get_clingen_diagnostics", {}
+        return "snapshot_unavailable", False, "get_diagnostics", {}
     if isinstance(exc, UpstreamInputError):
         # Deterministic upstream rejection (wrong id shape). Retrying unchanged
         # can never succeed.
         tool, args = _fallback_for(context)
         return "invalid_input", False, tool, args
     if isinstance(exc, RateLimitedError):
-        return "rate_limited", True, "get_clingen_diagnostics", {}
+        return "rate_limited", True, "get_diagnostics", {}
     if isinstance(exc, ValueError):
         return "validation_failed", False, "get_server_capabilities", None
     if isinstance(exc, ClingenApiError):
-        return "upstream_unavailable", True, "get_clingen_diagnostics", {}
+        return "upstream_unavailable", True, "get_diagnostics", {}
     if isinstance(exc, TimeoutError):
-        return "upstream_unavailable", True, "get_clingen_diagnostics", {}
-    return "internal_error", False, "get_clingen_diagnostics", {}
+        return "upstream_unavailable", True, "get_diagnostics", {}
+    return "internal_error", False, "get_diagnostics", {}
 
 
 def _recovery_action(error_code: str, retryable: bool) -> str:
@@ -187,7 +187,7 @@ def _recovery_text(error_code: str, fallback_tool: str | None, tool_name: str | 
         return (
             "The bundled ClinGen snapshot is missing or unreadable. The operator "
             "must run `clingen-link refresh` to (re)build it. Call "
-            "get_clingen_diagnostics for snapshot freshness details."
+            "get_diagnostics for snapshot freshness details."
         )
     if error_code == "upstream_unavailable":
         return (
@@ -359,7 +359,7 @@ def clear_recent_errors() -> None:
 def record_schema_drift(*, tool_name: str, error_field: str | None, message: str) -> None:
     """Append an output-schema-drift event to the bounded ring.
 
-    Separate from record_mcp_error so an LLM (via get_clingen_diagnostics) can
+    Separate from record_mcp_error so an LLM (via get_diagnostics) can
     distinguish business errors from infrastructure events (the upstream payload
     no longer matches our declared output_schema).
     """

@@ -101,9 +101,11 @@ rebuilt bundle when a domain drifts.
 
 ## MCP tools
 
-13 tools (`^[a-zA-Z0-9_-]{1,64}$`-safe names). All take a
+17 tools (`^[a-z0-9_]{1,50}$`-safe names). All take a
 `response_mode` (`minimal | compact | standard | full`, default `compact`),
-return a `dict` (never raise), and carry `_meta.next_commands`.
+return a `dict` (never raise), and carry `_meta.next_commands`. (The four
+`*_cspec*` criteria-specification tools are documented in
+[`docs/usage.md`](docs/usage.md).)
 
 | Tool | One-line description |
 |---|---|
@@ -116,14 +118,35 @@ return a `dict` (never raise), and carry `_meta.next_commands`.
 | `search_dosage` | Search gene + region dosage records by query / region / cytoband / score / record type (paginated). |
 | `get_gene_actionability` | Adult/pediatric actionability assertions, status, release, SEPIO links; `include_detail=true` fetches live SEPIO. |
 | `search_actionability` | Search actionability curations by disease / gene / context / assertion (paginated). |
-| `get_variant_interpretations` | List ERepo variant interpretations by gene / condition / expert panel (CAID, HGVS, MONDO, classification, VCEP, dates, permalink). |
+| `get_variant_interpretations` | List ERepo variant interpretations by gene_symbol / disease / expert panel (CAID, HGVS, MONDO, classification, VCEP, dates, permalink). |
 | `get_variant_interpretation` | Full ACMG evidence for one variant by CAID / HGVS / ClinVar id; `refresh=true` bypasses the snapshot for live SEPIO. |
 | `list_expert_panels` | GCEP/VCEP affiliates and their curation counts. |
-| `get_clingen_diagnostics` | Recent-errors ring buffer, snapshot freshness, and upstream reachability. |
+| `get_diagnostics` | Recent-errors ring buffer, snapshot freshness, and upstream reachability. |
 
 **Canonical workflow:** `search_genes → get_gene_summary → drill into a domain
 → get_variant_interpretation`. See [`docs/usage.md`](docs/usage.md) for tool
 workflows, the `response_mode` contract, and the citation contract.
+
+### Gateway namespace (GeneFoundry Tool-Naming Standard v1)
+
+`serverInfo.name` is **`clingen-link`**. Behind the
+[`genefoundry-router`](https://github.com/berntpopp/genefoundry-router) gateway
+this server mounts under the canonical namespace token **`clingen`**, so each
+leaf tool surfaces as `clingen_<tool>` (e.g. `clingen_get_gene_summary`). Leaf
+tools are therefore kept **unprefixed** — the gateway adds the namespace, and a
+self/source prefix would double-prefix (e.g. `clingen_get_clingen_diagnostics`).
+A CI guard (`tests/unit/test_tool_names.py`) enforces that every registered tool
+name matches `^[a-z0-9_]{1,50}$`, starts with a canonical verb
+(`get`/`search`/`list`/`resolve`/`find`/`compare`/`compute`), and never embeds
+the `clingen` token.
+
+**Canonical arguments.** Gene-accepting tools take **`gene_symbol`** (accepts a
+symbol or `HGNC:<id>`); `search_genes` keeps free-text **`query`**;
+`get_variant_interpretations` takes **`disease`** (disease text or MONDO id).
+**Pagination deviation:** search/list tools use **`page`** (1-based) + **`size`**
+(≤100) rather than the fleet's `limit`/`offset`; a `truncated` block in
+`_meta` flags omitted rows. This deviation is documented per the standard's
+pagination clause.
 
 ## Claude Desktop configuration
 

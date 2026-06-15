@@ -19,7 +19,7 @@ async def _call(mcp: FastMCP, name: str, args: dict[str, object]) -> dict[str, o
 
 class TestGetGeneActionability:
     async def test_snapshot_only(self, tool_mcp: FastMCP) -> None:
-        payload = await _call(tool_mcp, "get_gene_actionability", {"gene": "SCN1A"})
+        payload = await _call(tool_mcp, "get_gene_actionability", {"gene_symbol": "SCN1A"})
         assert payload["success"] is True
         assert payload["context"] == "Adult"
         rec = payload["records"][0]
@@ -30,7 +30,7 @@ class TestGetGeneActionability:
 
     async def test_pediatric_context_citation(self, tool_mcp: FastMCP) -> None:
         payload = await _call(
-            tool_mcp, "get_gene_actionability", {"gene": "SCN1A", "context": "Pediatric"}
+            tool_mcp, "get_gene_actionability", {"gene_symbol": "SCN1A", "context": "Pediatric"}
         )
         assert payload["context"] == "Pediatric"
         assert "Pediatric:" in payload["records"][0]["recommended_citation"]
@@ -41,7 +41,7 @@ class TestGetGeneActionability:
             return_value=httpx.Response(200, json={"docId": "AC1034", "@type": "SepioDoc"})
         )
         payload = await _call(
-            tool_mcp, "get_gene_actionability", {"gene": "SCN1A", "include_detail": True}
+            tool_mcp, "get_gene_actionability", {"gene_symbol": "SCN1A", "include_detail": True}
         )
         assert payload["success"] is True
         assert payload["records"][0]["sepio_detail"]["docId"] == "AC1034"
@@ -49,13 +49,13 @@ class TestGetGeneActionability:
 
     async def test_resolvable_gene_no_curation_is_success_zero(self, tool_mcp: FastMCP) -> None:
         # M5: AARS1 resolves but has no actionability curation → success+0, not not_found.
-        payload = await _call(tool_mcp, "get_gene_actionability", {"gene": "AARS1"})
+        payload = await _call(tool_mcp, "get_gene_actionability", {"gene_symbol": "AARS1"})
         assert payload["success"] is True
         assert payload["total"] == 0
         assert payload["records"] == []
 
     async def test_unknown_gene_not_found(self, tool_mcp: FastMCP) -> None:
-        payload = await _call(tool_mcp, "get_gene_actionability", {"gene": "ZZZNOPE"})
+        payload = await _call(tool_mcp, "get_gene_actionability", {"gene_symbol": "ZZZNOPE"})
         assert payload["success"] is False
         assert payload["fallback_tool"] == "search_genes"
 
@@ -68,11 +68,11 @@ class TestSearchActionability:
         assert payload["records"][0]["doc_id"] == "AC1060"
 
     async def test_gene_search(self, tool_mcp: FastMCP) -> None:
-        payload = await _call(tool_mcp, "search_actionability", {"gene": "SCN1A"})
+        payload = await _call(tool_mcp, "search_actionability", {"gene_symbol": "SCN1A"})
         assert payload["total"] >= 1
         assert any("SCN1A" in r["genes"] for r in payload["records"])
 
     async def test_next_commands_non_empty(self, tool_mcp: FastMCP) -> None:
-        payload = await _call(tool_mcp, "search_actionability", {"gene": "SCN1A"})
+        payload = await _call(tool_mcp, "search_actionability", {"gene_symbol": "SCN1A"})
         for c in payload["_meta"]["next_commands"]:
             assert c["tool"] and c["arguments"]

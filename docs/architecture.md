@@ -159,5 +159,5 @@ with a rebuilt bundle when a domain drifts.
 
 If the snapshot is missing or unreadable, the store raises
 `SnapshotUnavailableError`, mapped to the `snapshot_unavailable` error code. The
-server still starts; `get_server_capabilities` and `get_clingen_diagnostics`
+server still starts; `get_server_capabilities` and `get_diagnostics`
 degrade gracefully and tell the operator to run `clingen-link refresh`.
