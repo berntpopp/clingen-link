@@ -84,7 +84,11 @@ class UnifiedServerManager:
 
         @app.get("/health")
         async def health() -> dict[str, str]:
-            return {"status": "healthy", "transport": self._current_transport}
+            return {
+                "status": "healthy",
+                "version": __version__,
+                "transport": "streamable-http-stateless",
+            }
 
         return app
 

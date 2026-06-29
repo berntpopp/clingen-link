@@ -55,7 +55,25 @@ async def test_fastapi_app_health_endpoint() -> None:
     health_route = next(r for r in app.routes if getattr(r, "path", None) == "/health")
     result = await health_route.endpoint()
     assert result["status"] == "healthy"
-    assert result["transport"] == "http"
+    assert result["transport"] == "streamable-http-stateless"
+
+
+async def test_health_endpoint_has_version_and_transport() -> None:
+    """Health MUST carry {status, version, transport} per MCP Transport Standard v1."""
+    from clingen_link import __version__
+
+    manager = _manager()
+    config = ServerConfig(transport="unified")
+    app = await manager._create_fastapi_app(config)
+
+    health_route = next(r for r in app.routes if getattr(r, "path", None) == "/health")
+    result = await health_route.endpoint()
+
+    assert "status" in result, "health missing 'status'"
+    assert "version" in result, "health missing 'version' (MCP Transport Standard v1)"
+    assert "transport" in result, "health missing 'transport' (MCP Transport Standard v1)"
+    assert result["version"] == __version__
+    assert result["transport"] == "streamable-http-stateless"
 
 
 async def test_start_server_rejects_unknown_transport() -> None:
