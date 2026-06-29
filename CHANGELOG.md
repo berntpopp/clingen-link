@@ -2,6 +2,13 @@
 
 All notable changes to clingen-link are documented here.
 
+## [2.0.1] - 2026-06-29
+
+Adopt the **GeneFoundry Container & Deployment Hardening Standard v1** (closes #13):
+pin the base image by digest (`python:3.14-slim@sha256:b877e50…`), add a CI
+container scan + SBOM workflow, and never send CORS credentials with a wildcard
+origin.
+
 ## [2.0.0] - 2026-06-15
 
 Adopt the **GeneFoundry Logging & CLI Standard v1**. This is a **breaking**
