@@ -137,9 +137,17 @@ class UnifiedServerManager:
                 return cast(ClingenServices, self.app.state.clingen_services)
 
             self.mcp = self._create_mcp_server(service_factory)
-            mcp_http_app = self.mcp.http_app(path="/", stateless_http=True, json_response=True)
+            # Bake the MCP path into the sub-app's routes and mount it at the
+            # project root. Mounting AT the MCP path instead makes Starlette's
+            # Mount issue a trailing-slash 307 redirect (POST /mcp -> /mcp/),
+            # which the rest of the fleet does not do. The FastAPI host's own
+            # routes (/health, /api/...) are registered before this mount and
+            # therefore still take precedence.
+            mcp_http_app = self.mcp.http_app(
+                path=config.mcp_path, stateless_http=True, json_response=True
+            )
             self._compose_lifespan(self.app, mcp_http_app)
-            self.app.mount(config.mcp_path, mcp_http_app)
+            self.app.mount("/", mcp_http_app)
 
             self.logger.info(f"MCP HTTP at http://{config.host}:{config.port}{config.mcp_path}")
             self.logger.info(f"Health at http://{config.host}:{config.port}/health")
