@@ -66,10 +66,15 @@ class UnifiedServerManager:
             redoc_url=None,
             openapi_url=None,
         )
+        cors_origins = settings.cors_origins_list
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=settings.cors_origins_list,
-            allow_credentials=True,
+            allow_origins=cors_origins,
+            # Never send credentials with a wildcard origin: the browser rejects
+            # `Access-Control-Allow-Credentials: true` paired with `*`, and doing
+            # so would also be unsafe. Credentials stay enabled for an explicit
+            # allow-list (e.g. localhost dev).
+            allow_credentials=cors_origins != ["*"],
             allow_methods=["*"],
             allow_headers=["*"],
         )
