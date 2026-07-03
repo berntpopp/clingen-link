@@ -67,6 +67,7 @@ class TestResources:
             "clingen://freshness",
             "clingen://research-use",
             "clingen://citations",
+            "clingen://guidance",
         ]
         registered = {str(r.uri) for r in await tool_mcp.list_resources()}
         for uri in uris:
@@ -86,3 +87,15 @@ class TestResources:
 
         payload = json.loads(result.contents[0].content)
         assert {"validity", "dosage", "actionability", "erepo"} <= set(payload["domains"])
+
+    async def test_guidance_resource_resolves_and_has_baseline(self, tool_mcp: FastMCP) -> None:
+        registered = {str(r.uri) for r in await tool_mcp.list_resources()}
+        assert "clingen://guidance" in registered
+        result = await tool_mcp.read_resource("clingen://guidance")
+        import json
+
+        payload = json.loads(result.contents[0].content)
+        assert payload["baseline"]["gn_id"] == "GN001"
+        assert payload["unsafe_for_clinical_use"] is True
+        assert payload["research_use_notice"]
+        assert all(e["oa_license"] for e in payload["recommendations"])
