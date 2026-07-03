@@ -14,6 +14,7 @@ from clingen_link.mcp.resources import (
     get_capabilities_resource,
     get_citations_resource,
     get_freshness_resource,
+    get_guidance_resource,
     get_reference_resource,
     get_research_use_resource,
     get_usage_resource,
@@ -118,3 +119,11 @@ def register_metadata_tools(
     )
     def citations_resource() -> dict[str, Any]:
         return get_citations_resource()
+
+    @mcp.resource(
+        "clingen://guidance",
+        annotations=_RESOURCE_ANNOTATIONS,
+        mime_type="application/json",
+    )
+    def guidance_resource() -> dict[str, Any]:
+        return get_guidance_resource()

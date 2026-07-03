@@ -12,8 +12,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+from functools import lru_cache
 from importlib.metadata import PackageNotFoundError, version
-from typing import Any
+from importlib.resources import files
+from typing import Any, cast
 
 from mcp.types import LATEST_PROTOCOL_VERSION
 
@@ -58,6 +60,10 @@ _RESOURCES: dict[str, str] = {
     "clingen://freshness": "Per-domain snapshot version/date/record counts (JSON).",
     "clingen://research-use": "Research-use notice (JSON).",
     "clingen://citations": "Framework citation + license + per-domain citation contract (JSON).",
+    "clingen://guidance": (
+        "ClinGen/SVI variant-classification recommendation manifest: codes affected, "
+        "PMID/PMCID, OA license + fulltext-access map (JSON). Pointers only."
+    ),
 }
 
 _ERROR_CODES = [
@@ -267,6 +273,25 @@ def get_citations_resource() -> dict[str, Any]:
         ),
         "research_use_notice": RESEARCH_USE_NOTICE,
     }
+
+
+@lru_cache(maxsize=1)
+def _guidance_manifest() -> dict[str, Any]:
+    """Load and cache the committed SVI guidance manifest (read-only reference data)."""
+    raw = files("clingen_link.data").joinpath("svi_guidance.json").read_text(encoding="utf-8")
+    return cast(dict[str, Any], json.loads(raw))
+
+
+def get_guidance_resource() -> dict[str, Any]:
+    """Return the ClinGen/SVI variant-classification guidance manifest.
+
+    Pointers + provenance only: codes affected, PMID/PMCID, OA license, and how to
+    obtain fulltext (CC BY papers directly; author manuscripts by PMID via a
+    literature MCP). VCEP CSpecs remain the authoritative per-gene encoding.
+    """
+    manifest = dict(_guidance_manifest())
+    manifest.setdefault("research_use_notice", RESEARCH_USE_NOTICE)
+    return manifest
 
 
 def get_research_use_resource() -> dict[str, Any]:
