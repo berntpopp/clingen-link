@@ -107,9 +107,11 @@ jobs:
           PY
 
       - name: Open pull request
+        id: cpr
         if: ${{ steps.rebuild.outcome == 'success' }}
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
+          base: main
           add-paths: |
             clingen_link/data/clingen.sqlite.zst
             clingen_link/data/clingen.sqlite.sha256
@@ -134,3 +136,16 @@ jobs:
           labels: |
             data-refresh
             automated
+
+      - name: Verify pull request opened
+        if: ${{ steps.rebuild.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          num="${{ steps.cpr.outputs.pull-request-number }}"
+          if [ -z "$num" ]; then
+            echo "::error::create-pull-request produced no PR number: the snapshot branch was"
+            echo "::error::pushed without a PR. Enable Settings -> Actions -> General ->"
+            echo "::error::'Allow GitHub Actions to create and approve pull requests'."
+            exit 1
+          fi
+          echo "Opened/updated PR #${num}: ${{ steps.cpr.outputs.pull-request-url }}"
