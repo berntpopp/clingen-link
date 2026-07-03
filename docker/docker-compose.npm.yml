@@ -29,9 +29,8 @@ services:
       retries: 5
       start_period: 60s
     restart: unless-stopped
+    # read_only + the /tmp/clingen-link tmpfs are inherited from the base compose.
     read_only: true
-    tmpfs:
-      - /tmp/clingen-link:rw,noexec,nosuid,size=256m,mode=1777
     networks:
       - clingen_link_internal_net
       - npm_proxy_network
@@ -50,8 +49,8 @@ services:
         max-size: "50m"
         max-file: "5"
         labels: "service=clingen-link,environment=production,proxy=npm"
-    security_opt:
-      - no-new-privileges:true
+    # security_opt is inherited from the base compose (Compose rejects a
+    # list-merge that yields duplicate security_opt entries).
     cap_drop:
       - ALL
     pids_limit: 256

@@ -14,14 +14,10 @@ services:
     volumes: []
     ports: !reset []
 
+    # read_only, tmpfs, and security_opt are inherited from the base compose
+    # (Compose rejects a list-merge that yields duplicate security_opt entries).
     read_only: true
-    tmpfs:
-      # The store decompresses the snapshot .zst to a temp .sqlite at startup,
-      # so the writable tmpfs must be large enough to hold it.
-      - /tmp/clingen-link:rw,noexec,nosuid,size=256m,mode=1777
 
-    security_opt:
-      - no-new-privileges:true
     cap_drop:
       - ALL
 
