@@ -29,8 +29,21 @@ services:
       retries: 5
       start_period: 60s
     restart: unless-stopped
-    # read_only + the /tmp/clingen-link tmpfs are inherited from the base compose.
+    # This overlay is deployed as a SINGLE, self-contained compose file (the
+    # GeneFoundry -link fleet standard) — it is NOT layered over
+    # docker-compose.yml (note the different service key: `clingen_link` here vs
+    # `clingen-link` in the base), so nothing from the base is inherited.
+    # read_only, the writable tmpfs, and security_opt must be declared here.
     read_only: true
+    tmpfs:
+      # The store decompresses the snapshot .zst to a temp .sqlite at startup
+      # (clingen_link/store/db.py::_decompress_bundle -> tempfile.TemporaryDirectory,
+      # TMPDIR=/tmp/clingen-link). Under the read-only rootfs this MUST be a
+      # writable tmpfs, large enough to hold the decompressed .sqlite, or the
+      # server crash-loops with "No usable temporary directory".
+      - /tmp/clingen-link:rw,noexec,nosuid,size=256m,mode=1777
+    security_opt:
+      - no-new-privileges:true
     networks:
       - clingen_link_internal_net
       - npm_proxy_network
@@ -49,8 +62,6 @@ services:
         max-size: "50m"
         max-file: "5"
         labels: "service=clingen-link,environment=production,proxy=npm"
-    # security_opt is inherited from the base compose (Compose rejects a
-    # list-merge that yields duplicate security_opt entries).
     cap_drop:
       - ALL
     pids_limit: 256

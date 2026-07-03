@@ -51,8 +51,24 @@ def test_base_compose_binds_loopback_only() -> None:
     assert all(str(p).startswith("127.0.0.1:") for p in svc["ports"]), svc["ports"]
 
 
-def test_overlays_do_not_redeclare_tmpfs() -> None:
-    # Base owns the tmpfs; an overlay re-adding /tmp/clingen-link makes Compose
-    # list-merge yield a duplicate mount target. (Service keys differ by file.)
+def test_prod_overlay_inherits_base_tmpfs() -> None:
+    # The prod overlay shares the base service key (clingen-link) and is deployed
+    # LAYERED over docker-compose.yml, so it inherits the base tmpfs. Redeclaring
+    # it would make Compose list-merge yield a duplicate /tmp/clingen-link mount.
     assert "tmpfs" not in _service("docker-compose.prod.yml", "clingen-link")
-    assert "tmpfs" not in _service("docker-compose.npm.yml", "clingen_link")
+
+
+def test_npm_overlay_is_self_contained_with_writable_tmpfs() -> None:
+    # The npm overlay is deployed as a SINGLE, self-contained compose file (the
+    # GeneFoundry -link fleet standard) under its own service key (clingen_link).
+    # It is NOT layered over docker-compose.yml, and the differing service key
+    # means it could not inherit the base tmpfs even if it were. Under read_only
+    # it MUST therefore declare its own writable /tmp/clingen-link tmpfs, or the
+    # snapshot .zst decompress at startup (store/db.py) crash-loops with
+    # "No usable temporary directory".
+    svc = _service("docker-compose.npm.yml", "clingen_link")
+    assert svc["read_only"] is True
+    tmpfs = svc.get("tmpfs", [])
+    # S108 is a false positive here: this asserts a compose mount target, it is
+    # not a runtime use of a hardcoded temporary directory.
+    assert any("/tmp/clingen-link" in str(entry) for entry in tmpfs), tmpfs  # noqa: S108

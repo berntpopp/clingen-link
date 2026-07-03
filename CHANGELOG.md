@@ -2,6 +2,21 @@
 
 All notable changes to clingen-link are documented here.
 
+## [2.0.4] - 2026-07-03
+
+Fix a production crash loop (closes #26). `docker/docker-compose.npm.yml` set
+`read_only: true` but relied on the base compose to supply the
+`/tmp/clingen-link` tmpfs — an inheritance that never happens: the npm overlay
+is deployed as a single, self-contained compose file (the GeneFoundry `-link`
+fleet standard) under its own service key (`clingen_link`, distinct from the
+base's `clingen-link`), so nothing from the base merges in. The result was a
+read-only rootfs with no writable temp, and the snapshot `.zst` decompress at
+startup (`store/db.py`) crash-looped with `No usable temporary directory`.
+Make the npm overlay self-contained: declare the writable `/tmp/clingen-link`
+tmpfs and `security_opt: no-new-privileges` directly, and correct the compose
+hardening test to enforce the real invariant (the npm overlay MUST carry its
+own tmpfs; the prod overlay — same service key, layered — inherits it).
+
 ## [2.0.3] - 2026-07-03
 
 Single-source the package version. `clingen_link/__init__.py` now derives
