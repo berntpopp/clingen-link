@@ -6,6 +6,7 @@ from collections.abc import Callable
 
 from fastmcp import FastMCP
 
+from clingen_link import __version__
 from clingen_link.mcp.errors import install_validation_error_handler
 from clingen_link.mcp.output_validation import install_output_validation_error_handler
 from clingen_link.mcp.resources import RESEARCH_USE_NOTICE
@@ -62,6 +63,7 @@ def create_clingen_mcp(
     factory = service_factory or get_services
     mcp = FastMCP(
         name="clingen-link",
+        version=__version__,
         instructions=_INSTRUCTIONS,
         mask_error_details=True,
     )

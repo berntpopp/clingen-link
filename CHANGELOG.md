@@ -2,6 +2,15 @@
 
 All notable changes to clingen-link are documented here.
 
+## [2.0.2] - 2026-07-03
+
+Advertise the real package version in the MCP `initialize` response. The
+`FastMCP(...)` constructor in `clingen_link/mcp/facade.py` had no `version=`
+argument, so `serverInfo.version` defaulted to the FastMCP framework version
+(`3.4.2`) instead of clingen-link's own version. Pass `version=__version__` so
+hosts see `2.0.2`. `/health` was already correct. Non-breaking; the tool
+surface and endpoints are unchanged.
+
 ## [2.0.1] - 2026-06-29
 
 Adopt the **GeneFoundry Container & Deployment Hardening Standard v1** (closes #13):
