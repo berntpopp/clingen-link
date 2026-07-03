@@ -2,6 +2,15 @@
 
 All notable changes to clingen-link are documented here.
 
+## [2.0.3] - 2026-07-03
+
+Single-source the package version. `clingen_link/__init__.py` now derives
+`__version__` from installed distribution metadata
+(`importlib.metadata.version("clingen-link")`) instead of a hardcoded literal,
+so `pyproject.toml [project].version` is the sole source of truth (bump it and
+metadata → `__version__` → `serverInfo` → `/health` all follow). Non-behavioral;
+aligns clingen-link with the fleet versioning standard.
+
 ## [2.0.2] - 2026-07-03
 
 Advertise the real package version in the MCP `initialize` response. The
