@@ -2,6 +2,11 @@
 
 All notable changes to clingen-link are documented here.
 
+## [2.0.5] - 2026-07-05
+
+Harden ClinGen permalink test assertion to exact host match (clears CodeQL
+py/incomplete-url-substring-sanitization).
+
 ## [2.0.4] - 2026-07-03
 
 Fix a production crash loop (closes #26). `docker/docker-compose.npm.yml` set

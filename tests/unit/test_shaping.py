@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 import pytest
 
 from clingen_link.mcp.shaping import shape_record, shape_records, truncated_block
@@ -86,7 +88,7 @@ class TestShapeRecord:
     def test_citation_never_stripped_in_compact(self) -> None:
         out = shape_record(_validity(), domain="validity", response_mode="compact")
         assert out["recommended_citation"].startswith("ClinGen Gene-Disease Validity")
-        assert out["permalink"].startswith("https://search.clinicalgenome.org")
+        assert urlparse(out["permalink"]).netloc == "search.clinicalgenome.org"
 
 
 class TestShapeRecords:
