@@ -297,8 +297,7 @@ def install_validation_error_handler(mcp_server: Any) -> None:
                 record_mcp_error(
                     tool_name=str(getattr(_tool, "name", "unknown")),
                     error_code="validation_failed",
-                    message=envelope["message"],
-                    raw_message=str(exc),
+                    exc_type=type(exc).__name__,
                 )
                 convert_result = getattr(_tool, "convert_result", None)
                 if callable(convert_result):
@@ -337,13 +336,21 @@ def mcp_tool_error(exc: BaseException, context: McpErrorContext) -> McpToolError
     return McpToolError(payload)
 
 
-def record_mcp_error(*, tool_name: str, error_code: str, message: str, raw_message: str) -> None:
+def record_mcp_error(*, tool_name: str, error_code: str, exc_type: str) -> None:
+    """Append a non-PII summary of a failed call to the cross-session ring.
+
+    The ring is surfaced verbatim by ``get_diagnostics`` to any caller, so it must
+    never store the exception's free text: a raw ``str(exc)`` or envelope message
+    can embed the caller's query and leak it across sessions. Only the tool name,
+    the deterministic ``error_code``, and the exception class name are retained --
+    enough to self-diagnose without exposing input values. The full exception class
+    is still emitted on the structured LOG line for operators.
+    """
     _RECENT_ERRORS.append(
         {
             "tool_name": tool_name,
             "error_code": error_code,
-            "message": message,
-            "raw_message": raw_message[:500],
+            "exc_type": exc_type,
         }
     )
 
@@ -407,8 +414,7 @@ async def run_mcp_tool(
         record_mcp_error(
             tool_name=tool_name,
             error_code=exc.payload.get("error_code", "internal_error"),
-            message=exc.payload.get("message", ""),
-            raw_message=str(exc),
+            exc_type=type(exc).__name__,
         )
         return exc.payload
     except Exception as exc:  # broad catch is the error-boundary contract
@@ -422,7 +428,6 @@ async def run_mcp_tool(
         record_mcp_error(
             tool_name=tool_name,
             error_code=wrapped.payload["error_code"],
-            message=wrapped.payload["message"],
-            raw_message=str(exc),
+            exc_type=type(exc).__name__,
         )
         return wrapped.payload

@@ -50,11 +50,13 @@ def actionable_output_validation_error(
             **_provenance_meta(),
         },
     }
+    # No Python exception object here (the failure is an SDK output-schema
+    # mismatch string). Record a stable class literal rather than the raw SDK
+    # message so no free text enters the cross-session ring.
     record_mcp_error(
         tool_name=tool_name,
         error_code="output_validation_failed",
-        message=payload["message"],
-        raw_message=message,
+        exc_type="OutputValidationError",
     )
     # Also surface the event on the dedicated schema-drift ring so an LLM hitting
     # the output_validation_failed envelope can call get_diagnostics and

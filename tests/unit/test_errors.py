@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
+from fastmcp import FastMCP
 
 from clingen_link.exceptions import (
     ClingenApiError,
@@ -117,3 +120,22 @@ async def test_errors_recorded_in_ring() -> None:
     recent = get_recent_errors()
     assert recent
     assert recent[-1]["error_code"] == "not_found"
+
+
+async def test_diagnostics_ring_excludes_caller_free_text(mcp: FastMCP) -> None:
+    """D2: caller free-text embedded in an exception must never survive into the
+    cross-session get_diagnostics ring. The ring stores only non-PII fields
+    (tool_name, error_code, exc_type)."""
+    sentinel = "SENTINEL-PII-7f3a"
+
+    async def call() -> dict[str, object]:
+        raise RuntimeError(f"lookup failed for query={sentinel}")
+
+    # Route the failing call through the error boundary so it lands in the ring.
+    await run_mcp_tool("get_gene_validity", call)
+
+    result = await mcp.call_tool("get_diagnostics", {})
+    payload = result.structured_content or {}
+    assert payload["recent_error_count"] >= 1
+    # The sentinel appears NOWHERE in the diagnostics output.
+    assert sentinel not in json.dumps(payload)
