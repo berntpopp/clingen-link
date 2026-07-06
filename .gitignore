@@ -181,7 +181,8 @@ cython_debug/
 .cursorindexingignore
 
 # Claude
-.claude/
+.claude/*
+!.claude/skills/
 !CLAUDE.md
 
 # MCP Server specific
