@@ -9,6 +9,7 @@ actionable response instead of a raw SDK error string.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Any, cast
 
@@ -20,6 +21,8 @@ from clingen_link.mcp.errors import (
     record_mcp_error,
     record_schema_drift,
 )
+
+logger = logging.getLogger(__name__)
 
 OUTPUT_VALIDATION_PREFIX = "Output validation error:"
 _REQUIRED_PROPERTY_RE = re.compile(r"'(?P<field>[^']+)' is a required property")
@@ -60,11 +63,18 @@ def actionable_output_validation_error(
     )
     # Also surface the event on the dedicated schema-drift ring so an LLM hitting
     # the output_validation_failed envelope can call get_diagnostics and
-    # inspect which fields/tools are drifting.
+    # inspect which fields/tools are drifting. Only the parsed error_field is
+    # persisted to the caller-visible ring; the raw SDK message (which may embed
+    # response/query free text) is kept operator-side on the LOG line only.
+    logger.warning(
+        "output_schema_drift tool=%s error_field=%s message=%s",
+        tool_name,
+        error_field,
+        message[:300],
+    )
     record_schema_drift(
         tool_name=tool_name,
         error_field=error_field,
-        message=message,
     )
     return payload
 

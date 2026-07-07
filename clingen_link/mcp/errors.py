@@ -363,18 +363,24 @@ def clear_recent_errors() -> None:
     _RECENT_ERRORS.clear()
 
 
-def record_schema_drift(*, tool_name: str, error_field: str | None, message: str) -> None:
+def record_schema_drift(*, tool_name: str, error_field: str | None) -> None:
     """Append an output-schema-drift event to the bounded ring.
 
     Separate from record_mcp_error so an LLM (via get_diagnostics) can
     distinguish business errors from infrastructure events (the upstream payload
     no longer matches our declared output_schema).
+
+    Like the recent-errors ring, this is surfaced verbatim by ``get_diagnostics``
+    to any caller, so it must never store the raw SDK validation message: that
+    string can embed response values or the caller's query and would leak across
+    sessions. Only ``tool_name`` and the parsed ``error_field`` -- a declared
+    schema property NAME, never a value -- are retained. The raw message is still
+    available to operators on the structured LOG line at the call site.
     """
     _RECENT_SCHEMA_DRIFT.append(
         {
             "tool_name": tool_name,
             "error_field": error_field,
-            "message": message[:300],
         }
     )
 
