@@ -2,6 +2,17 @@
 
 All notable changes to clingen-link are documented here.
 
+## [2.0.6] - 2026-07-07
+
+Security: stop the cross-session diagnostics rings from retaining caller free
+text. `record_mcp_error` no longer stores the exception message / raw string
+(only `tool_name`, `error_code`, and the exception class name), and
+`record_schema_drift` no longer stores the raw SDK output-validation message
+(only `tool_name` and the parsed schema `error_field`). Both rings are surfaced
+verbatim by `get_diagnostics` to any caller, so a raw `str(exc)` or SDK message
+could embed another session's query or response values and leak across sessions.
+The full detail is still emitted operator-side on structured LOG lines.
+
 ## [2.0.5] - 2026-07-05
 
 Harden ClinGen permalink test assertion to exact host match (clears CodeQL
