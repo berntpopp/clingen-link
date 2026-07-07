@@ -21,6 +21,16 @@ from clingen_link.logging_config import configure_logging, get_server_logger
 from clingen_link.mcp.facade import create_clingen_mcp
 from clingen_link.mcp.service_adapters import ClingenServices, get_services
 
+# fastmcp >=3.4.3 defaults http_host_origin_protection on, which returns 421
+# Misdirected Request for any proxied /mcp request whose Host is not localhost
+# (e.g. traffic from the genefoundry-router). NPM already validates the Host
+# via server_name + TLS SNI, so disable the redundant app-layer guard. This is
+# a no-op on fastmcp <3.4.3 (the setting does not exist yet), so it is safe to
+# land before the version bump that would otherwise break federation.
+import fastmcp
+if hasattr(fastmcp.settings, "http_host_origin_protection"):
+    fastmcp.settings.http_host_origin_protection = False
+
 
 class UnifiedServerManager:
     def __init__(self) -> None:
