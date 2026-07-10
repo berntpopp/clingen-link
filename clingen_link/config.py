@@ -87,6 +87,8 @@ class Settings(BaseSettings):
     MCP_HOST: str = "127.0.0.1"
     MCP_PORT: int = 8000
     MCP_PATH: str = "/mcp"
+    ALLOWED_HOSTS: list[str] = ["localhost", "127.0.0.1", "::1"]
+    ALLOWED_ORIGINS: list[str] = []
 
     # ---- Logging ----
     LOG_LEVEL: str = "INFO"
@@ -114,6 +116,22 @@ class Settings(BaseSettings):
     def _validate_mcp_path(cls, v: str) -> str:
         """Ensure the MCP path starts with a slash."""
         return v if v.startswith("/") else f"/{v}"
+
+    @field_validator("ALLOWED_HOSTS", "ALLOWED_ORIGINS", mode="before")
+    @classmethod
+    def _parse_string_list(cls, v: object) -> list[str]:
+        """Parse exact allowlists from comma-separated values or JSON lists."""
+        if isinstance(v, str):
+            return [item.strip() for item in v.split(",") if item.strip()]
+        return list(v) if isinstance(v, (list, tuple)) else []
+
+    @field_validator("ALLOWED_HOSTS")
+    @classmethod
+    def _reject_wildcard_host(cls, v: list[str]) -> list[str]:
+        """Require exact hosts; pattern syntax makes the boundary ambiguous."""
+        if any(any(marker in host for marker in "*?[]") for host in v):
+            raise ValueError("wildcard patterns are not allowed in ALLOWED_HOSTS")
+        return v
 
     @property
     def cors_origins_list(self) -> list[str]:

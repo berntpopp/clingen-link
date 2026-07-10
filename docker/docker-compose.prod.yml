@@ -9,6 +9,9 @@ services:
       CLINGEN_LINK_LOG_LEVEL: INFO
       CLINGEN_LINK_CACHE_SIZE: 2000
       CLINGEN_LINK_CACHE_TTL_MINUTES: 120
+      CLINGEN_LINK_ALLOWED_HOSTS: '["localhost","127.0.0.1","::1","clingen-link.genefoundry.org"]'
+      CLINGEN_LINK_ALLOWED_ORIGINS: '["https://clingen-link.genefoundry.org"]'
+      CLINGEN_LINK_CORS_ORIGINS: '["https://clingen-link.genefoundry.org"]'
 
     # Remove development volume mounts and published ports.
     volumes: []
@@ -47,7 +50,7 @@ services:
 
     # Enhanced health check for production
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "-H", "Host: localhost", "http://localhost:8000/health"]
       interval: 20s
       timeout: 5s
       retries: 5
