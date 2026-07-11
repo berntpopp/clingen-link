@@ -22,7 +22,14 @@ from clingen_link.mcp.next_commands import cmd
 from clingen_link.mcp.patterns import GENE_SYMBOL_PATTERN
 from clingen_link.mcp.schema_relax import relax_output_schema
 from clingen_link.mcp.service_adapters import ClingenServices
-from clingen_link.mcp.shaping import shape_records, truncated_block
+from clingen_link.mcp.shaping import (
+    collect_fenced_objects,
+    fence_untrusted_blob,
+    shape_records,
+    truncated_block,
+)
+from clingen_link.mcp.untrusted_content import enforce_untrusted_text_limits
+from clingen_link.mcp.untrusted_schema import record_items
 
 _RESPONSE_MODE = Literal["minimal", "compact", "standard", "full"]
 _CONTEXT = Literal["Adult", "Pediatric"]
@@ -32,7 +39,8 @@ _LIST_SCHEMA = relax_output_schema(
         "type": "object",
         "properties": {
             "headline": {"type": "string"},
-            "records": {"type": "array", "items": {"type": "object"}},
+            # sepio_detail (include_detail=true) is the fenced live SEPIO blob.
+            "records": {"type": "array", "items": record_items("sepio_detail")},
             "total": {"type": "integer"},
             "page": {"type": "integer"},
             "size": {"type": "integer"},
@@ -99,9 +107,15 @@ def register_actionability_tools(
             records = shape_records(models, domain="actionability", response_mode=response_mode)
             if include_detail and models:
                 for model, record in zip(models, records, strict=True):
-                    record["sepio_detail"] = await services.actionability.sepio_detail(
-                        model.doc_id, context
-                    )
+                    # The live SEPIO document is raw upstream JSON with nested external
+                    # prose; fence the whole blob as one opaque untrusted_text object
+                    # (typed + size-bounded) rather than passing the raw payload through.
+                    detail = await services.actionability.sepio_detail(model.doc_id, context)
+                    record["sepio_detail"] = fence_untrusted_blob(
+                        detail, source="clingen", record_id=f"{model.doc_id}#{context}"
+                    ).model_dump(mode="json")
+                # Whole-response v1.1 limit backstop over the fenced SEPIO blobs.
+                enforce_untrusted_text_limits(collect_fenced_objects(records), max_objects=10000)
             citation = models[0].recommended_citation if models else None
             headline = (
                 f"{symbol}: {len(models)} actionability curation(s) ({context} context)."

@@ -16,6 +16,7 @@ envelope. Keeping the projections here means every tool drops the same fields in
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from pydantic import BaseModel
@@ -24,6 +25,22 @@ from .hgvs_select import canonical_hgvs
 from .untrusted_content import UntrustedText, fence_untrusted_text
 
 ResponseMode = str
+
+
+def fence_untrusted_blob(obj: Any, *, source: str, record_id: str) -> UntrustedText:
+    """Fence an arbitrary upstream JSON document as one opaque ``untrusted_text`` leaf.
+
+    Used for raw upstream blobs whose internal structure is unknown/unstable (e.g. the
+    live SEPIO actionability document): the whole document — and every prose field nested
+    anywhere inside it — is external untrusted content, so it is serialized to a single
+    deterministic JSON string and fenced as one typed object. ``raw_sha256`` is over that
+    serialized string's bytes; the router treats the whole subtree opaque. This both types
+    the blob as data and (via ``enforce_untrusted_text_limits``) bounds its size, instead
+    of emitting an unfenced, unbounded upstream payload.
+    """
+    raw = json.dumps(obj, ensure_ascii=False, sort_keys=True, default=str)
+    return fence_untrusted_text(raw, source=source, record_id=record_id)
+
 
 # Per-domain fields that are verbose enough to drop in compact mode (kept in
 # standard/full). These are the big evidence/PMID/HGVS lists and the free-text

@@ -42,8 +42,11 @@ class TestValidityService:
     async def test_citation_format(self, services: ClingenServices) -> None:
         row = (await services.validity.for_gene("AARS1"))[0]
         assert row.recommended_citation.startswith("ClinGen Gene-Disease Validity: AARS1 —")
-        assert "Charcot-Marie-Tooth disease axonal type 2N" in row.recommended_citation
-        assert "(MONDO:0013212)" in row.recommended_citation
+        # disease_name is externally sourced untrusted prose emitted as a fenced
+        # untrusted_text object; it MUST NOT appear raw in the sibling citation. The
+        # disease is referenced by its curated MONDO id instead (v1.1 no-duplication).
+        assert "Charcot-Marie-Tooth disease axonal type 2N" not in row.recommended_citation
+        assert "MONDO:0013212" in row.recommended_citation
         assert "Definitive (AD)" in row.recommended_citation
         assert row.permalink.startswith(
             "https://search.clinicalgenome.org/kb/gene-validity/CGGV:assertion_"

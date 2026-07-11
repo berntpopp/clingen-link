@@ -38,18 +38,20 @@ from clingen_link.mcp.shaping import (
     truncated_block,
 )
 from clingen_link.mcp.untrusted_content import enforce_untrusted_text_limits
+from clingen_link.mcp.untrusted_schema import CSPEC_RECORD_SCHEMA
 
 _RESPONSE_MODE = Literal["minimal", "compact", "standard", "full"]
 
 # Intentionally a permissive SUPERSET schema shared by all four cspec tools: record | records |
 # total | page | size never all coexist in one response, and relax_output_schema keeps it additive.
+# criteria[*].description and criteria[*].strengths[*].description are fenced untrusted_text (v1.1).
 _DETAIL_SCHEMA = relax_output_schema(
     {
         "type": "object",
         "properties": {
             "headline": {"type": "string"},
-            "record": {"type": "object"},
-            "records": {"type": "array", "items": {"type": "object"}},
+            "record": CSPEC_RECORD_SCHEMA,
+            "records": {"type": "array", "items": CSPEC_RECORD_SCHEMA},
             "total": {"type": "integer"},
             "page": {"type": "integer"},
             "size": {"type": "integer"},

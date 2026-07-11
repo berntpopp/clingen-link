@@ -23,6 +23,7 @@ from clingen_link.mcp.errors import (
     run_mcp_tool,
 )
 from clingen_link.mcp.output_validation import actionable_output_validation_error
+from clingen_link.mcp.untrusted_content import UntrustedTextLimitError
 
 
 @pytest.fixture(autouse=True)
@@ -58,6 +59,9 @@ async def test_success_preserves_existing_meta() -> None:
         (UpstreamInputError("bad shape"), "invalid_input", False),
         (RateLimitedError("429"), "rate_limited", True),
         (ClingenApiError("502"), "upstream_unavailable", True),
+        # UntrustedTextLimitError subclasses ValueError but MUST map to its own distinct,
+        # typed limit code — never the generic validation_failed/internal_error.
+        (UntrustedTextLimitError("too big"), "response_too_large", False),
         (ValueError("bad"), "validation_failed", False),
         (RuntimeError("boom"), "internal_error", False),
     ],
@@ -75,6 +79,21 @@ async def test_error_classification(
     assert result["error_code"] == expected_code
     assert result["retryable"] is expected_retryable
     assert result["_meta"]["next_commands"][-1]["tool"] == "get_diagnostics"
+
+
+async def test_untrusted_text_limit_error_is_typed_and_reformulates() -> None:
+    """A v1.1 limit breach surfaces a distinct typed error with reformulate guidance."""
+
+    async def call() -> dict[str, object]:
+        raise UntrustedTextLimitError("untrusted object count 9999 exceeds ceiling 128")
+
+    result = await run_mcp_tool(
+        "get_gene_validity", call, context=McpErrorContext(tool_name="get_gene_validity")
+    )
+    assert result["success"] is False
+    assert result["error_code"] == "response_too_large"
+    assert result["retryable"] is False
+    assert result["recovery_action"] == "reformulate_input"
 
 
 async def test_not_found_fallback_uses_gene_context() -> None:

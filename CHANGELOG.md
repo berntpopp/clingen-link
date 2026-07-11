@@ -22,16 +22,27 @@ disclaimer). Reshaped fields, by tool:
 - `get_gene_validity` / `search_validity` `records[*].disease_name`
 - `get_gene_summary` `validity[*].disease_name`,
   `dosage[*].haplo_description`, `dosage[*].triplo_description`
+- `get_gene_actionability` `records[*].sepio_detail` (with `include_detail=true`):
+  the whole live SEPIO assertion document — previously passed through raw and
+  unbounded — is now fenced as one opaque `untrusted_text` object (its `docId` and
+  every nested prose field live inside the typed `.text`, not as sibling keys).
 
-No field is duplicated in a sibling plain-string field. A new
-`clingen_link/mcp/untrusted_content.py` module (copied verbatim from the
+No fenced field is duplicated in a sibling plain-string field. In particular the
+gene-validity `recommended_citation` no longer embeds the raw `disease_name`; it
+references the disease by its curated MONDO id instead (the human-readable label
+still travels, as typed data, in the fenced `disease_name`). Each fenced field —
+including inside array `items` — is declared as the typed `untrusted_text` object
+(with the `kind` literal) in the tool's `output_schema`.
+
+A new `clingen_link/mcp/untrusted_content.py` module (copied verbatim from the
 fleet's released PubTator reference) provides the fence plus an explicit
 `enforce_untrusted_text_limits` guard (2 MiB/object, 8 MiB/response, and a
 per-tool object-count ceiling — 10000 for list-bearing tools, 128 for the
-single-record `get_variant_interpretation`) that raises a typed
-`UntrustedTextLimitError` rather than silently truncating. The existing
-`strip_html` sanitization on `disease_name` is unchanged (input-side); the
-new fence runs at the MCP output boundary.
+single-record `get_variant_interpretation`). Exceeding a ceiling raises a typed
+`UntrustedTextLimitError`, surfaced as a distinct `response_too_large` envelope
+(never a generic `validation_failed` / `internal_error`), rather than silently
+truncating. The existing `strip_html` sanitization on `disease_name` is unchanged
+(input-side); the new fence runs at the MCP output boundary.
 
 ## [2.0.7] - 2026-07-11
 

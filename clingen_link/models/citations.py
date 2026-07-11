@@ -32,12 +32,19 @@ def _val(row: dict[str, Any], key: str, default: str = _NA) -> str:
 # Validity
 # ---------------------------------------------------------------------------
 def validity_citation(row: dict[str, Any]) -> tuple[str, str]:
-    """Return ``(permalink, recommended_citation)`` for a validity assertion."""
+    """Return ``(permalink, recommended_citation)`` for a validity assertion.
+
+    ``disease_name`` is externally sourced free text emitted as a fenced
+    ``untrusted_text`` object on the record (Response-Envelope v1.1); it MUST NOT be
+    duplicated raw into this sibling citation string. The disease is referenced by its
+    curated MONDO id instead — a stable identifier, not upstream prose. The human-
+    readable label still travels (as typed data) in the record's fenced ``disease_name``.
+    """
     perm_id = _val(row, "perm_id", "")
     permalink = _VALIDITY_PERMALINK.format(perm_id=perm_id) if perm_id else _NA
     citation = (
         f"ClinGen Gene-Disease Validity: {_val(row, 'symbol')} — "
-        f"{_val(row, 'disease_name')} ({_val(row, 'mondo')}) — "
+        f"{_val(row, 'mondo')} — "
         f"{_val(row, 'classification')} ({_val(row, 'moi')}), "
         f"curated by {_val(row, 'expert_panel')}, "
         f"classified {_val(row, 'classified_date')}. {permalink}"

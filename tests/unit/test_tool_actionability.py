@@ -44,7 +44,12 @@ class TestGetGeneActionability:
             tool_mcp, "get_gene_actionability", {"gene_symbol": "SCN1A", "include_detail": True}
         )
         assert payload["success"] is True
-        assert payload["records"][0]["sepio_detail"]["docId"] == "AC1034"
+        # The raw live SEPIO blob is fenced as one v1.1 untrusted_text object, not passed
+        # through raw: its docId now lives inside the fenced .text, not as a sibling key.
+        sepio = payload["records"][0]["sepio_detail"]
+        assert sepio["kind"] == "untrusted_text"
+        assert "AC1034" in sepio["text"]
+        assert "docId" not in sepio
         assert route.called
 
     async def test_resolvable_gene_no_curation_is_success_zero(self, tool_mcp: FastMCP) -> None:

@@ -25,6 +25,7 @@ from clingen_link.mcp.schema_relax import relax_output_schema
 from clingen_link.mcp.service_adapters import ClingenServices
 from clingen_link.mcp.shaping import collect_fenced_objects, shape_records
 from clingen_link.mcp.untrusted_content import enforce_untrusted_text_limits
+from clingen_link.mcp.untrusted_schema import record_items
 
 _RESPONSE_MODE = Literal["minimal", "compact", "standard", "full"]
 
@@ -70,8 +71,12 @@ _SUMMARY_SCHEMA = relax_output_schema(
             "symbol": {"type": "string"},
             "hgnc_id": {"type": ["string", "null"]},
             "counts": {"type": "object"},
-            "validity": {"type": "array", "items": {"type": "object"}},
-            "dosage": {"type": "array", "items": {"type": "object"}},
+            # Embedded validity/dosage records carry the same fenced fields (v1.1).
+            "validity": {"type": "array", "items": record_items("disease_name")},
+            "dosage": {
+                "type": "array",
+                "items": record_items("haplo_description", "triplo_description"),
+            },
             "actionability": {"type": "array", "items": {"type": "object"}},
             "erepo_variant_count": {"type": "integer"},
             "recommended_citation": {"type": "string"},

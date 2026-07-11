@@ -23,6 +23,7 @@ from clingen_link.mcp.schema_relax import relax_output_schema
 from clingen_link.mcp.service_adapters import ClingenServices
 from clingen_link.mcp.shaping import collect_fenced_objects, shape_records, truncated_block
 from clingen_link.mcp.untrusted_content import enforce_untrusted_text_limits
+from clingen_link.mcp.untrusted_schema import record_items
 
 _RESPONSE_MODE = Literal["minimal", "compact", "standard", "full"]
 _CLASSIFICATION = Literal[
@@ -41,7 +42,8 @@ _LIST_SCHEMA = relax_output_schema(
         "type": "object",
         "properties": {
             "headline": {"type": "string"},
-            "records": {"type": "array", "items": {"type": "object"}},
+            # Each record's `disease_name` is a fenced untrusted_text object (v1.1).
+            "records": {"type": "array", "items": record_items("disease_name")},
             "total": {"type": "integer"},
             "page": {"type": "integer"},
             "size": {"type": "integer"},

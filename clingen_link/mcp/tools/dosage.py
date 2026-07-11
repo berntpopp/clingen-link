@@ -30,6 +30,7 @@ from clingen_link.mcp.shaping import (
     truncated_block,
 )
 from clingen_link.mcp.untrusted_content import enforce_untrusted_text_limits
+from clingen_link.mcp.untrusted_schema import record_items
 
 _RESPONSE_MODE = Literal["minimal", "compact", "standard", "full"]
 
@@ -53,7 +54,11 @@ _LIST_SCHEMA = relax_output_schema(
         "type": "object",
         "properties": {
             "headline": {"type": "string"},
-            "records": {"type": "array", "items": {"type": "object"}},
+            # haplo/triplo_description are fenced untrusted_text objects (v1.1).
+            "records": {
+                "type": "array",
+                "items": record_items("haplo_description", "triplo_description"),
+            },
             "total": {"type": "integer"},
             "page": {"type": "integer"},
             "size": {"type": "integer"},

@@ -32,6 +32,7 @@ from clingen_link.mcp.shaping import (
     truncated_block,
 )
 from clingen_link.mcp.untrusted_content import enforce_untrusted_text_limits
+from clingen_link.mcp.untrusted_schema import UNTRUSTED_TEXT_OR_NULL, record_items
 from clingen_link.models.models import VariantInterpretation
 from clingen_link.store import queries
 
@@ -49,7 +50,8 @@ _LIST_SCHEMA = relax_output_schema(
         "type": "object",
         "properties": {
             "headline": {"type": "string"},
-            "records": {"type": "array", "items": {"type": "object"}},
+            # Each record's `summary` is a fenced untrusted_text object (v1.1).
+            "records": {"type": "array", "items": record_items("summary")},
             "total": {"type": "integer"},
             "page": {"type": "integer"},
             "size": {"type": "integer"},
@@ -64,7 +66,11 @@ _DETAIL_SCHEMA = relax_output_schema(
         "type": "object",
         "properties": {
             "headline": {"type": "string"},
-            "interpretation": {"type": "object"},
+            # The interpretation's `summary` is a fenced untrusted_text object (v1.1).
+            "interpretation": {
+                "type": "object",
+                "properties": {"summary": UNTRUSTED_TEXT_OR_NULL},
+            },
             "source": {"type": "string"},
             "notice": {"type": ["string", "null"]},
             "recommended_citation": {"type": ["string", "null"]},

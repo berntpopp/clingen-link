@@ -24,6 +24,7 @@ from clingen_link.exceptions import (
     SnapshotUnavailableError,
     UpstreamInputError,
 )
+from clingen_link.mcp.untrusted_content import UntrustedTextLimitError
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +135,12 @@ def _classify(
         return "invalid_input", False, tool, args
     if isinstance(exc, RateLimitedError):
         return "rate_limited", True, "get_diagnostics", {}
+    if isinstance(exc, UntrustedTextLimitError):
+        # A fenced-prose response exceeded a Response-Envelope v1.1 ceiling (per-object
+        # 2 MiB, 128/10000 objects, or 8 MiB total). Distinct typed limit error — never a
+        # generic validation_failed/internal_error — so the caller narrows the request
+        # rather than retrying an identical, still-too-large call.
+        return "response_too_large", False, "get_server_capabilities", None
     if isinstance(exc, ValueError):
         return "validation_failed", False, "get_server_capabilities", None
     if isinstance(exc, ClingenApiError):
@@ -151,7 +158,7 @@ def _recovery_action(error_code: str, retryable: bool) -> str:
     """
     if retryable:
         return "retry_backoff"
-    if error_code in {"invalid_input", "validation_failed"}:
+    if error_code in {"invalid_input", "validation_failed", "response_too_large"}:
         return "reformulate_input"
     return "switch_tool"
 
@@ -182,6 +189,12 @@ def _recovery_text(error_code: str, fallback_tool: str | None, tool_name: str | 
         return (
             "Inputs failed validation. Check the tool schema and call "
             "get_server_capabilities for accepted identifier shapes and filters."
+        )
+    if error_code == "response_too_large":
+        return (
+            "The response's fenced free-text content exceeded a Response-Envelope v1.1 "
+            "size ceiling. Do not retry unchanged. Narrow the request (a smaller "
+            "response_mode, a tighter filter, or a smaller page size) so the payload fits."
         )
     if error_code == "snapshot_unavailable":
         return (
