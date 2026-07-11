@@ -29,16 +29,21 @@ def test_is_obsolete_label_detects_marker() -> None:
     assert sanitize.is_obsolete_label(None) is False
 
 
-def test_validity_assertion_sanitizes_disease_name() -> None:
+def test_validity_assertion_keeps_raw_disease_name_for_fencing() -> None:
+    # v1.1: disease_name is carried VERBATIM by the model (no strip_html) so the MCP-boundary
+    # fence can hash the raw upstream bytes and never regex-delete prose. The obsolescence
+    # marker is still surfaced as a structured boolean derived from the raw label, and the
+    # (MONDO-referenced) citation never embeds the label.
+    raw = 'dilated cardiomyopathy <span class="badge">Obsolete Term</span>'
     row = {
         "symbol": "TMPO",
-        "disease_name": 'dilated cardiomyopathy <span class="badge">Obsolete Term</span>',
+        "disease_name": raw,
         "perm_id": "p1",
         "mondo": "MONDO:0005045",
         "classification": "Limited",
     }
     model = ValidityAssertion.from_row(row)
-    assert "<span" not in (model.disease_name or "")
+    assert model.disease_name == raw  # verbatim, HTML preserved as inert data
     assert model.disease_obsolete is True
     assert "<span" not in model.recommended_citation
 

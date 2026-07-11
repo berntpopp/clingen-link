@@ -52,6 +52,24 @@ class TestGetGeneActionability:
         assert "docId" not in sepio
         assert route.called
 
+    @respx.mock
+    async def test_include_detail_minimal_is_valid(self, tool_mcp: FastMCP) -> None:
+        # response_mode="minimal" yields an empty records list; include_detail must NOT try to
+        # zip it against the non-empty models (that raised) — it returns a valid minimal response.
+        route = respx.get(f"{ACTION_TEST_BASE}/Adult/api/sepio/doc/AC1034").mock(
+            return_value=httpx.Response(200, json={"docId": "AC1034"})
+        )
+        payload = await _call(
+            tool_mcp,
+            "get_gene_actionability",
+            {"gene_symbol": "SCN1A", "include_detail": True, "response_mode": "minimal"},
+        )
+        assert payload["success"] is True
+        assert payload["total"] >= 1
+        assert payload["records"] == []
+        # minimal omits per-record bodies, so no live SEPIO fetch is made.
+        assert not route.called
+
     async def test_resolvable_gene_no_curation_is_success_zero(self, tool_mcp: FastMCP) -> None:
         # M5: AARS1 resolves but has no actionability curation → success+0, not not_found.
         payload = await _call(tool_mcp, "get_gene_actionability", {"gene_symbol": "AARS1"})

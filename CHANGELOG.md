@@ -41,8 +41,13 @@ per-tool object-count ceiling — 10000 for list-bearing tools, 128 for the
 single-record `get_variant_interpretation`). Exceeding a ceiling raises a typed
 `UntrustedTextLimitError`, surfaced as a distinct `response_too_large` envelope
 (never a generic `validation_failed` / `internal_error`), rather than silently
-truncating. The existing `strip_html` sanitization on `disease_name` is unchanged
-(input-side); the new fence runs at the MCP output boundary.
+truncating. The fence is the ONLY sanitation applied to the fenced value: `disease_name`
+is now carried through the response model verbatim (its former model-level `strip_html`
+pass was removed) so `raw_sha256` digests the raw upstream bytes and no prose is
+regex-deleted, per the v1.1 rules. Obsolescence is still surfaced as the structured
+`disease_obsolete` boolean derived from the raw label. (The offline ETL build still strips
+presentational HTML from `disease_name` when assembling the snapshot corpus — a separate
+ingest concern, distinct from the MCP output-boundary fence.)
 
 ## [2.0.7] - 2026-07-11
 

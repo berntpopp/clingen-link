@@ -42,18 +42,24 @@ class ValidityAssertion(_Base):
 
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> ValidityAssertion:
-        """Build from a ``validity`` store row (disease_name HTML-sanitized).
+        """Build from a ``validity`` store row, carrying ``disease_name`` through verbatim.
 
-        Defense-in-depth: the ETL also sanitizes labels at build time, but sanitizing here too means
-        an older snapshot that still carries ``<span>…Obsolete Term</span>`` markup never leaks raw
-        HTML into the citation, and ``disease_obsolete`` is derived from the label when the snapshot
-        lacks the structured column (assessment M1).
+        ``disease_name`` is externally sourced free text emitted as a fenced
+        ``untrusted_text`` object at the MCP boundary (Response-Envelope v1.1). It is kept
+        VERBATIM here — the fence's own NFC + control-codepoint strip is the only sanitation
+        allowed, and ``raw_sha256`` must digest the raw upstream bytes, so this constructor
+        must NOT ``strip_html``/whitespace-collapse it (both would regex-delete prose and make
+        the digest cover cleaned text — v1.1 violations). ``disease_obsolete`` is still derived
+        from the raw label so an obsolescence marker in the markup surfaces as a structured
+        boolean (assessment M1) without mutating the fenced prose. HTML markup inside the fenced
+        value is inert data, not rendered instructions; the (now MONDO-referenced) citation no
+        longer embeds the label, so nothing renders it.
         """
-        from ..etl.sanitize import is_obsolete_label, strip_html
+        from ..etl.sanitize import is_obsolete_label
 
         raw_disease = row.get("disease_name")
         clean = dict(row)
-        clean["disease_name"] = strip_html(raw_disease) or None
+        clean["disease_name"] = raw_disease or None
         clean["disease_obsolete"] = bool(row.get("disease_obsolete")) or is_obsolete_label(
             raw_disease
         )
