@@ -80,7 +80,7 @@ class ClingenClient(BaseClient):
             params["hgvs"] = hgvs or ""
         url = f"{self._erepo_base}/api/classifications"
         payload = await self.get_json(url, params=params)
-        return self._first_interpretation(payload, selector=caid or hgvs or "")
+        return self._first_interpretation(payload)
 
     async def erepo_for_gene_live(
         self, gene: str, *, match_limit: int | None = None
@@ -151,9 +151,10 @@ class ClingenClient(BaseClient):
                     return [p for p in value if isinstance(p, dict)]
         return []
 
-    def _first_interpretation(self, payload: Any, *, selector: str) -> dict[str, Any]:
-        """Return the first interpretation, or raise not-found for ``selector``."""
+    def _first_interpretation(self, payload: Any) -> dict[str, Any]:
+        """Return the first interpretation, or raise not-found (identifier-free message)."""
         items = self._interpretation_list(payload)
         if not items:
-            raise DataNotFoundError(f"No ERepo interpretation found for '{selector}'.")
+            # Do not echo the caller-supplied selector back into the message.
+            raise DataNotFoundError("No ERepo interpretation matched the requested identifier.")
         return items[0]

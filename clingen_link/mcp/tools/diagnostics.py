@@ -12,6 +12,7 @@ from clingen_link.mcp.errors import get_recent_errors, get_recent_schema_drift, 
 from clingen_link.mcp.resources import MCP_PROTOCOL_VERSION, _server_version
 from clingen_link.mcp.schema_relax import relax_output_schema
 from clingen_link.mcp.service_adapters import ClingenServices
+from clingen_link.mcp.untrusted_content import sanitize_message
 
 
 def register_diagnostics_tools(
@@ -75,7 +76,9 @@ def _snapshot_health(service_factory: Callable[[], ClingenServices]) -> dict[str
     try:
         meta = service_factory().meta()
     except Exception as exc:  # snapshot missing/unreadable — surface, don't crash
-        return {"status": "unavailable", "detail": str(exc)[:240]}
+        # This `detail` is surfaced verbatim to any caller, so sanitize it (strip the
+        # fence's forbidden code points + length-cap) rather than emitting raw str(exc).
+        return {"status": "unavailable", "detail": sanitize_message(str(exc))}
     return {
         "status": "loaded",
         "domains": {

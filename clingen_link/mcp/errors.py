@@ -24,7 +24,7 @@ from clingen_link.exceptions import (
     SnapshotUnavailableError,
     UpstreamInputError,
 )
-from clingen_link.mcp.untrusted_content import UntrustedTextLimitError
+from clingen_link.mcp.untrusted_content import UntrustedTextLimitError, sanitize_message
 
 logger = logging.getLogger(__name__)
 
@@ -92,8 +92,12 @@ def _provenance_meta(context: McpErrorContext | None = None) -> dict[str, Any]:
 
 def _safe_message(exc: BaseException) -> str:
     text = str(exc) or exc.__class__.__name__
-    # ClinGen errors are user-input shaped; trim long tracebacks/identifiers.
-    return text[:240]
+    # Every caller-visible message is routed through sanitize_message: it strips the
+    # fence's forbidden control/zero-width/bidi/NUL code points and length-caps, so a
+    # classified exception whose text embeds those code points (e.g. a hostile upstream
+    # or caller-influenced string) can never smuggle them into the error frame. Upstream
+    # response bodies are additionally kept out of the message at the API client.
+    return sanitize_message(text)
 
 
 def _fallback_for(context: McpErrorContext) -> tuple[str, dict[str, Any] | None]:
@@ -239,7 +243,11 @@ def _extract_field_errors(errors: list[Any]) -> list[dict[str, str]]:
         loc = err.get("loc", ())
         field_name = ".".join(str(x) for x in loc) if loc else "unknown"
         reason = err.get("msg", str(err.get("type", "invalid")))
-        result.append({"field": field_name, "reason": reason})
+        # The Pydantic-authored reason can echo caller-influenced input; sanitize the
+        # arg-validation error frame so no forbidden code point reaches the caller.
+        result.append(
+            {"field": sanitize_message(field_name), "reason": sanitize_message(str(reason))}
+        )
     return result
 
 

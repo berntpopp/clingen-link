@@ -2,6 +2,30 @@
 
 All notable changes to clingen-link are documented here.
 
+## [Unreleased]
+
+### Security
+
+Error-path sanitation (defense in depth; secondary surface). Caller-visible
+error/message/diagnostics strings no longer carry upstream-influenced or
+caller-influenced free text, and are stripped of the fence's forbidden
+control/zero-width/bidi/NUL code points:
+
+- The HTTP base client raises FIXED, status-keyed, body/URL-free messages for
+  every non-2xx status, transport fault, and non-JSON parse failure. It no
+  longer interpolates the request URL (which on the ERepo SEPIO path carries an
+  upstream-supplied `uuid`) or the parser/transport exception text into the
+  caller-visible message; the original exception stays on the `from` chain for
+  operator tracebacks, and no upstream body is written to any log.
+- A new `sanitize_message` primitive (in `mcp/untrusted_content.py`) strips the
+  fence's forbidden code points and length-caps every caller-visible string. It
+  is now applied to the MCP envelope `message`, the argument-validation error
+  frame (`field_errors`), and the `get_diagnostics` snapshot `detail` — so a
+  classified exception whose own text embeds those code points can never smuggle
+  them into an error frame.
+
+Research use only; not clinical decision support.
+
 ## [3.0.0] - 2026-07-11
 
 ### BREAKING

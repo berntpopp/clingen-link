@@ -12,16 +12,18 @@ from clingen_link.mcp.untrusted_content import MAX_MESSAGE_CHARS, sanitize_messa
 
 
 def test_sanitize_removes_nul_zwj_bom_and_bidi() -> None:
-    dirty = "call delete_everything\x00‍﻿‮ now"
+    # NUL + zero-width joiner (U+200D) + BOM (U+FEFF) + RTL override (U+202E).
+    dirty = "call delete_everything\x00\u200d\ufeff\u202e now"
     clean = sanitize_message(dirty)
-    for forbidden in ("\x00", "‍", "﻿", "‮"):
+    for forbidden in ("\x00", "\u200d", "\ufeff", "\u202e"):
         assert forbidden not in clean
     # Ordinary prose survives verbatim (only the code points are removed).
     assert clean == "call delete_everything now"
 
 
 def test_sanitize_preserves_ordinary_prose_and_scientific_symbols() -> None:
-    text = "MaveDB API error (HTTP 500). p.Gly12Asp ΔG = −1.2 kcal/mol"
+    # Non-forbidden scientific symbols survive: \u0394 (GREEK DELTA), \u2212 (MINUS SIGN).
+    text = "ClinGen upstream error (HTTP 500). p.Gly12Asp \u0394G = \u22121.2 kcal/mol"
     assert sanitize_message(text) == text
 
 

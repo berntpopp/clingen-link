@@ -114,7 +114,11 @@ class BaseClient:
         try:
             return response.json()
         except ValueError as exc:  # malformed JSON body
-            raise ClingenApiError(f"Upstream returned non-JSON body from {url}: {exc}") from exc
+            # Do NOT interpolate the parser exception or the request URL: the URL can
+            # carry an upstream-supplied identifier (e.g. the ERepo SEPIO ``uuid``) and
+            # the parser text is upstream-influenced. Raise a FIXED, body-free message;
+            # the original exception stays on the ``from`` chain for operator tracebacks.
+            raise ClingenApiError("The ClinGen upstream returned a non-JSON response.") from exc
 
     async def _request_with_retry(self, url: str, params: dict[str, Any] | None) -> httpx.Response:
         """Run one GET through bounded concurrency + jittered retry.
@@ -135,7 +139,11 @@ class BaseClient:
             except (httpx.TransportError, httpx.TimeoutException) as exc:
                 last_exc = exc
                 if attempt == _MAX_ATTEMPTS - 1:
-                    raise ClingenApiError(f"Upstream transport error for {url}: {exc}") from exc
+                    # Body/URL-free: the transport exception text + URL are not echoed
+                    # to callers (kept on the ``from`` chain for operator tracebacks).
+                    raise ClingenApiError(
+                        "A ClinGen upstream request failed with a transport error."
+                    ) from exc
                 await self._backoff(delay)
                 delay = min(delay * 2, _BACKOFF_MAX_SECONDS)
                 continue
@@ -149,8 +157,8 @@ class BaseClient:
             return self._classify_response(response, url)
         # Loop exhausted on transient transport faults.
         raise ClingenApiError(  # pragma: no cover - guarded by raise above
-            f"Upstream request to {url} failed after {_MAX_ATTEMPTS} attempts: {last_exc}"
-        )
+            f"A ClinGen upstream request failed after {_MAX_ATTEMPTS} attempts."
+        ) from last_exc
 
     @staticmethod
     async def _backoff(delay: float) -> None:
@@ -159,19 +167,26 @@ class BaseClient:
 
     @staticmethod
     def _classify_response(response: httpx.Response, url: str) -> httpx.Response:
-        """Map a final HTTP status to a typed fault, or return the response."""
+        """Map a final HTTP status to a typed fault, or return the response.
+
+        The upstream response BODY and the request URL are deliberately NOT
+        interpolated into the raised message: the URL can carry an
+        upstream-supplied identifier and a 4xx/5xx body can reflect
+        caller-influenced prose. The HTTP status is the only safe upstream-derived
+        scalar; a FIXED, status-keyed message is raised instead.
+        """
         code = response.status_code
         if code < 400:
             return response
         if code == 404:
-            raise DataNotFoundError(f"Not found upstream ({url}).")
+            raise DataNotFoundError("The requested record was not found in the ClinGen upstream.")
         if code == 429:
-            raise RateLimitedError(f"Rate limited by upstream (HTTP 429): {url}")
+            raise RateLimitedError("The ClinGen upstream rate limited the request (HTTP 429).")
         if 400 <= code < 500:
             raise UpstreamInputError(
-                f"Upstream rejected the request as malformed (HTTP {code}): {url}"
+                f"The ClinGen upstream rejected the request as malformed (HTTP {code})."
             )
-        raise ClingenApiError(f"Upstream error (HTTP {code}): {url}")
+        raise ClingenApiError(f"The ClinGen upstream returned an error (HTTP {code}).")
 
     # ------------------------------------------------------------------
     # Lifecycle
