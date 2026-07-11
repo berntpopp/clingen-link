@@ -2,14 +2,19 @@
 
 All notable changes to clingen-link are documented here.
 
-## [Unreleased]
+## [3.0.1] - 2026-07-11
 
 ### Security
 
-Error-path sanitation (defense in depth; secondary surface). Caller-visible
-error/message/diagnostics strings no longer carry upstream-influenced or
-caller-influenced free text, and are stripped of the fence's forbidden
-control/zero-width/bidi/NUL code points:
+Security (defense in depth): caller-visible error messages are sanitized of
+control/zero-width/bidi/NUL code points; the diagnostics detail, arg-validation
+frame (now catches FastMCP's own ValidationError), and output-validation log no
+longer expose exception detail/paths/argument names; upstream-influenced
+parser/URL text no longer echoed. Research use only.
+
+Detail — caller-visible error/message/diagnostics strings no longer carry
+upstream-influenced or caller-influenced free text, and are stripped of the
+fence's forbidden control/zero-width/bidi/NUL code points:
 
 - The HTTP base client raises FIXED, status-keyed, body/URL-free messages for
   every non-2xx status, transport fault, and non-JSON parse failure. It no
