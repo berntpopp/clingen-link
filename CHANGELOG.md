@@ -2,6 +2,16 @@
 
 All notable changes to clingen-link are documented here.
 
+## [2.0.7] - 2026-07-11
+
+### Security
+
+Re-enabled FastMCP 3.4.4 strict Host/Origin (DNS-rebinding) protection with
+configurable allowlists. `ALLOWED_HOSTS` / `ALLOWED_ORIGINS` gate incoming
+requests at the transport boundary (default loopback); set `ALLOWED_HOSTS` to
+the proxied public host when deploying behind a reverse proxy or router
+federation, otherwise requests are rejected with a 421.
+
 ## [2.0.6] - 2026-07-07
 
 Security: stop the cross-session diagnostics rings from retaining caller free
