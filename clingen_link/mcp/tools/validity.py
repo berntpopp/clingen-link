@@ -21,7 +21,8 @@ from clingen_link.mcp.next_commands import cmd
 from clingen_link.mcp.patterns import GENE_SYMBOL_PATTERN, MONDO_PATTERN
 from clingen_link.mcp.schema_relax import relax_output_schema
 from clingen_link.mcp.service_adapters import ClingenServices
-from clingen_link.mcp.shaping import shape_records, truncated_block
+from clingen_link.mcp.shaping import collect_fenced_objects, shape_records, truncated_block
+from clingen_link.mcp.untrusted_content import enforce_untrusted_text_limits
 
 _RESPONSE_MODE = Literal["minimal", "compact", "standard", "full"]
 _CLASSIFICATION = Literal[
@@ -104,6 +105,8 @@ def register_validity_tools(
                 symbol, classification=classification, moi=moi
             )
             records = shape_records(models, domain="validity", response_mode=response_mode)
+            # List-bearing (not paginated -- a gene's full assertion set); v1.1 limit backstop.
+            enforce_untrusted_text_limits(collect_fenced_objects(records), max_objects=10000)
             citation = models[0].recommended_citation if models else None
             headline = (
                 f"{symbol}: {len(models)} validity assertion(s)"
@@ -184,6 +187,8 @@ def register_validity_tools(
                 size=size,
             )
             records = shape_records(models, domain="validity", response_mode=response_mode)
+            # List-bearing (page size up to 100); v1.1 limit backstop over the fenced disease names.
+            enforce_untrusted_text_limits(collect_fenced_objects(records), max_objects=10000)
             shown = len(records)
             dropped = max(0, total - (page - 1) * size - shown)
             citation = models[0].recommended_citation if models else None

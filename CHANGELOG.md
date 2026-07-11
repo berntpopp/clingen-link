@@ -2,6 +2,37 @@
 
 All notable changes to clingen-link are documented here.
 
+## [3.0.0] - 2026-07-11
+
+### BREAKING
+
+Response-Envelope Standard v1.1 untrusted-content fencing. Every externally
+sourced ClinGen free-text field now emits the typed `untrusted_text` object
+(`kind` / `text` / `provenance` / `raw_sha256`) instead of a bare string, so
+hosts and the router treat retrieved prose as opaque data rather than
+instructions (defense in depth; research use only, mirrors the ClinGen
+disclaimer). Reshaped fields, by tool:
+
+- `get_variant_interpretation` `interpretation.summary`
+- `get_variant_interpretations` `records[*].summary` (full/standard modes)
+- `get_gene_dosage` / `search_dosage` `records[*].haplo_description` and
+  `records[*].triplo_description` (full/standard modes)
+- `get_cspec` / `get_cspec_criterion` `record(s).criteria[*].description`
+  (and each `criteria[*].strengths[*].description`)
+- `get_gene_validity` / `search_validity` `records[*].disease_name`
+- `get_gene_summary` `validity[*].disease_name`,
+  `dosage[*].haplo_description`, `dosage[*].triplo_description`
+
+No field is duplicated in a sibling plain-string field. A new
+`clingen_link/mcp/untrusted_content.py` module (copied verbatim from the
+fleet's released PubTator reference) provides the fence plus an explicit
+`enforce_untrusted_text_limits` guard (2 MiB/object, 8 MiB/response, and a
+per-tool object-count ceiling — 10000 for list-bearing tools, 128 for the
+single-record `get_variant_interpretation`) that raises a typed
+`UntrustedTextLimitError` rather than silently truncating. The existing
+`strip_html` sanitization on `disease_name` is unchanged (input-side); the
+new fence runs at the MCP output boundary.
+
 ## [2.0.7] - 2026-07-11
 
 ### Security

@@ -23,7 +23,13 @@ from clingen_link.mcp.next_commands import cmd
 from clingen_link.mcp.patterns import GENE_SYMBOL_PATTERN
 from clingen_link.mcp.schema_relax import relax_output_schema
 from clingen_link.mcp.service_adapters import ClingenServices
-from clingen_link.mcp.shaping import shape_record, shape_records, truncated_block
+from clingen_link.mcp.shaping import (
+    collect_fenced_objects,
+    shape_record,
+    shape_records,
+    truncated_block,
+)
+from clingen_link.mcp.untrusted_content import enforce_untrusted_text_limits
 
 _RESPONSE_MODE = Literal["minimal", "compact", "standard", "full"]
 
@@ -117,6 +123,8 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
             ]
             # minimal omits per-record bodies (headline + counts only), like the list/summary tools.
             records = [] if response_mode == "minimal" else shaped
+            # List-bearing (not paginated); v1.1 limit backstop over the fenced haplo/triplo text.
+            enforce_untrusted_text_limits(collect_fenced_objects(records), max_objects=10000)
             citation = models[0].recommended_citation if models else None
             head = shaped[0] if shaped else {}
             if models:
@@ -205,6 +213,8 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
                 _annotate(r)
                 for r in shape_records(models, domain="dosage", response_mode=response_mode)
             ]
+            # List-bearing (page size up to 100); v1.1 limit backstop over the fenced text.
+            enforce_untrusted_text_limits(collect_fenced_objects(records), max_objects=10000)
             shown = len(records)
             dropped = max(0, total - (page - 1) * size - shown)
             citation = models[0].recommended_citation if models else None

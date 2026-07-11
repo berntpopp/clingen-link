@@ -21,6 +21,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from .hgvs_select import canonical_hgvs
+from .untrusted_content import UntrustedText, fence_untrusted_text
 
 ResponseMode = str
 
@@ -74,6 +75,112 @@ def _drop_nulls(row: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+# Response-Envelope Standard v1.1: externally sourced free-text fields are fenced as the
+# typed ``untrusted_text`` object at this shaping boundary -- never a bare string -- in
+# every response_mode. ``_DOSAGE_PROSE_FIELDS`` lists DosageRecord's two prose fields;
+# validity/erepo fence a single named field (handled inline in ``_fence_domain_fields``).
+_DOSAGE_PROSE_FIELDS = ("haplo_description", "triplo_description")
+
+
+def _fence_cspec_criterion(criterion: dict[str, Any]) -> dict[str, Any]:
+    """Fence one CriteriaCode row's ``description`` + nested ``strengths[*].description``.
+
+    ``record_id`` is the rule-set id (falling back to the spec's GN id when a criterion
+    carries no rule_set_id) plus the ACMG/AMP code, e.g. ``9:PVS1`` -- precise enough to
+    re-retrieve the criterion via ``get_cspec_criterion``. A criterion's own free-text spec
+    and each evidence-strength's optional spec text share the same upstream CSpec
+    provenance, so both are fenced (the strengths field is not in the inventory's literal
+    pointer list but is the same class of upstream prose).
+    """
+    record_id = (
+        f"{criterion.get('rule_set_id') or criterion.get('gn_id') or 'unknown'}:"
+        f"{criterion.get('code') or 'unknown'}"
+    )
+    if criterion.get("description"):
+        criterion["description"] = fence_untrusted_text(
+            criterion["description"], source="clingen", record_id=record_id
+        ).model_dump(mode="json")
+    strengths = criterion.get("strengths")
+    if isinstance(strengths, list):
+        for strength in strengths:
+            if isinstance(strength, dict) and strength.get("description"):
+                strength["description"] = fence_untrusted_text(
+                    strength["description"], source="clingen", record_id=record_id
+                ).model_dump(mode="json")
+    return criterion
+
+
+def _fence_domain_fields(row: dict[str, Any], domain: str) -> dict[str, Any]:
+    """Replace a domain's externally sourced prose field(s) with the v1.1 fenced object.
+
+    Runs on the raw dumped row *before* any response_mode trimming, so a prose field that
+    survives trimming is always the typed ``untrusted_text`` object, never a bare string --
+    across minimal/compact/standard/full alike. ``record_id`` uses each domain's own stable
+    identifier (never the router, never a synthetic counter):
+
+    - validity: the CGGV assertion id (``perm_id``), falling back to the gene symbol.
+    - dosage: the gene symbol/HGNC id/ISCA id (haplo + triplo share one gene record).
+    - erepo: the interpretation's CAID, falling back to its ERepo uuid / ClinVar id.
+    - cspec: the rule-set id + ACMG/AMP code (see ``_fence_cspec_criterion``).
+    """
+    if domain == "validity" and row.get("disease_name"):
+        record_id = str(row.get("perm_id") or row.get("symbol") or "unknown")
+        row["disease_name"] = fence_untrusted_text(
+            row["disease_name"], source="clingen", record_id=record_id
+        ).model_dump(mode="json")
+    elif domain == "dosage":
+        record_id = str(row.get("symbol") or row.get("hgnc_id") or row.get("isca_id") or "unknown")
+        for field in _DOSAGE_PROSE_FIELDS:
+            if row.get(field):
+                row[field] = fence_untrusted_text(
+                    row[field], source="clingen", record_id=record_id
+                ).model_dump(mode="json")
+    elif domain == "erepo" and row.get("summary"):
+        record_id = str(
+            row.get("caid") or row.get("uuid") or row.get("clinvar_variation_id") or "unknown"
+        )
+        row["summary"] = fence_untrusted_text(
+            row["summary"], source="clingen", record_id=record_id
+        ).model_dump(mode="json")
+    elif domain == "cspec":
+        if "description" in row:  # a bare CriteriaCode row (get_cspec_criterion)
+            row = _fence_cspec_criterion(row)
+        criteria = row.get("criteria")
+        if isinstance(criteria, list):  # a CspecDetail row (get_cspec)
+            row["criteria"] = [
+                _fence_cspec_criterion(c) if isinstance(c, dict) else c for c in criteria
+            ]
+    return row
+
+
+def _collect_untrusted_text(value: Any, out: list[dict[str, Any]]) -> None:
+    """Recursively collect every fenced ``kind: untrusted_text`` dict inside ``value``."""
+    if isinstance(value, dict):
+        if value.get("kind") == "untrusted_text":
+            out.append(value)
+            return
+        for v in value.values():
+            _collect_untrusted_text(v, out)
+    elif isinstance(value, list):
+        for item in value:
+            _collect_untrusted_text(item, out)
+
+
+def collect_fenced_objects(*payloads: Any) -> list[UntrustedText]:
+    """Recursively find every fenced v1.1 object across the given response payload(s).
+
+    Each tool calls this on exactly what it is about to return (records / record / a
+    nested dict), then passes the result to
+    :func:`clingen_link.mcp.untrusted_content.enforce_untrusted_text_limits` -- so the
+    limit check covers a fenced object no matter which field or how deeply nested (a list
+    of records, or the cspec criteria/strengths tree) it ended up in.
+    """
+    found: list[dict[str, Any]] = []
+    for payload in payloads:
+        _collect_untrusted_text(payload, found)
+    return [UntrustedText.model_validate(d) for d in found]
+
+
 def shape_record(
     model: BaseModel | dict[str, Any], *, domain: str, response_mode: ResponseMode
 ) -> dict[str, Any]:
@@ -81,9 +188,12 @@ def shape_record(
 
     ``permalink`` and ``recommended_citation`` are always preserved (the citation
     contract); ``compact`` drops nulls + the domain's verbose fields; ``standard``
-    keeps every field but drops the verbose blocks; ``full`` keeps everything.
+    keeps every field but drops the verbose blocks; ``full`` keeps everything. Prose
+    fields are fenced (Response-Envelope v1.1) before any mode-based trimming so the
+    trimming logic keeps working unchanged on plain dict keys.
     """
     row = _dump(model)
+    row = _fence_domain_fields(row, domain)
     if response_mode == "full":
         return row
     verbose = _VERBOSE_FIELDS.get(domain, frozenset())

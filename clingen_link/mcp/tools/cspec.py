@@ -31,7 +31,13 @@ from clingen_link.mcp.next_commands import cmd
 from clingen_link.mcp.patterns import GENE_SYMBOL_PATTERN, GN_ID_PATTERN
 from clingen_link.mcp.schema_relax import relax_output_schema
 from clingen_link.mcp.service_adapters import ClingenServices, get_services
-from clingen_link.mcp.shaping import shape_record, shape_records, truncated_block
+from clingen_link.mcp.shaping import (
+    collect_fenced_objects,
+    shape_record,
+    shape_records,
+    truncated_block,
+)
+from clingen_link.mcp.untrusted_content import enforce_untrusted_text_limits
 
 _RESPONSE_MODE = Literal["minimal", "compact", "standard", "full"]
 
@@ -361,6 +367,11 @@ async def _get_cspec_impl(
         else:
             out["records"] = shape_records(details, domain="cspec", response_mode=response_mode)
             out["total"] = len(details)
+        # A spec's criteria list is not paginated and could in principle be dozens; v1.1
+        # limit backstop over every fenced description (criterion + nested strengths).
+        enforce_untrusted_text_limits(
+            collect_fenced_objects(out.get("record"), out.get("records")), max_objects=10000
+        )
         return out
 
     return await run_mcp_tool(
@@ -403,9 +414,12 @@ async def _get_criterion_impl(
             data_version=data_version_for(services.meta(), "cspec"),
             next_commands=[cmd("get_cspec", gn_id=criterion.gn_id)],
         )
+        record = shape_record(criterion, domain="cspec", response_mode=response_mode)
+        # A criterion's strength levels are a list; v1.1 limit backstop over the fenced text.
+        enforce_untrusted_text_limits(collect_fenced_objects(record), max_objects=10000)
         return {
             "headline": f"{criterion.code} in {criterion.gn_id}.",
-            "record": shape_record(criterion, domain="cspec", response_mode=response_mode),
+            "record": record,
             "recommended_citation": None,
             "_meta": meta,
         }

@@ -23,7 +23,8 @@ from clingen_link.mcp.next_commands import cmd
 from clingen_link.mcp.patterns import GENE_SYMBOL_PATTERN
 from clingen_link.mcp.schema_relax import relax_output_schema
 from clingen_link.mcp.service_adapters import ClingenServices
-from clingen_link.mcp.shaping import shape_records
+from clingen_link.mcp.shaping import collect_fenced_objects, shape_records
+from clingen_link.mcp.untrusted_content import enforce_untrusted_text_limits
 
 _RESPONSE_MODE = Literal["minimal", "compact", "standard", "full"]
 
@@ -217,6 +218,13 @@ def register_gene_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenSe
                 )
                 result["actionability"] = shape_records(
                     summary.actionability, domain="actionability", response_mode=response_mode
+                )
+                # get_gene_summary re-embeds validity/dosage records (same v1.1 fenced
+                # disease_name / haplo_description / triplo_description as their own
+                # domain tools); not paginated, so the same list-bearing ceiling applies.
+                enforce_untrusted_text_limits(
+                    collect_fenced_objects(result["validity"], result["dosage"]),
+                    max_objects=10000,
                 )
             return result
 
