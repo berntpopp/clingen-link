@@ -64,13 +64,13 @@ def actionable_output_validation_error(
     # Also surface the event on the dedicated schema-drift ring so an LLM hitting
     # the output_validation_failed envelope can call get_diagnostics and
     # inspect which fields/tools are drifting. Only the parsed error_field is
-    # persisted to the caller-visible ring; the raw SDK message (which may embed
-    # response/query free text) is kept operator-side on the LOG line only.
+    # persisted to the caller-visible ring. The raw SDK message can embed
+    # response/query free text (and control code points), so it is NOT logged at
+    # all -- only stable metadata (tool name + the allow-listed schema field name).
     logger.warning(
-        "output_schema_drift tool=%s error_field=%s message=%s",
+        "output_schema_drift tool=%s error_field=%s",
         tool_name,
         error_field,
-        message[:300],
     )
     record_schema_drift(
         tool_name=tool_name,

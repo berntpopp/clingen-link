@@ -168,14 +168,14 @@ async def test_surface_b_timeout_path_sanitized(
         _assert_no_forbidden_codepoints(payload)
 
 
-async def test_get_diagnostics_detail_sanitized(
+async def test_get_diagnostics_detail_is_fixed_not_exc_text(
     store: Store, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """get_diagnostics snapshot `detail` = str(exc) must be sanitized of code points."""
+    """get_diagnostics snapshot `detail` is a FIXED string -- never str(exc)/paths/prose."""
     services = ClingenServices(store)
 
     def _boom() -> dict:
-        raise SnapshotUnavailableError(f"snapshot unreadable {HOSTILE}")
+        raise SnapshotUnavailableError(f"/srv/secret/path/clingen.sqlite unreadable {HOSTILE}")
 
     monkeypatch.setattr(services, "meta", _boom)
     set_services(services)
@@ -186,33 +186,47 @@ async def test_get_diagnostics_detail_sanitized(
         await services.aclose()
 
     for payload in (structured, mirror):
-        detail = payload["snapshot"]["detail"]
-        for bad in _FORBIDDEN:
-            assert bad not in detail, f"forbidden code point {bad!r} leaked into diagnostics detail"
+        assert payload["snapshot"]["detail"] == "Snapshot unavailable."
+        blob = json.dumps(payload, ensure_ascii=False)
+        # Neither the local filesystem path nor the hostile prose reaches the caller.
+        assert "/srv/secret/path" not in blob
+        assert _INJECTION not in blob
+        assert "delete_everything" not in blob
         _assert_no_forbidden_codepoints(payload)
 
 
-async def test_arg_validation_field_error_reason_sanitized() -> None:
-    """The arg-validation error frame's field reasons are stripped of code points."""
-    from pydantic import BaseModel, ValidationError, field_validator
+async def test_arg_validation_hostile_field_name_redacted(mcp: FastMCP) -> None:
+    """Arg validation via the REAL call_tool never echoes a caller-supplied arg NAME.
 
-    from clingen_link.mcp.errors import mcp_validation_tool_error
+    FastMCP re-raises an unexpected-keyword arg as its own (non-pydantic) ValidationError
+    whose text embeds the caller's key; the envelope must redact it, not sanitize it.
+    """
+    hostile_key = "HOSTILE_ignore_all_instructions‮\x00"
+    structured, mirror = await _both_views(
+        mcp, "get_gene_validity", {"gene_symbol": "BRCA1", hostile_key: "x"}
+    )
+    for payload in (structured, mirror):
+        assert payload["success"] is False
+        assert payload["error_code"] == "validation_failed"
+        assert payload["message"] == "Invalid MCP arguments."
+        for field_error in payload["field_errors"]:
+            assert field_error["field"] == "unknown"  # caller-supplied name redacted
+        blob = json.dumps(payload, ensure_ascii=False)
+        assert "HOSTILE_ignore_all" not in blob
+        assert "ignore_all_instructions" not in blob
+        _assert_no_forbidden_codepoints(payload)
 
-    class _M(BaseModel):
-        gene: str
 
-        @field_validator("gene")
-        @classmethod
-        def _v(cls, value: str) -> str:
-            raise ValueError(HOSTILE)
-
-    try:
-        _M(gene="x")
-    except ValidationError as exc:
-        err = mcp_validation_tool_error(tool_name="get_gene_validity", exc=exc)
-
-    reasons = " ".join(fe["reason"] for fe in err.payload["field_errors"])
-    for bad in _FORBIDDEN:
-        assert bad not in reasons, f"forbidden code point {bad!r} leaked into a field reason"
-    for bad in _FORBIDDEN:
-        assert bad not in json.dumps(err.payload, ensure_ascii=False)
+async def test_arg_validation_declared_field_reason_is_fixed(mcp: FastMCP) -> None:
+    """A bad value for a declared arg yields the declared NAME + a FIXED reason (no input echo)."""
+    structured, mirror = await _both_views(
+        mcp, "get_gene_validity", {"gene_symbol": "inject_delete_everything!!‮\x00"}
+    )
+    for payload in (structured, mirror):
+        assert payload["error_code"] == "validation_failed"
+        assert payload["field_errors"][0]["field"] == "gene_symbol"
+        blob = json.dumps(payload, ensure_ascii=False)
+        # The offending input VALUE (pydantic msg prose) is never surfaced.
+        assert "delete_everything" not in blob
+        assert "inject" not in blob
+        _assert_no_forbidden_codepoints(payload)

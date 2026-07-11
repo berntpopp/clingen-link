@@ -18,11 +18,22 @@ control/zero-width/bidi/NUL code points:
   caller-visible message; the original exception stays on the `from` chain for
   operator tracebacks, and no upstream body is written to any log.
 - A new `sanitize_message` primitive (in `mcp/untrusted_content.py`) strips the
-  fence's forbidden code points and length-caps every caller-visible string. It
-  is now applied to the MCP envelope `message`, the argument-validation error
-  frame (`field_errors`), and the `get_diagnostics` snapshot `detail` — so a
-  classified exception whose own text embeds those code points can never smuggle
-  them into an error frame.
+  fence's forbidden code points and length-caps caller-visible free-text
+  guidance; it backstops the MCP envelope `message`. Surfaces that carry an
+  exception's own text, a filesystem path, or a caller-controlled name are given
+  FIXED/redacted values instead (code-point stripping alone leaves the prose):
+  - `get_diagnostics` snapshot `detail` is now the fixed `"Snapshot unavailable."`
+    (previously raw `str(exc)`, which could carry the snapshot filesystem path);
+    the exception type is recorded operator-side only.
+  - The argument-validation error frame now emits FIXED per-error reasons keyed on
+    the validation error type and redacts caller-supplied unexpected-argument
+    names. The interceptor also now catches FastMCP 3.x's own
+    `fastmcp.exceptions.ValidationError` (walking `__cause__` for the structured
+    pydantic errors) — previously it caught only the pydantic type, so FastMCP's
+    default arg-validation error reached the caller and echoed the offending
+    argument name/value (which `mask_error_details` does not cover).
+  - The output-schema-drift log event no longer includes the raw SDK validation
+    message (only the tool name + the allow-listed schema field name).
 
 Research use only; not clinical decision support.
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from typing import Any
 
@@ -12,7 +13,8 @@ from clingen_link.mcp.errors import get_recent_errors, get_recent_schema_drift, 
 from clingen_link.mcp.resources import MCP_PROTOCOL_VERSION, _server_version
 from clingen_link.mcp.schema_relax import relax_output_schema
 from clingen_link.mcp.service_adapters import ClingenServices
-from clingen_link.mcp.untrusted_content import sanitize_message
+
+logger = logging.getLogger(__name__)
 
 
 def register_diagnostics_tools(
@@ -76,9 +78,11 @@ def _snapshot_health(service_factory: Callable[[], ClingenServices]) -> dict[str
     try:
         meta = service_factory().meta()
     except Exception as exc:  # snapshot missing/unreadable — surface, don't crash
-        # This `detail` is surfaced verbatim to any caller, so sanitize it (strip the
-        # fence's forbidden code points + length-cap) rather than emitting raw str(exc).
-        return {"status": "unavailable", "detail": sanitize_message(str(exc))}
+        # `detail` is surfaced verbatim to any MCP caller, so it must be a FIXED string:
+        # str(exc) can embed a local filesystem path or other exception detail. The
+        # exception type is recorded operator-side only (class name — no path/prose).
+        logger.warning("snapshot_health_unavailable exc_type=%s", exc.__class__.__name__)
+        return {"status": "unavailable", "detail": "Snapshot unavailable."}
     return {
         "status": "loaded",
         "domains": {

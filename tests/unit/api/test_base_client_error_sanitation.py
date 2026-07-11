@@ -54,6 +54,20 @@ def _assert_clean(message: str) -> None:
     assert "://" not in message
 
 
+def _assert_body_not_logged(caplog: pytest.LogCaptureFixture) -> None:
+    """The upstream response BODY (prose + code points) is never written to a log record.
+
+    Keyed on body-only content: httpx itself logs the request line/URL (which we do not
+    control, and which here contains "delete_everything"), so the check uses the body's
+    "Ignore all previous instructions" sentence and its code points -- neither appears in
+    the URL -- to prove the response body is not logged (no-PII-in-logs invariant).
+    """
+    logged = "\n".join(r.getMessage() for r in caplog.records)
+    assert "Ignore all previous instructions" not in logged
+    for bad in _FORBIDDEN:
+        assert bad not in logged
+
+
 async def test_non_json_body_yields_fixed_message(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -73,13 +87,7 @@ async def test_non_json_body_yields_fixed_message(
     msg = str(excinfo.value)
     assert msg == "The ClinGen upstream returned a non-JSON response."
     _assert_clean(msg)
-    # The upstream response BODY is NEVER written to any log record (no-PII invariant).
-    # (httpx itself logs the request line/URL, which we do not control; the body must
-    # not appear.)
-    logged = "\n".join(r.getMessage() for r in caplog.records)
-    assert "Ignore all previous instructions" not in logged
-    for bad in _FORBIDDEN:
-        assert bad not in logged
+    _assert_body_not_logged(caplog)
 
 
 @pytest.mark.parametrize(
@@ -93,7 +101,10 @@ async def test_non_json_body_yields_fixed_message(
     ],
 )
 async def test_status_paths_yield_fixed_body_free_messages(
-    status: int, exc_type: type[Exception], monkeypatch: pytest.MonkeyPatch
+    status: int,
+    exc_type: type[Exception],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Every non-2xx status maps to a fixed message; the hostile body never appears."""
 
@@ -102,14 +113,18 @@ async def test_status_paths_yield_fixed_body_free_messages(
 
     client = _client(httpx.MockTransport(handler), monkeypatch)
     try:
-        with pytest.raises(exc_type) as excinfo:
-            await client.get_json(_HOSTILE_URL)
+        with caplog.at_level(logging.DEBUG):
+            with pytest.raises(exc_type) as excinfo:
+                await client.get_json(_HOSTILE_URL)
     finally:
         await client.aclose()
     _assert_clean(str(excinfo.value))
+    _assert_body_not_logged(caplog)
 
 
-async def test_transport_error_yields_fixed_message(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_transport_error_yields_fixed_message(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     """A transport exception's own text is not echoed into the raised message."""
 
     def handler(_req: httpx.Request) -> httpx.Response:
@@ -117,8 +132,10 @@ async def test_transport_error_yields_fixed_message(monkeypatch: pytest.MonkeyPa
 
     client = _client(httpx.MockTransport(handler), monkeypatch)
     try:
-        with pytest.raises(ClingenApiError) as excinfo:
-            await client.get_json(_HOSTILE_URL)
+        with caplog.at_level(logging.DEBUG):
+            with pytest.raises(ClingenApiError) as excinfo:
+                await client.get_json(_HOSTILE_URL)
     finally:
         await client.aclose()
     _assert_clean(str(excinfo.value))
+    _assert_body_not_logged(caplog)
