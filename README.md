@@ -206,10 +206,16 @@ optional `.env`; see [`.env.example`](.env.example)).
 | `CLINGEN_LINK_MCP_HOST` | `127.0.0.1` | Bind host. |
 | `CLINGEN_LINK_MCP_PORT` | `8000` | Bind port. |
 | `CLINGEN_LINK_MCP_PATH` | `/mcp` | MCP endpoint path. |
+| `CLINGEN_LINK_ALLOWED_HOSTS` | loopback hosts | Exact accepted Host values; add the public proxy hostname. Wildcards are rejected. |
+| `CLINGEN_LINK_ALLOWED_ORIGINS` | `[]` | Exact accepted browser Origins; requests without Origin remain allowed. |
 | `CLINGEN_LINK_LOG_LEVEL` | `INFO` | Log level. |
 | `CLINGEN_LINK_LOG_FORMAT` | `json` | Log renderer: `json` (prod) or `console` (dev). |
 | `CLINGEN_LINK_CORS_ORIGINS` | `*` | Comma-separated allowed CORS origins. |
 | `CLINGEN_LINK_MAX_PAGE_SIZE` | `100` | Maximum page size for search tools. |
+
+Origin request validation is separate from CORS response headers. Browser-facing
+deployments must configure the same public HTTPS origin in
+`CLINGEN_LINK_ALLOWED_ORIGINS` and `CLINGEN_LINK_CORS_ORIGINS`.
 
 `clingen-link serve` flags (`--transport`, `--host`, `--port`, `--mcp-path`,
 `--log-level`, `--disable-docs`, `--dev`) override the environment for a given

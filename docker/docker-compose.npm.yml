@@ -19,11 +19,13 @@ services:
       - CLINGEN_LINK_LOG_LEVEL=${LOG_LEVEL_API:-INFO}
       - CLINGEN_LINK_CACHE_SIZE=${CLINGEN_CACHE_SIZE:-2000}
       - CLINGEN_LINK_CACHE_TTL_MINUTES=${CLINGEN_CACHE_TTL_MINUTES:-120}
-      - CLINGEN_LINK_CORS_ORIGINS=${CLINGEN_CORS_ORIGINS:-*}
+      - 'CLINGEN_LINK_ALLOWED_HOSTS=["localhost","127.0.0.1","::1","clingen-link.genefoundry.org"]'
+      - 'CLINGEN_LINK_ALLOWED_ORIGINS=["https://clingen-link.genefoundry.org"]'
+      - 'CLINGEN_LINK_CORS_ORIGINS=["https://clingen-link.genefoundry.org"]'
     # env_file is provided via the --env-file flag for consistency with siblings.
     command: ["clingen-link", "serve", "--transport", "unified", "--host", "0.0.0.0", "--port", "8000"]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "-H", "Host: localhost", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 5

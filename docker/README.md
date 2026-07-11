@@ -86,6 +86,10 @@ The MCP streamable-HTTP endpoint at `/mcp` is session-aware, so a plain
 `GET /mcp` probe can return protocol errors. The Compose health check probes
 `/health` over HTTP instead; use an MCP client for protocol-level verification.
 
+HTTP requests use exact Host and Origin allowlists. Browser deployments must set
+the same public HTTPS origin in `CLINGEN_LINK_ALLOWED_ORIGINS` and
+`CLINGEN_LINK_CORS_ORIGINS`; CORS headers do not replace request validation.
+
 ## Nginx Proxy Manager
 
 1. Copy and edit the Docker environment file:
