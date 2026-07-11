@@ -2,6 +2,43 @@
 
 All notable changes to clingen-link are documented here.
 
+## [3.0.2] - 2026-07-11
+
+### Security
+
+Security (defense in depth): close the FastMCP-core not-found reflection
+residual (Response-Envelope Standard v1.1 §Error-message sanitation fast-follow).
+FastMCP core (and the MCP SDK) reflect the caller's OWN requested tool name,
+resource URI, or prompt name back to the caller and to logs BEFORE any
+clingen-link middleware runs — echoing any control/zero-width/bidi/NUL code
+points the caller embeds. This is a caller self-reflection surface (lower risk
+than upstream injection), closed to keep caller input out of the shared log/OTel
+sink and out of an agent's tool-result context. Research use only.
+
+A new `mcp/notfound_guard.py` adds the layered fleet-standard guard, wired in the
+facade:
+
+- Layer 1 — `NotFoundGuard.on_call_tool` preflights the tool name via `get_tool`;
+  an unknown name returns a FIXED, name-free `not_found` envelope (no `_meta.tool`
+  echo) before core dispatch.
+- Layer 2 — `NotFoundGuard.on_read_resource` re-raises a FIXED, URI-free
+  `ResourceError` for any resource not-found/read failure (logs the exception
+  class only, never the URI).
+- Layer 3 — `install_protocol_error_handler` wraps the raw
+  CallTool/ReadResource/GetPrompt request handlers as the outermost layer:
+  replaces the unknown-tool *return* path (`Unknown tool: '<name>'`) with the
+  fixed envelope and severs the unknown-**prompt** echo (`Unknown prompt:
+  '<name>'`) — the only layer covering prompts.
+- Layer 5 — `install_validation_log_filter` scrubs FastMCP-core / MCP-SDK
+  validation-log records (root + `fastmcp` non-propagating Rich handlers +
+  `fastmcp.server.*` / `mcp.server.lowlevel.server`) that would echo the
+  caller-supplied name/URI at any level.
+
+All fixed messages are built from constants only (sanitation strips code points
+but preserves injection prose). No output-schema or envelope-shape change (PATCH).
+
+Research use only; not clinical decision support.
+
 ## [3.0.1] - 2026-07-11
 
 ### Security
