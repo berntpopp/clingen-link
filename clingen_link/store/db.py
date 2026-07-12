@@ -34,6 +34,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from ..config import settings
 from ..exceptions import SnapshotUnavailableError
 
 # How many idle read connections to keep warm. Reads are short; a handful covers
@@ -52,12 +53,22 @@ _DOMAIN_TABLE: dict[str, str] = {
 
 _REFRESH_HINT = "Run `clingen-link refresh` to (re)build the snapshot, then restart the server."
 
-# --- F-16: packaged-bundle authenticity + decompression-bomb guard ----------
+# --- F-16: .zst authenticity + decompression-bomb guard (EVERY path) --------
 #
-# The shipped ``.zst`` is decompressed at startup. Before that its SHA-256 is
-# checked against a COMMITTED anchor and its expanded size is bounded, so a
-# tampered / truncated / decompression-bomb bundle fails closed rather than
-# being opened as a snapshot (defense in depth against package tampering).
+# ANY ``.zst`` snapshot is authenticity-verified and bomb-guarded BEFORE it is
+# decompressed — the shipped/packaged bundle AND the operator-refresh / alternate
+# bundle path alike. Before decompression a bundle's SHA-256 must match a trusted
+# anchor and its expanded size is bounded, so a tampered / truncated /
+# decompression-bomb / unverified bundle fails closed rather than being opened as
+# a snapshot (defense in depth against package & supply-chain tampering).
+#
+# Trusted anchor, in order:
+#   * the shipped package artifact  -> committed in-source constant below;
+#   * any other bundle              -> operator pin ``settings.snapshot_zst_sha256``
+#                                      (env CLINGEN_LINK_SNAPSHOT_ZST_SHA256), else
+#                                      a sibling ``<name>.sha256`` sidecar.
+# A non-shipped bundle with no anchor has no way to be authenticated, so it is
+# REJECTED — never decompressed unverified.
 _BUNDLED_ZST_PATH = Path(__file__).resolve().parent.parent / "data" / "clingen.sqlite.zst"
 
 # SHA-256 of the packaged ``clingen.sqlite.zst``, pinned IN SOURCE so it is
@@ -85,6 +96,18 @@ def _file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _normalize_digest(value: str, *, source: str) -> str:
+    """Return ``value`` as a validated lowercase 64-char hex SHA-256 digest.
+
+    Raises:
+        ValueError: ``value`` is not a 64-character hexadecimal digest.
+    """
+    candidate = value.strip().lower()
+    if len(candidate) != 64 or any(c not in "0123456789abcdef" for c in candidate):
+        raise ValueError(f"{source} is not a 64-character hex SHA-256 digest")
+    return candidate
+
+
 def _read_sidecar_digest(sidecar: Path) -> str:
     """Parse a ``<sha256>  <name>`` checksum sidecar, returning the hex digest.
 
@@ -92,20 +115,23 @@ def _read_sidecar_digest(sidecar: Path) -> str:
         ValueError: the sidecar does not start with a 64-character hex digest.
     """
     tokens = sidecar.read_text(encoding="utf-8").strip().split()
-    candidate = tokens[0].lower() if tokens else ""
-    if len(candidate) != 64 or any(c not in "0123456789abcdef" for c in candidate):
-        raise ValueError("checksum sidecar is not a 64-character hex digest")
-    return candidate
+    return _normalize_digest(tokens[0] if tokens else "", source="checksum sidecar")
 
 
 def _expected_zst_digest(bundle: Path) -> str | None:
-    """Return the committed SHA-256 to require for ``bundle`` before decompression.
+    """Return the SHA-256 to require for ``bundle`` before decompression.
 
     The shipped package artifact is anchored to the in-repo constant
-    (authenticity — the security-relevant case). A bundle elsewhere (operator
-    ``refresh`` output) is verified against its committed ``.sha256`` sidecar
-    when present; a locally produced bundle with no anchor is bounded by the
-    expanded-size ceiling alone.
+    (authenticity — the security-relevant case). Any OTHER bundle (operator
+    ``refresh`` output / alternate volume) must present an out-of-band anchor:
+    the operator pin ``settings.snapshot_zst_sha256`` (env
+    ``CLINGEN_LINK_SNAPSHOT_ZST_SHA256``) takes precedence, else a committed
+    sibling ``.sha256`` sidecar. ``None`` is returned only when a non-shipped
+    bundle has NEITHER anchor — the caller then fails closed rather than
+    decompressing an unverified bundle (F-16 residual).
+
+    Raises:
+        ValueError: a configured/sidecar anchor is present but malformed.
     """
     try:
         is_shipped = bundle.resolve() == _BUNDLED_ZST_PATH.resolve()
@@ -113,6 +139,9 @@ def _expected_zst_digest(bundle: Path) -> str | None:
         is_shipped = False
     if is_shipped:
         return _BUNDLED_ZST_SHA256
+    configured = settings.snapshot_zst_sha256.strip()
+    if configured:
+        return _normalize_digest(configured, source="CLINGEN_LINK_SNAPSHOT_ZST_SHA256")
     sidecar = bundle.with_suffix(".sha256")
     if sidecar.exists():
         return _read_sidecar_digest(sidecar)
@@ -198,11 +227,13 @@ class Store:
         return source
 
     def _decompress_bundle(self, bundle: Path) -> Path:
-        """Verify + decompress the shipped ``.zst`` bundle to a temp ``.sqlite`` once.
+        """Verify + decompress ANY ``.zst`` bundle to a temp ``.sqlite`` once.
 
-        Fails closed BEFORE decompression on a checksum mismatch (authenticity),
-        and during a bounded streaming decompress on an expanded-size bomb or a
-        corrupt / truncated stream. The output is written atomically.
+        Applies to both the shipped/packaged bundle and the operator-refresh /
+        alternate bundle path. Fails closed BEFORE decompression on a missing
+        authenticity anchor or a checksum mismatch, and during a bounded
+        streaming decompress on an expanded-size bomb or a corrupt / truncated
+        stream. The output is written atomically.
         """
         if not bundle.exists():
             raise SnapshotUnavailableError(
@@ -221,15 +252,25 @@ class Store:
 
     @staticmethod
     def _verify_bundle_digest(bundle: Path) -> None:
-        """Fail closed if ``bundle``'s SHA-256 does not match its committed anchor."""
+        """Fail closed unless ``bundle``'s SHA-256 matches a trusted anchor.
+
+        A non-shipped bundle with no operator pin and no ``.sha256`` sidecar has
+        no authenticity anchor, so it is REJECTED rather than decompressed
+        unverified (F-16 residual — the operator-refresh / alternate path).
+        """
         try:
             expected = _expected_zst_digest(bundle)
         except ValueError as exc:
             raise SnapshotUnavailableError(
-                f"ClinGen snapshot bundle checksum manifest is malformed: {exc}. {_REFRESH_HINT}"
+                f"ClinGen snapshot bundle checksum anchor is malformed: {exc}. {_REFRESH_HINT}"
             ) from exc
         if expected is None:
-            return
+            raise SnapshotUnavailableError(
+                f"ClinGen snapshot bundle at {bundle} has no authenticity anchor: it is not "
+                "the packaged bundle and has neither a configured "
+                "CLINGEN_LINK_SNAPSHOT_ZST_SHA256 digest nor a sibling '.sha256' sidecar. "
+                f"Refusing to decompress an unverified bundle. {_REFRESH_HINT}"
+            )
         actual = _file_sha256(bundle)
         if actual != expected:
             raise SnapshotUnavailableError(

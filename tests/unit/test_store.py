@@ -108,11 +108,17 @@ class TestSnapshotResolution:
     def test_zst_bundle_decompresses_and_opens(
         self, test_snapshot_path: Path, tmp_path: Path
     ) -> None:
+        import hashlib
+
         import zstandard
 
         bundle = tmp_path / "clingen.sqlite.zst"
         data = test_snapshot_path.read_bytes()
         bundle.write_bytes(zstandard.ZstdCompressor().compress(data))
+        # A non-packaged bundle must present an authenticity anchor (F-16); a
+        # committed sibling ``.sha256`` sidecar is the operator-refresh path.
+        digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
+        bundle.with_suffix(".sha256").write_text(f"{digest}  {bundle.name}\n")
         with Store(bundle) as s:
             assert s.resolve_gene("AARS1") == "AARS1"
             assert set(s.meta()) == {"validity", "dosage", "actionability", "erepo", "cspec"}

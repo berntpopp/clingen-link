@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 import zstandard
 
+from clingen_link.config import settings
 from clingen_link.exceptions import SnapshotUnavailableError
 from clingen_link.store.db import (
     _BUNDLED_ZST_PATH,
@@ -100,6 +101,68 @@ class TestTruncation:
         _write_sidecar(bundle, good)  # correct sidecar for the intact bundle
         data = bundle.read_bytes()
         bundle.write_bytes(data[: len(data) // 2])  # now truncated
+        with pytest.raises(SnapshotUnavailableError):
+            Store(bundle)
+
+
+class TestUnverifiedNonPackagedBundle:
+    """F-16 residual: a non-packaged / operator-refresh ``.zst`` must NOT be
+    decompressed without a digest anchor. The authenticity check was previously
+    only applied to the shipped bundle (committed constant) or to bundles that
+    happened to carry a ``.sha256`` sidecar; an alternate / operator-refresh
+    bundle with neither slipped straight into the decompressor unverified.
+    """
+
+    def test_no_anchor_fails_closed_before_decompress(
+        self,
+        test_snapshot_path: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # A non-shipped bundle with NO sidecar and NO configured digest: the
+        # operator-refresh / alternate path Codex flagged. It must fail closed
+        # and must not reach the decompressor at all.
+        monkeypatch.setattr(settings, "snapshot_zst_sha256", "", raising=False)
+        bundle = _make_bundle(test_snapshot_path, tmp_path)  # deliberately no sidecar
+
+        def _boom(*_a: object, **_k: object) -> object:
+            raise AssertionError("decompression must not start without a verified digest")
+
+        monkeypatch.setattr(zstandard, "ZstdDecompressor", _boom)
+
+        with pytest.raises(SnapshotUnavailableError):
+            Store(bundle)
+
+    def test_configured_digest_match_opens(
+        self,
+        test_snapshot_path: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # The "or config" anchor: an operator pins the expected digest out of
+        # band. A matching bundle verifies and opens as a usable store.
+        bundle = _make_bundle(test_snapshot_path, tmp_path)  # no sidecar
+        digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
+        monkeypatch.setattr(settings, "snapshot_zst_sha256", digest, raising=False)
+        with Store(bundle) as store:
+            meta = store.meta()
+        assert "validity" in meta
+
+    def test_configured_digest_mismatch_fails_closed(
+        self,
+        test_snapshot_path: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # A configured-but-wrong digest fails closed BEFORE decompression.
+        bundle = _make_bundle(test_snapshot_path, tmp_path)  # no sidecar
+        monkeypatch.setattr(settings, "snapshot_zst_sha256", "0" * 64, raising=False)
+
+        def _boom(*_a: object, **_k: object) -> object:
+            raise AssertionError("decompression must not start on a bad configured digest")
+
+        monkeypatch.setattr(zstandard, "ZstdDecompressor", _boom)
+
         with pytest.raises(SnapshotUnavailableError):
             Store(bundle)
 

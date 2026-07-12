@@ -63,6 +63,13 @@ class Settings(BaseSettings):
 
     # ---- Snapshot ----
     snapshot_path: str = _DEFAULT_SNAPSHOT_PATH
+    # Expected SHA-256 of a non-packaged / operator-refresh ``.zst`` snapshot
+    # bundle, pinned out of band (env ``CLINGEN_LINK_SNAPSHOT_ZST_SHA256``).
+    # The shipped bundle is anchored to a committed in-source constant and needs
+    # no config; an alternate/operator bundle is verified against a sibling
+    # ``.sha256`` sidecar or this value. When neither is available the store
+    # fails closed rather than decompressing an unverified bundle (F-16).
+    snapshot_zst_sha256: str = ""
 
     # ---- Live client resilience ----
     # Max concurrent in-flight upstream requests; bounds burst pressure.
