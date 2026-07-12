@@ -23,6 +23,8 @@ so most case-insensitive hits resolve via a single alias lookup.
 
 from __future__ import annotations
 
+import hashlib
+import os
 import sqlite3
 import tempfile
 import threading
@@ -49,6 +51,112 @@ _DOMAIN_TABLE: dict[str, str] = {
 }
 
 _REFRESH_HINT = "Run `clingen-link refresh` to (re)build the snapshot, then restart the server."
+
+# --- F-16: packaged-bundle authenticity + decompression-bomb guard ----------
+#
+# The shipped ``.zst`` is decompressed at startup. Before that its SHA-256 is
+# checked against a COMMITTED anchor and its expanded size is bounded, so a
+# tampered / truncated / decompression-bomb bundle fails closed rather than
+# being opened as a snapshot (defense in depth against package tampering).
+_BUNDLED_ZST_PATH = Path(__file__).resolve().parent.parent / "data" / "clingen.sqlite.zst"
+
+# SHA-256 of the packaged ``clingen.sqlite.zst``, pinned IN SOURCE so it is
+# independent of the same-directory ``.sha256`` sidecar (which a package
+# tamperer could rewrite alongside the artifact). Regenerated together with the
+# bundle by ``.github/workflows/data-refresh.yml``; a drift-guard test keeps it
+# in lockstep with the shipped artifact.
+_BUNDLED_ZST_SHA256 = "b389b1dbea7921d414c647fdc88ce19ff81bcf27acae39a7ce8b150ee0a2fc17"
+
+# Expanded-size ceiling (decompression-bomb guard). The real snapshot is
+# ~58.6 MiB; 256 MiB leaves generous room for growth while bounding a malicious
+# bundle to a fixed, streamed cost.
+_MAX_EXPANDED_BYTES = 256 * 1024 * 1024
+
+# Chunk size for the streaming hash + streaming decompress passes.
+_STREAM_CHUNK = 1024 * 1024
+
+
+def _file_sha256(path: Path) -> str:
+    """Return the SHA-256 hex digest of ``path``, read in bounded chunks."""
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(_STREAM_CHUNK), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _read_sidecar_digest(sidecar: Path) -> str:
+    """Parse a ``<sha256>  <name>`` checksum sidecar, returning the hex digest.
+
+    Raises:
+        ValueError: the sidecar does not start with a 64-character hex digest.
+    """
+    tokens = sidecar.read_text(encoding="utf-8").strip().split()
+    candidate = tokens[0].lower() if tokens else ""
+    if len(candidate) != 64 or any(c not in "0123456789abcdef" for c in candidate):
+        raise ValueError("checksum sidecar is not a 64-character hex digest")
+    return candidate
+
+
+def _expected_zst_digest(bundle: Path) -> str | None:
+    """Return the committed SHA-256 to require for ``bundle`` before decompression.
+
+    The shipped package artifact is anchored to the in-repo constant
+    (authenticity — the security-relevant case). A bundle elsewhere (operator
+    ``refresh`` output) is verified against its committed ``.sha256`` sidecar
+    when present; a locally produced bundle with no anchor is bounded by the
+    expanded-size ceiling alone.
+    """
+    try:
+        is_shipped = bundle.resolve() == _BUNDLED_ZST_PATH.resolve()
+    except OSError:  # pragma: no cover - defensive
+        is_shipped = False
+    if is_shipped:
+        return _BUNDLED_ZST_SHA256
+    sidecar = bundle.with_suffix(".sha256")
+    if sidecar.exists():
+        return _read_sidecar_digest(sidecar)
+    return None
+
+
+def _decompress_capped(bundle: Path, dest: Path, *, max_bytes: int) -> None:
+    """Stream-decompress ``bundle`` into ``dest`` atomically, bounded by ``max_bytes``.
+
+    Writes to a sibling ``.part`` file and ``os.replace``s it into place only on
+    success, so an aborted decompression never leaves a usable snapshot. Fails
+    closed on a decompression bomb (expanded size past ``max_bytes``) or a
+    corrupt / truncated stream.
+
+    Raises:
+        SnapshotUnavailableError: the stream exceeds ``max_bytes`` or is invalid.
+    """
+    import zstandard
+
+    tmp = dest.with_name(dest.name + ".part")
+    total = 0
+    try:
+        dctx = zstandard.ZstdDecompressor()
+        with bundle.open("rb") as src, tmp.open("wb") as dst, dctx.stream_reader(src) as reader:
+            while True:
+                chunk = reader.read(_STREAM_CHUNK)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > max_bytes:
+                    raise SnapshotUnavailableError(
+                        f"ClinGen snapshot bundle expands beyond the {max_bytes}-byte "
+                        f"ceiling (decompression-bomb guard). {_REFRESH_HINT}"
+                    )
+                dst.write(chunk)
+        os.replace(tmp, dest)
+    except zstandard.ZstdError as exc:
+        tmp.unlink(missing_ok=True)
+        raise SnapshotUnavailableError(
+            f"ClinGen snapshot bundle is corrupt or truncated: {exc}. {_REFRESH_HINT}"
+        ) from exc
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 class Store:
@@ -90,19 +198,44 @@ class Store:
         return source
 
     def _decompress_bundle(self, bundle: Path) -> Path:
-        """Decompress the shipped ``.zst`` bundle to a temp ``.sqlite`` once."""
+        """Verify + decompress the shipped ``.zst`` bundle to a temp ``.sqlite`` once.
+
+        Fails closed BEFORE decompression on a checksum mismatch (authenticity),
+        and during a bounded streaming decompress on an expanded-size bomb or a
+        corrupt / truncated stream. The output is written atomically.
+        """
         if not bundle.exists():
             raise SnapshotUnavailableError(
                 f"ClinGen snapshot bundle not found at {bundle}. {_REFRESH_HINT}"
             )
-        import zstandard
-
+        self._verify_bundle_digest(bundle)
         self._tempdir = tempfile.TemporaryDirectory(prefix="clingen-snapshot-")
         out_path = Path(self._tempdir.name) / "clingen.sqlite"
-        dctx = zstandard.ZstdDecompressor()
-        with bundle.open("rb") as src, out_path.open("wb") as dst:
-            dctx.copy_stream(src, dst)
+        try:
+            _decompress_capped(bundle, out_path, max_bytes=_MAX_EXPANDED_BYTES)
+        except BaseException:
+            self._tempdir.cleanup()
+            self._tempdir = None
+            raise
         return out_path
+
+    @staticmethod
+    def _verify_bundle_digest(bundle: Path) -> None:
+        """Fail closed if ``bundle``'s SHA-256 does not match its committed anchor."""
+        try:
+            expected = _expected_zst_digest(bundle)
+        except ValueError as exc:
+            raise SnapshotUnavailableError(
+                f"ClinGen snapshot bundle checksum manifest is malformed: {exc}. {_REFRESH_HINT}"
+            ) from exc
+        if expected is None:
+            return
+        actual = _file_sha256(bundle)
+        if actual != expected:
+            raise SnapshotUnavailableError(
+                "ClinGen snapshot bundle failed its SHA-256 integrity check "
+                f"(expected {expected}, got {actual}). {_REFRESH_HINT}"
+            )
 
     def _open(self) -> sqlite3.Connection:
         """Open a fresh read-only connection with row access by column name.

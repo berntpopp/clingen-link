@@ -67,10 +67,13 @@ jobs:
         if: ${{ steps.check.outputs.stale == 'true' || github.event.inputs.force_rebuild == 'true' }}
         run: |
           set -euo pipefail
-          # Build a fresh raw snapshot (gitignored), then re-bundle the .zst + .sha256.
+          # Build a fresh raw snapshot (gitignored), then re-bundle the .zst +
+          # .sha256 and re-pin the in-source authenticity anchor (F-16) so the
+          # store still opens the freshly rebuilt bundle.
           uv run clingen-link refresh --out clingen_link/data/clingen.sqlite | tee refresh.log
           uv run python - <<'PY'
           import hashlib
+          import re
           from pathlib import Path
 
           import zstandard
@@ -86,6 +89,20 @@ jobs:
 
           digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
           checksum.write_text(f"{digest}  {bundle.name}\n")
+
+          # Keep clingen_link/store/db.py:_BUNDLED_ZST_SHA256 in lockstep with the
+          # rebuilt bundle; a drift-guard test fails CI if this is ever missed.
+          db_py = Path("clingen_link/store/db.py")
+          src = db_py.read_text()
+          new_src, n = re.subn(
+              r'(_BUNDLED_ZST_SHA256 = ")[0-9a-f]{64}(")',
+              rf"\g<1>{digest}\g<2>",
+              src,
+              count=1,
+          )
+          if n != 1:
+              raise SystemExit("could not re-pin _BUNDLED_ZST_SHA256 in db.py")
+          db_py.write_text(new_src)
           print(f"Re-bundled {bundle} ({bundle.stat().st_size} bytes); sha256={digest}")
           PY
 
