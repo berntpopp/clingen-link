@@ -30,3 +30,16 @@ def test_pr_creation_is_verified() -> None:
     # A "branch pushed but no PR opened" run must fail the job, not rot.
     names = [s.get("name", "") for s in _steps()]
     assert any("Verify pull request" in n for n in names), names
+
+
+def test_pr_stages_repinned_digest_constant_with_bundle() -> None:
+    # F-16 gate: the rebuild step rewrites clingen_link/store/db.py's
+    # _BUNDLED_ZST_SHA256 to match the freshly rebuilt bundle. The PR step MUST
+    # stage that file alongside the .zst/.sha256 in the SAME commit; otherwise a
+    # refresh PR ships a new bundle while omitting its committed authenticity
+    # anchor, and the packaged bundle fails its own digest check at startup.
+    add_paths = _pr_step()["with"]["add-paths"]
+    staged = {line.strip() for line in add_paths.splitlines() if line.strip()}
+    assert "clingen_link/data/clingen.sqlite.zst" in staged, staged
+    assert "clingen_link/data/clingen.sqlite.sha256" in staged, staged
+    assert "clingen_link/store/db.py" in staged, staged

@@ -132,6 +132,7 @@ jobs:
           add-paths: |
             clingen_link/data/clingen.sqlite.zst
             clingen_link/data/clingen.sqlite.sha256
+            clingen_link/store/db.py
           branch: data-refresh/snapshot
           delete-branch: true
           commit-message: |
