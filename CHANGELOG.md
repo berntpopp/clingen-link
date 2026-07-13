@@ -2,6 +2,24 @@
 
 All notable changes to clingen-link are documented here.
 
+## [3.0.5] - 2026-07-13
+
+### Fixed
+
+- **Signed release evidence now states the data contract this service actually declares.**
+  The reusable release workflow hardcoded `--contract data-independent` and a fixed
+  `data_requirements: {"mode":"none"}`, so every published manifest claimed the image binds
+  to no data at all — while `container-release.json` declares `data-bound` against the
+  immutable ClinGen bundle (`data-clingen-2026-07-13`,
+  `sha256:e0204a40541e82fb86cf4725a2b5fa9edc5e0eec838ada9564fa8de973c51626`). Because the
+  evidence assembler returns early for a data-independent contract, the strongest assertion
+  in the chain — that the definition evidence binds to the exact pinned artifact — was
+  silently skipped. Re-pinning the container-release standard to
+  `86b11f7ed062ed84dfddcbd309e34da88f3dae5b` sources the contract and the exact data
+  identity from `container-release.json`, so the manifest states the real binding and the
+  assertion runs. The v3.0.4 image and its attestations are sound; only its evidence
+  understated the binding, and regenerating that evidence requires this patch re-release.
+
 ## [3.0.4] - 2026-07-13
 
 ### Changed
