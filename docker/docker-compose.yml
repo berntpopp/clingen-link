@@ -1,17 +1,81 @@
+# Explicit project name isolates this stack. Without it, Compose defaults the project to the
+# parent-dir basename ("docker") — shared by every -link repo that roots its compose at
+# docker/docker-compose.yml — pooling unrelated containers/volumes into one "docker" project.
+# See https://docs.docker.com/reference/compose-file/version-and-name/
 name: clingen-link
 
+# The production image is CODE-ONLY. The authoritative ClinGen snapshot is an immutable,
+# digest-pinned GitHub data release (see container-release.json `data`). `clingen-data-init`
+# verifies the reviewed bundle offline (network_mode: none) and atomically selects it into
+# the `clingen-reference` volume; `clingen-link` then mounts that volume read-only.
+#
+# Every default below is the exact reviewed data identity of the release named in
+# container-release.json. Overriding them points the stack at a DIFFERENT dataset.
+
 services:
+  clingen-data-init:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: production
+    image: clingen-link:local
+    # Explicit, shell-free argv: this sidecar runs exactly one bounded data process.
+    command: ["clingen-link", "materialize-data"]
+    environment:
+      CLINGEN_LINK_DATA_ROOT: /data
+      CLINGEN_LINK_DATA_BUNDLE_PATH: /seed/clingen.sqlite.zst
+      CLINGEN_LINK_DATA_BUNDLE_SHA256: "${CLINGEN_LINK_DATA_BUNDLE_SHA256:-e0204a40541e82fb86cf4725a2b5fa9edc5e0eec838ada9564fa8de973c51626}"
+      CLINGEN_LINK_DATA_EXPANDED_SHA256: "${CLINGEN_LINK_DATA_EXPANDED_SHA256:-0dc602639984bae39c5dd7d0989d886ae003d2b48babbe7ece71812924ff56d3}"
+      CLINGEN_LINK_DATA_SCHEMA_VERSION: "${CLINGEN_LINK_DATA_SCHEMA_VERSION:-1.0.0}"
+      CLINGEN_LINK_DATA_SCHEMA_MINIMUM: "${CLINGEN_LINK_DATA_SCHEMA_MINIMUM:-1.0.0}"
+      CLINGEN_LINK_DATA_SCHEMA_MAXIMUM: "${CLINGEN_LINK_DATA_SCHEMA_MAXIMUM:-1.0.0}"
+    volumes:
+      # A reviewed, pre-seeded artifact directory: read-only, never a system path.
+      - type: bind
+        source: "${CLINGEN_LINK_DATA_SEED_DIR:-/srv/genefoundry/clingen-seed}"
+        target: /seed
+        read_only: true
+      - type: volume
+        source: clingen-reference
+        target: /data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # No egress at all: the bundle is already on disk and is verified by digest.
+    network_mode: none
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+          pids: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   clingen-link:
     build:
       context: ..
       dockerfile: docker/Dockerfile
       target: production
-    container_name: clingen-link-prod
+    image: clingen-link:local
+    depends_on:
+      clingen-data-init:
+        condition: service_completed_successfully
     ports:
       # Loopback only: an auth=none backend must never be published on 0.0.0.0.
       # A bare `docker compose up` stays reachable solely from the host loopback;
       # the prod/npm overlays drop the host port entirely (ports: !reset []).
       - "127.0.0.1:${CLINGEN_LINK_HOST_PORT:-8479}:8000"
+    expose:
+      - "8000"
     env_file:
       - path: ../.env
         required: false
@@ -25,19 +89,30 @@ services:
       CLINGEN_LINK_ALLOWED_HOSTS: '["localhost","127.0.0.1","::1"]'
       CLINGEN_LINK_ALLOWED_ORIGINS: '[]'
       CLINGEN_LINK_LOG_LEVEL: INFO
-    command: ["clingen-link", "serve", "--transport", "unified", "--host", "0.0.0.0", "--port", "8000"]
-    # --- Container & Deployment Hardening Standard v1 (universal gap #1: harden the base) ---
+      GF_HEALTHCHECK_HOST: "${GF_HEALTHCHECK_HOST:-localhost}"
+      CLINGEN_LINK_DATA_ROOT: /data
+      CLINGEN_LINK_SNAPSHOT_PATH: /data/current/clingen.sqlite
+      CLINGEN_LINK_DATA_BUNDLE_PATH: /seed/clingen.sqlite.zst
+      CLINGEN_LINK_DATA_BUNDLE_SHA256: "${CLINGEN_LINK_DATA_BUNDLE_SHA256:-e0204a40541e82fb86cf4725a2b5fa9edc5e0eec838ada9564fa8de973c51626}"
+      CLINGEN_LINK_DATA_EXPANDED_SHA256: "${CLINGEN_LINK_DATA_EXPANDED_SHA256:-0dc602639984bae39c5dd7d0989d886ae003d2b48babbe7ece71812924ff56d3}"
+      CLINGEN_LINK_DATA_SCHEMA_VERSION: "${CLINGEN_LINK_DATA_SCHEMA_VERSION:-1.0.0}"
+      CLINGEN_LINK_DATA_SCHEMA_MINIMUM: "${CLINGEN_LINK_DATA_SCHEMA_MINIMUM:-1.0.0}"
+      CLINGEN_LINK_DATA_SCHEMA_MAXIMUM: "${CLINGEN_LINK_DATA_SCHEMA_MAXIMUM:-1.0.0}"
+    # --- Container & Deployment Hardening Standard v1 ---
     read_only: true
+    volumes:
+      # The selected snapshot is authoritative and immutable: mount it read-only.
+      - type: volume
+        source: clingen-reference
+        target: /data
+        read_only: true
     tmpfs:
-      # The store decompresses the snapshot .zst to a temp .sqlite at startup,
-      # so the writable tmpfs must be large enough to hold it.
-      - /tmp/clingen-link:rw,noexec,nosuid,size=256m,mode=1777
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
     init: true
-    pids_limit: 256
     deploy:
       resources:
         limits:
@@ -45,20 +120,17 @@ services:
           cpus: "1.0"
           pids: 256
     healthcheck:
-      test: ["CMD", "curl", "-f", "-H", "Host: localhost", "http://localhost:8000/health"]
+      test: ["CMD", "sh", "-c", "curl -f -H \"Host: $${GF_HEALTHCHECK_HOST}\" http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
     restart: unless-stopped
     logging:
-      driver: "json-file"
+      driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
-    networks:
-      - clingen-network
 
-networks:
-  clingen-network:
-    driver: bridge
+volumes:
+  clingen-reference:

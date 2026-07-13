@@ -12,11 +12,64 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from pydantic import field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Default location of the bundled read-only snapshot, relative to this package.
-_DEFAULT_SNAPSHOT_PATH = str(Path(__file__).resolve().parent / "data" / "clingen.sqlite.zst")
+# The reference volume is mounted at /data — the only approved writable/readable data
+# path in the container hardening policy. `current` is the atomically selected version.
+_DEFAULT_DATA_ROOT = "/data"
+_DEFAULT_SNAPSHOT_PATH = f"{_DEFAULT_DATA_ROOT}/current/clingen.sqlite"
+
+
+class DataRequirement(BaseModel):
+    """Exact deployment identity for one immutable external ClinGen snapshot."""
+
+    model_config = ConfigDict(frozen=True)
+
+    bundle_path: Path
+    compressed_sha256: str
+    expanded_tree_sha256: str
+    schema_version: str
+    schema_minimum: str
+    schema_maximum: str
+    max_compressed_bytes: int
+    max_expanded_bytes: int
+
+    @field_validator("compressed_sha256", "expanded_tree_sha256")
+    @classmethod
+    def _validate_sha256(cls, value: str) -> str:
+        digest = value.removeprefix("sha256:").lower()
+        if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+            raise ValueError("expected a 64-character SHA-256 digest")
+        return digest
+
+    @field_validator("schema_version", "schema_minimum", "schema_maximum")
+    @classmethod
+    def _validate_schema_version(cls, value: str) -> str:
+        parts = value.split(".")
+        if len(parts) != 3 or any(not part.isdigit() for part in parts):
+            raise ValueError("schema version must be semantic X.Y.Z")
+        return value
+
+    @model_validator(mode="after")
+    def _validate_schema_compatibility(self) -> DataRequirement:
+        def version(value: str) -> tuple[int, int, int]:
+            return tuple(int(part) for part in value.split("."))  # type: ignore[return-value]
+
+        if (
+            not version(self.schema_minimum)
+            <= version(self.schema_version)
+            <= version(self.schema_maximum)
+        ):
+            raise ValueError("actual schema version is outside the compatible range")
+        return self
+
+    @field_validator("max_compressed_bytes", "max_expanded_bytes")
+    @classmethod
+    def _validate_ceiling(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("data size ceiling must be positive")
+        return value
 
 
 @dataclass
@@ -61,15 +114,17 @@ class Settings(BaseSettings):
         "https://storage.googleapis.com/public-download-files/hgnc/tsv/tsv/hgnc_complete_set.txt"
     )
 
-    # ---- Snapshot ----
+    # ---- Immutable external snapshot ----
     snapshot_path: str = _DEFAULT_SNAPSHOT_PATH
-    # Expected SHA-256 of a non-packaged / operator-refresh ``.zst`` snapshot
-    # bundle, pinned out of band (env ``CLINGEN_LINK_SNAPSHOT_ZST_SHA256``).
-    # The shipped bundle is anchored to a committed in-source constant and needs
-    # no config; an alternate/operator bundle is verified against a sibling
-    # ``.sha256`` sidecar or this value. When neither is available the store
-    # fails closed rather than decompressing an unverified bundle (F-16).
-    snapshot_zst_sha256: str = ""
+    data_bundle_path: str = ""
+    data_bundle_sha256: str = ""
+    data_expanded_sha256: str = ""
+    data_schema_version: str = "1.0.0"
+    data_schema_minimum: str = "1.0.0"
+    data_schema_maximum: str = "1.0.0"
+    data_max_compressed_bytes: int = 64 * 1024 * 1024
+    data_max_expanded_bytes: int = 256 * 1024 * 1024
+    data_root: str = _DEFAULT_DATA_ROOT
 
     # ---- Live client resilience ----
     # Max concurrent in-flight upstream requests; bounds burst pressure.
@@ -151,6 +206,33 @@ class Settings(BaseSettings):
     def mcp_url(self) -> str:
         """Return the full MCP URL."""
         return f"http://{self.MCP_HOST}:{self.MCP_PORT}{self.MCP_PATH}"
+
+    def data_requirement(self) -> DataRequirement:
+        """Return the exact external bundle contract, failing closed if incomplete."""
+        if not self.data_bundle_path:
+            raise ValueError("CLINGEN_LINK_DATA_BUNDLE_PATH is required")
+        return DataRequirement(
+            bundle_path=Path(self.data_bundle_path),
+            compressed_sha256=self.data_bundle_sha256,
+            expanded_tree_sha256=self.data_expanded_sha256,
+            schema_version=self.data_schema_version,
+            schema_minimum=self.data_schema_minimum,
+            schema_maximum=self.data_schema_maximum,
+            max_compressed_bytes=self.data_max_compressed_bytes,
+            max_expanded_bytes=self.data_max_expanded_bytes,
+        )
+
+    def expected_data_identity(self) -> dict[str, str]:
+        """Return the readiness tuple that the selected materialization must expose."""
+        requirement = self.data_requirement()
+        return {
+            "mode": "external-reference",
+            "compressed_sha256": requirement.compressed_sha256,
+            "expanded_tree_sha256": requirement.expanded_tree_sha256,
+            "schema_version": requirement.schema_version,
+            "schema_minimum": requirement.schema_minimum,
+            "schema_maximum": requirement.schema_maximum,
+        }
 
 
 # Global settings instance

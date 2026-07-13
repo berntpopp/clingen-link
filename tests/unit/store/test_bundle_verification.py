@@ -16,14 +16,9 @@ from pathlib import Path
 import pytest
 import zstandard
 
-from clingen_link.config import settings
+from clingen_link.config import DataRequirement
 from clingen_link.exceptions import SnapshotUnavailableError
-from clingen_link.store.db import (
-    _BUNDLED_ZST_PATH,
-    _BUNDLED_ZST_SHA256,
-    _MAX_EXPANDED_BYTES,
-    Store,
-)
+from clingen_link.store.db import Store, canonical_expanded_digest, materialize_bundle
 
 
 def _write_sidecar(bundle: Path, digest: str) -> Path:
@@ -41,26 +36,61 @@ def _make_bundle(test_snapshot_path: Path, tmp_path: Path) -> Path:
     return bundle
 
 
-class TestCommittedAnchor:
-    """The committed digest is a correct, independent authenticity anchor."""
+def _requirement(bundle: Path, raw: Path) -> DataRequirement:
+    return DataRequirement(
+        bundle_path=bundle,
+        compressed_sha256=hashlib.sha256(bundle.read_bytes()).hexdigest(),
+        expanded_tree_sha256=canonical_expanded_digest(raw, member_name="clingen.sqlite"),
+        schema_version="1.0.0",
+        schema_minimum="1.0.0",
+        schema_maximum="1.0.0",
+        max_compressed_bytes=4 * 1024 * 1024,
+        max_expanded_bytes=16 * 1024 * 1024,
+    )
 
-    def test_constant_matches_shipped_bundle(self) -> None:
-        # Authenticity happy path + drift guard: the committed constant is the
-        # real sha256 of the packaged artifact, so the shipped bundle verifies.
-        actual = hashlib.sha256(_BUNDLED_ZST_PATH.read_bytes()).hexdigest()
-        assert actual == _BUNDLED_ZST_SHA256
 
-    def test_ceiling_is_generous_but_bounded(self) -> None:
-        # Above the real ~58.6 MiB snapshot, well below an unbounded expansion.
-        assert _MAX_EXPANDED_BYTES > 61_480_960
-        assert _MAX_EXPANDED_BYTES <= 512 * 1024 * 1024
+class TestExternalMaterialization:
+    def test_exact_bundle_materializes_versioned_snapshot(
+        self, test_snapshot_path: Path, tmp_path: Path
+    ) -> None:
+        bundle = _make_bundle(test_snapshot_path, tmp_path)
+        requirement = _requirement(bundle, test_snapshot_path)
 
-    def test_shipped_bundle_opens_via_constant(self) -> None:
-        # End-to-end: the real packaged bundle passes the constant-anchored
-        # check and yields a usable read-only store.
-        with Store(_BUNDLED_ZST_PATH) as store:
-            meta = store.meta()
-        assert "validity" in meta
+        selected = materialize_bundle(requirement, tmp_path / "reference")
+
+        assert selected.name == "clingen.sqlite"
+        assert selected.parent.name == requirement.compressed_sha256[:16]
+        assert selected.read_bytes() == test_snapshot_path.read_bytes()
+        assert (tmp_path / "reference" / "current").resolve() == selected.parent
+        with Store(selected) as store:
+            assert set(store.meta()) >= {"validity", "dosage"}
+
+    def test_expanded_identity_mismatch_leaves_current_unchanged(
+        self, test_snapshot_path: Path, tmp_path: Path
+    ) -> None:
+        bundle = _make_bundle(test_snapshot_path, tmp_path)
+        requirement = _requirement(bundle, test_snapshot_path)
+        root = tmp_path / "reference"
+        selected = materialize_bundle(requirement, root)
+        bad = requirement.model_copy(update={"expanded_tree_sha256": "0" * 64})
+
+        with pytest.raises(SnapshotUnavailableError, match="identity"):
+            materialize_bundle(bad, root)
+
+        assert (root / "current").resolve() == selected.parent
+
+    def test_tampered_existing_materialization_is_rejected(
+        self, test_snapshot_path: Path, tmp_path: Path
+    ) -> None:
+        bundle = _make_bundle(test_snapshot_path, tmp_path)
+        requirement = _requirement(bundle, test_snapshot_path)
+        root = tmp_path / "reference"
+        selected = materialize_bundle(requirement, root)
+        selected.chmod(0o644)
+        selected.write_bytes(b"tampered")
+
+        with pytest.raises(SnapshotUnavailableError, match="expanded-tree"):
+            materialize_bundle(requirement, root)
 
 
 class TestChecksumMismatch:
@@ -73,7 +103,9 @@ class TestChecksumMismatch:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         bundle = _make_bundle(test_snapshot_path, tmp_path)
-        _write_sidecar(bundle, "0" * 64)  # deliberately wrong digest
+        requirement = _requirement(bundle, test_snapshot_path).model_copy(
+            update={"compressed_sha256": "0" * 64}
+        )
 
         # Prove fail-closed happens BEFORE decompression: if the guard ran the
         # decompressor at all this sentinel would raise a *different* error.
@@ -83,13 +115,21 @@ class TestChecksumMismatch:
         monkeypatch.setattr(zstandard, "ZstdDecompressor", _boom)
 
         with pytest.raises(SnapshotUnavailableError):
-            Store(bundle)
+            materialize_bundle(requirement, tmp_path / "reference")
 
     def test_malformed_sidecar_fails_closed(self, test_snapshot_path: Path, tmp_path: Path) -> None:
         bundle = _make_bundle(test_snapshot_path, tmp_path)
-        bundle.with_suffix(".sha256").write_text("not-a-valid-digest\n")
-        with pytest.raises(SnapshotUnavailableError):
-            Store(bundle)
+        with pytest.raises(ValueError):
+            DataRequirement(
+                bundle_path=bundle,
+                compressed_sha256="invalid",
+                expanded_tree_sha256="0" * 64,
+                schema_version="1.0.0",
+                schema_minimum="1.0.0",
+                schema_maximum="1.0.0",
+                max_compressed_bytes=1024,
+                max_expanded_bytes=1024,
+            )
 
 
 class TestTruncation:
@@ -97,12 +137,11 @@ class TestTruncation:
 
     def test_truncated_bundle_fails_closed(self, test_snapshot_path: Path, tmp_path: Path) -> None:
         bundle = _make_bundle(test_snapshot_path, tmp_path)
-        good = hashlib.sha256(bundle.read_bytes()).hexdigest()
-        _write_sidecar(bundle, good)  # correct sidecar for the intact bundle
+        requirement = _requirement(bundle, test_snapshot_path)
         data = bundle.read_bytes()
         bundle.write_bytes(data[: len(data) // 2])  # now truncated
         with pytest.raises(SnapshotUnavailableError):
-            Store(bundle)
+            materialize_bundle(requirement, tmp_path / "reference")
 
 
 class TestUnverifiedNonPackagedBundle:
@@ -122,7 +161,6 @@ class TestUnverifiedNonPackagedBundle:
         # A non-shipped bundle with NO sidecar and NO configured digest: the
         # operator-refresh / alternate path Codex flagged. It must fail closed
         # and must not reach the decompressor at all.
-        monkeypatch.setattr(settings, "snapshot_zst_sha256", "", raising=False)
         bundle = _make_bundle(test_snapshot_path, tmp_path)  # deliberately no sidecar
 
         def _boom(*_a: object, **_k: object) -> object:
@@ -130,8 +168,17 @@ class TestUnverifiedNonPackagedBundle:
 
         monkeypatch.setattr(zstandard, "ZstdDecompressor", _boom)
 
-        with pytest.raises(SnapshotUnavailableError):
-            Store(bundle)
+        with pytest.raises(ValueError):
+            DataRequirement(
+                bundle_path=bundle,
+                compressed_sha256="",
+                expanded_tree_sha256="0" * 64,
+                schema_version="1.0.0",
+                schema_minimum="1.0.0",
+                schema_maximum="1.0.0",
+                max_compressed_bytes=1024,
+                max_expanded_bytes=1024,
+            )
 
     def test_configured_digest_match_opens(
         self,
@@ -142,11 +189,8 @@ class TestUnverifiedNonPackagedBundle:
         # The "or config" anchor: an operator pins the expected digest out of
         # band. A matching bundle verifies and opens as a usable store.
         bundle = _make_bundle(test_snapshot_path, tmp_path)  # no sidecar
-        digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
-        monkeypatch.setattr(settings, "snapshot_zst_sha256", digest, raising=False)
-        with Store(bundle) as store:
-            meta = store.meta()
-        assert "validity" in meta
+        requirement = _requirement(bundle, test_snapshot_path)
+        assert materialize_bundle(requirement, tmp_path / "reference").exists()
 
     def test_configured_digest_mismatch_fails_closed(
         self,
@@ -156,7 +200,9 @@ class TestUnverifiedNonPackagedBundle:
     ) -> None:
         # A configured-but-wrong digest fails closed BEFORE decompression.
         bundle = _make_bundle(test_snapshot_path, tmp_path)  # no sidecar
-        monkeypatch.setattr(settings, "snapshot_zst_sha256", "0" * 64, raising=False)
+        requirement = _requirement(bundle, test_snapshot_path).model_copy(
+            update={"compressed_sha256": "0" * 64}
+        )
 
         def _boom(*_a: object, **_k: object) -> object:
             raise AssertionError("decompression must not start on a bad configured digest")
@@ -164,7 +210,7 @@ class TestUnverifiedNonPackagedBundle:
         monkeypatch.setattr(zstandard, "ZstdDecompressor", _boom)
 
         with pytest.raises(SnapshotUnavailableError):
-            Store(bundle)
+            materialize_bundle(requirement, tmp_path / "reference")
 
 
 class TestDecompressionBomb:
@@ -174,15 +220,22 @@ class TestDecompressionBomb:
         bomb = tmp_path / "clingen.sqlite.zst"
         cctx = zstandard.ZstdCompressor(level=1)
         chunk = b"\x00" * (1024 * 1024)
-        target = _MAX_EXPANDED_BYTES + 4 * 1024 * 1024
+        target = 2 * 1024 * 1024
         written = 0
         with bomb.open("wb") as fh, cctx.stream_writer(fh) as writer:
             while written < target:
                 writer.write(chunk)
                 written += len(chunk)
 
-        # Correct sidecar → passes integrity; must still fail on expanded size.
-        digest = hashlib.sha256(bomb.read_bytes()).hexdigest()
-        _write_sidecar(bomb, digest)
+        requirement = DataRequirement(
+            bundle_path=bomb,
+            compressed_sha256=hashlib.sha256(bomb.read_bytes()).hexdigest(),
+            expanded_tree_sha256="0" * 64,
+            schema_version="1.0.0",
+            schema_minimum="1.0.0",
+            schema_maximum="1.0.0",
+            max_compressed_bytes=1024 * 1024,
+            max_expanded_bytes=1024 * 1024,
+        )
         with pytest.raises(SnapshotUnavailableError):
-            Store(bomb)
+            materialize_bundle(requirement, tmp_path / "reference")

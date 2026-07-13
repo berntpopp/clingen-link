@@ -108,7 +108,15 @@ def test_compose_propagates_allowlist_and_healthcheck_host(compose_file: str) ->
     text = Path(compose_file).read_text()
     assert "CLINGEN_LINK_ALLOWED_HOSTS" in text
     assert '"localhost","127.0.0.1","::1"' in text
-    assert '"Host: localhost"' in text
+    if compose_file == "docker/docker-compose.prod.yml":
+        # The prod overlay inherits the base healthcheck and GF_HEALTHCHECK_HOST default.
+        return
+    # The fleet-canonical healthcheck sends an EXPLICIT Host header, sourced from
+    # GF_HEALTHCHECK_HOST. The strict Host guard rejects any request whose Host is outside
+    # CLINGEN_LINK_ALLOWED_HOSTS, so a healthcheck with no (or a wrong) Host would 400 and
+    # the container would never become healthy. The default must stay inside the allowlist.
+    assert "Host: $${GF_HEALTHCHECK_HOST}" in text
+    assert "GF_HEALTHCHECK_HOST:-localhost" in text
 
 
 @pytest.mark.parametrize(

@@ -1,73 +1,121 @@
 name: clingen-link-npm
 
+# Nginx Proxy Manager deployment. This overlay is deployed as a SINGLE, self-contained
+# compose file (the GeneFoundry -link fleet standard): it is NOT layered over
+# docker-compose.yml (note the different service keys), so nothing is inherited.
+#
+# The image is code-only. `clingen_data_init` verifies the reviewed, digest-pinned bundle
+# offline and atomically selects it into `clingen_reference`; the server mounts that volume
+# read-only. Set CLINGEN_LINK_DATA_SEED_DIR to the directory holding the reviewed
+# `clingen.sqlite.zst` from the data release named in container-release.json.
+
 services:
+  clingen_data_init:
+    image: "${CLINGEN_LINK_IMAGE:?set an attested image@sha256 digest}"
+    pull_policy: missing
+    command: ["clingen-link", "materialize-data"]
+    environment:
+      CLINGEN_LINK_DATA_ROOT: /data
+      CLINGEN_LINK_DATA_BUNDLE_PATH: /seed/clingen.sqlite.zst
+      CLINGEN_LINK_DATA_BUNDLE_SHA256: "${CLINGEN_LINK_DATA_BUNDLE_SHA256:-e0204a40541e82fb86cf4725a2b5fa9edc5e0eec838ada9564fa8de973c51626}"
+      CLINGEN_LINK_DATA_EXPANDED_SHA256: "${CLINGEN_LINK_DATA_EXPANDED_SHA256:-0dc602639984bae39c5dd7d0989d886ae003d2b48babbe7ece71812924ff56d3}"
+      CLINGEN_LINK_DATA_SCHEMA_VERSION: "${CLINGEN_LINK_DATA_SCHEMA_VERSION:-1.0.0}"
+      CLINGEN_LINK_DATA_SCHEMA_MINIMUM: "${CLINGEN_LINK_DATA_SCHEMA_MINIMUM:-1.0.0}"
+      CLINGEN_LINK_DATA_SCHEMA_MAXIMUM: "${CLINGEN_LINK_DATA_SCHEMA_MAXIMUM:-1.0.0}"
+    volumes:
+      - type: bind
+        source: "${CLINGEN_LINK_DATA_SEED_DIR:-/srv/genefoundry/clingen-seed}"
+        target: /seed
+        read_only: true
+      - type: volume
+        source: clingen_reference
+        target: /data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    network_mode: none
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+          pids: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   clingen_link:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-      target: production
-    container_name: clingen-link-npm
+    image: "${CLINGEN_LINK_IMAGE:?set an attested image@sha256 digest}"
+    pull_policy: missing
+    depends_on:
+      clingen_data_init:
+        condition: service_completed_successfully
     # NO direct ports exposed - NPM handles all routing.
-    # Unified server: FastAPI host /health and MCP /mcp via the same port.
     expose:
       - "8000"
     environment:
-      - CLINGEN_LINK_MCP_HOST=0.0.0.0
-      - CLINGEN_LINK_MCP_PORT=8000
-      - CLINGEN_LINK_MCP_TRANSPORT=unified
-      - CLINGEN_LINK_MCP_PATH=/mcp
-      - CLINGEN_LINK_LOG_LEVEL=${LOG_LEVEL_API:-INFO}
-      - CLINGEN_LINK_CACHE_SIZE=${CLINGEN_CACHE_SIZE:-2000}
-      - CLINGEN_LINK_CACHE_TTL_MINUTES=${CLINGEN_CACHE_TTL_MINUTES:-120}
-      - 'CLINGEN_LINK_ALLOWED_HOSTS=["localhost","127.0.0.1","::1","clingen-link.genefoundry.org"]'
-      - 'CLINGEN_LINK_ALLOWED_ORIGINS=["https://clingen-link.genefoundry.org"]'
-      - 'CLINGEN_LINK_CORS_ORIGINS=["https://clingen-link.genefoundry.org"]'
-    # env_file is provided via the --env-file flag for consistency with siblings.
-    command: ["clingen-link", "serve", "--transport", "unified", "--host", "0.0.0.0", "--port", "8000"]
+      CLINGEN_LINK_MCP_HOST: 0.0.0.0
+      CLINGEN_LINK_MCP_PORT: 8000
+      CLINGEN_LINK_MCP_TRANSPORT: unified
+      CLINGEN_LINK_MCP_PATH: /mcp
+      CLINGEN_LINK_LOG_LEVEL: "${LOG_LEVEL_API:-INFO}"
+      CLINGEN_LINK_CACHE_SIZE: "${CLINGEN_CACHE_SIZE:-2000}"
+      CLINGEN_LINK_CACHE_TTL_MINUTES: "${CLINGEN_CACHE_TTL_MINUTES:-120}"
+      CLINGEN_LINK_ALLOWED_HOSTS: '["localhost","127.0.0.1","::1","clingen-link.genefoundry.org"]'
+      CLINGEN_LINK_ALLOWED_ORIGINS: '["https://clingen-link.genefoundry.org"]'
+      CLINGEN_LINK_CORS_ORIGINS: '["https://clingen-link.genefoundry.org"]'
+      GF_HEALTHCHECK_HOST: "${GF_HEALTHCHECK_HOST:-localhost}"
+      CLINGEN_LINK_DATA_ROOT: /data
+      CLINGEN_LINK_SNAPSHOT_PATH: /data/current/clingen.sqlite
+      CLINGEN_LINK_DATA_BUNDLE_PATH: /seed/clingen.sqlite.zst
+      CLINGEN_LINK_DATA_BUNDLE_SHA256: "${CLINGEN_LINK_DATA_BUNDLE_SHA256:-e0204a40541e82fb86cf4725a2b5fa9edc5e0eec838ada9564fa8de973c51626}"
+      CLINGEN_LINK_DATA_EXPANDED_SHA256: "${CLINGEN_LINK_DATA_EXPANDED_SHA256:-0dc602639984bae39c5dd7d0989d886ae003d2b48babbe7ece71812924ff56d3}"
+      CLINGEN_LINK_DATA_SCHEMA_VERSION: "${CLINGEN_LINK_DATA_SCHEMA_VERSION:-1.0.0}"
+      CLINGEN_LINK_DATA_SCHEMA_MINIMUM: "${CLINGEN_LINK_DATA_SCHEMA_MINIMUM:-1.0.0}"
+      CLINGEN_LINK_DATA_SCHEMA_MAXIMUM: "${CLINGEN_LINK_DATA_SCHEMA_MAXIMUM:-1.0.0}"
     healthcheck:
-      test: ["CMD", "curl", "-f", "-H", "Host: localhost", "http://localhost:8000/health"]
+      test: ["CMD", "sh", "-c", "curl -f -H \"Host: $${GF_HEALTHCHECK_HOST}\" http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 60s
-    restart: unless-stopped
-    # This overlay is deployed as a SINGLE, self-contained compose file (the
-    # GeneFoundry -link fleet standard) — it is NOT layered over
-    # docker-compose.yml (note the different service key: `clingen_link` here vs
-    # `clingen-link` in the base), so nothing from the base is inherited.
-    # read_only, the writable tmpfs, and security_opt must be declared here.
+    restart: on-failure
+    # Self-contained: read_only, the writable tmpfs, and security_opt are declared here.
     read_only: true
+    volumes:
+      - type: volume
+        source: clingen_reference
+        target: /data
+        read_only: true
     tmpfs:
-      # The store decompresses the snapshot .zst to a temp .sqlite at startup
-      # (clingen_link/store/db.py::_decompress_bundle -> tempfile.TemporaryDirectory,
-      # TMPDIR=/tmp/clingen-link). Under the read-only rootfs this MUST be a
-      # writable tmpfs, large enough to hold the decompressed .sqlite, or the
-      # server crash-loops with "No usable temporary directory".
-      - /tmp/clingen-link:rw,noexec,nosuid,size=256m,mode=1777
+      # Small scratch space only; authoritative reference data is read-only.
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    init: true
     networks:
       - clingen_link_internal_net
       - npm_proxy_network
     deploy:
       resources:
         limits:
-          memory: ${CLINGEN_API_MEMORY_LIMIT:-1g}
-          cpus: ${CLINGEN_API_CPU_LIMIT:-1.0}
+          memory: "${CLINGEN_API_MEMORY_LIMIT:-1g}"
+          cpus: "${CLINGEN_API_CPU_LIMIT:-1.0}"
           pids: 256
-        reservations:
-          memory: 256m
-          cpus: 0.25
     logging:
-      driver: "json-file"
+      driver: json-file
       options:
         max-size: "50m"
         max-file: "5"
-        labels: "service=clingen-link,environment=production,proxy=npm"
-    cap_drop:
-      - ALL
-    pids_limit: 256
-    init: true
 
 networks:
   clingen_link_internal_net:
@@ -75,4 +123,7 @@ networks:
     name: clingen_link_internal_net
   npm_proxy_network:
     external: true
-    name: ${NPM_SHARED_NETWORK_NAME:-npm_default}
+    name: "${NPM_SHARED_NETWORK_NAME:-npm_default}"
+
+volumes:
+  clingen_reference:

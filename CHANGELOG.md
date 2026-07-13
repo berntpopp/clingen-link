@@ -2,6 +2,40 @@
 
 All notable changes to clingen-link are documented here.
 
+## [3.0.4] - 2026-07-13
+
+### Changed
+
+- **The production image is now code-only.** The authoritative ClinGen snapshot is no
+  longer baked into the image or committed to git. It ships as an immutable, attested
+  GitHub data release (`data-clingen-2026-07-13`,
+  `sha256:e0204a40541e82fb86cf4725a2b5fa9edc5e0eec838ada9564fa8de973c51626`) built by this
+  repository's own ETL. The `clingen-data-init` sidecar verifies the reviewed bundle with
+  no network access at all (`network_mode: none`) and atomically selects it into the
+  `clingen-reference` volume; the server mounts that volume read-only.
+- Adopt the GeneFoundry container-release standard, declaring `clingen-data-init` under
+  `service.auxiliary` with its `init` role, `denied` egress, and exact writable and
+  read-only mount targets. The sidecar is authorized by its role, not its name: the
+  central gate validates every field the role permits.
+- Move the reference mount and scratch space to the two paths the hardening policy
+  approves: the snapshot volume is `/data` and `TMPDIR` is `/tmp`.
+- Give every compose variable a default equal to the reviewed data identity, so
+  `docker compose config` renders without a pre-populated environment. Only the attested
+  image digest stays a required variable.
+
+### Fixed
+
+- A host started without its materialized snapshot no longer aborts at startup. It is
+  **live but not ready**: `/health` answers `503 degraded`, MCP definitions stay servable,
+  and every data-bearing tool call fails closed with a `snapshot_unavailable` envelope.
+  Previously the process crashed, so a code-only image could never be started standalone.
+- A snapshot whose identity does not match the deployment pins now raises the typed
+  `SnapshotUnavailableError` rather than a bare `ValueError`, so it maps to the canonical
+  fail-closed envelope instead of an internal error.
+- The data-release publisher names its repository explicitly (it deliberately has no
+  checkout, so `gh` had no remote to infer) and verifies published assets from the
+  handoff directory.
+
 ## [3.0.2] - 2026-07-11
 
 ### Security

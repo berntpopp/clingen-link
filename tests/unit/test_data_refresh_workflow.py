@@ -1,4 +1,4 @@
-"""data-refresh.yml must target current main and never silently skip the PR."""
+"""The data publisher must keep transformation code away from credentials."""
 
 from __future__ import annotations
 
@@ -10,36 +10,48 @@ import yaml
 WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "data-refresh.yml"
 
 
-def _steps() -> list[dict[str, Any]]:
+def _workflow() -> dict[str, Any]:
+    return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+
+
+def _steps(job: str) -> list[dict[str, Any]]:
     wf = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-    return wf["jobs"]["refresh"]["steps"]
+    return wf["jobs"][job]["steps"]
 
 
-def _pr_step() -> dict[str, Any]:
-    return next(s for s in _steps() if "create-pull-request" in s.get("uses", ""))
+def test_build_and_publish_jobs_are_separated() -> None:
+    jobs = _workflow()["jobs"]
+    assert set(jobs) == {"build", "publish"}
+    assert jobs["build"]["permissions"] == {"contents": "read"}
+    assert jobs["publish"]["permissions"] == {
+        "contents": "write",
+        "id-token": "write",
+        "attestations": "write",
+    }
+    assert jobs["publish"]["needs"] == "build"
+    assert not any(
+        step.get("uses", "").startswith("actions/checkout") for step in _steps("publish")
+    )
 
 
-def test_pr_targets_main_on_fixed_branch() -> None:
-    pr = _pr_step()
-    assert pr["with"]["base"] == "main"
-    assert pr["with"]["branch"] == "data-refresh/snapshot"
-    assert pr.get("id") == "cpr"  # outputs must be referenceable
+def test_publisher_is_draft_first_attested_and_never_clobbers() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "release create" in text and "--draft" in text
+    assert "actions/attest-build-provenance@" in text
+    assert "release verify" in text and "release verify-asset" in text
+    assert "--clobber" not in text
 
 
-def test_pr_creation_is_verified() -> None:
-    # A "branch pushed but no PR opened" run must fail the job, not rot.
-    names = [s.get("name", "") for s in _steps()]
-    assert any("Verify pull request" in n for n in names), names
+def test_publication_requires_affirmative_redistribution_review() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "redistribution_allowed" in text
+    assert "redistribution_review" in text
+    assert "data-clingen-" in text
 
 
-def test_pr_stages_repinned_digest_constant_with_bundle() -> None:
-    # F-16 gate: the rebuild step rewrites clingen_link/store/db.py's
-    # _BUNDLED_ZST_SHA256 to match the freshly rebuilt bundle. The PR step MUST
-    # stage that file alongside the .zst/.sha256 in the SAME commit; otherwise a
-    # refresh PR ships a new bundle while omitting its committed authenticity
-    # anchor, and the packaged bundle fails its own digest check at startup.
-    add_paths = _pr_step()["with"]["add-paths"]
-    staged = {line.strip() for line in add_paths.splitlines() if line.strip()}
-    assert "clingen_link/data/clingen.sqlite.zst" in staged, staged
-    assert "clingen_link/data/clingen.sqlite.sha256" in staged, staged
-    assert "clingen_link/store/db.py" in staged, staged
+def test_all_actions_are_full_sha_pinned() -> None:
+    for job in _workflow()["jobs"].values():
+        for step in job["steps"]:
+            uses = step.get("uses")
+            if uses:
+                assert len(uses.rsplit("@", 1)[1].split()[0]) == 40, uses

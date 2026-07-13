@@ -6,17 +6,18 @@ and Nginx Proxy Manager deployments. The server runs a single **unified**
 process that exposes the FastAPI host (`/health`) and the MCP streamable-HTTP
 endpoint (`/mcp`) over one port.
 
-The bundled, read-only SQLite snapshot (`clingen_link/data/clingen.sqlite.zst`)
-is copied into the image, so the container works **offline** out of the box. At
-startup the store decompresses it to a temp `.sqlite`; under a read-only root
-filesystem the writable tmpfs (`/tmp/clingen-link`) must be large enough to hold
-it.
+The image contains code only. An init service verifies an exact compressed
+digest, bounded expanded-tree digest, and schema version for an operator-supplied
+bundle, then atomically selects a versioned snapshot. The application mounts the
+selected SQLite database read-only and opens it with `mode=ro&immutable=1`.
 
 ## Quick start
 
 ```bash
 make docker-build
-make docker-up
+CLINGEN_LINK_DATA_BUNDLE_PATH=/srv/data/clingen.sqlite.zst \
+CLINGEN_LINK_DATA_BUNDLE_SHA256=<sha256> \
+CLINGEN_LINK_DATA_EXPANDED_SHA256=<expanded-tree-sha256> make docker-up
 curl http://localhost:8000/health
 make docker-down
 ```
@@ -49,9 +50,8 @@ docker compose -f docker/docker-compose.dev.yml up --build
 curl http://localhost:8000/health
 ```
 
-The dev compose mounts `clingen_link/`, `tests/`, and entrypoint scripts into
-the container so code changes are picked up on restart. The snapshot stays the
-one baked into the image.
+The dev compose mounts source for iteration; use the base init service or an
+already materialized local reference volume for data.
 
 ## Standalone unified server
 
@@ -68,14 +68,15 @@ docker compose -f docker/docker-compose.yml logs -f
 docker compose \
   -f docker/docker-compose.yml \
   -f docker/docker-compose.prod.yml \
-  up -d --build
+  up -d
 ```
 
 The production overlay follows the sibling repository pattern:
 
 - no published host ports by default,
 - read-only root filesystem,
-- writable tmpfs for `/tmp/clingen-link` (sized for the decompressed snapshot),
+- small writable tmpfs for process scratch space,
+- no-egress init service and read-only reference mount,
 - `no-new-privileges`,
 - Linux capabilities dropped,
 - PID limit and init process,
@@ -108,7 +109,7 @@ the same public HTTPS origin in `CLINGEN_LINK_ALLOWED_ORIGINS` and
    docker compose \
      --env-file .env.docker \
      -f docker/docker-compose.npm.yml \
-     up -d --build
+     up -d
    ```
 
 4. In Nginx Proxy Manager, proxy `/health` and `/mcp` to `clingen-link-npm:8000`.
@@ -120,8 +121,7 @@ the same public HTTPS origin in `CLINGEN_LINK_ALLOWED_ORIGINS` and
 The Dockerfile uses a multi-stage `uv` build:
 
 - the builder stage installs production dependencies into `/opt/venv`,
-- the runtime stage copies only the virtual environment and required application
-  files (including the bundled snapshot `.zst`),
+- the runtime stage contains only the virtual environment and application code,
 - the runtime user is non-root (`app`),
 - package installs use the checked-in `uv.lock` (`uv sync --frozen --no-dev`).
 
@@ -130,18 +130,17 @@ Compose `env_file` or environment variables at runtime.
 
 ## Refreshing the snapshot
 
-The image ships whatever `clingen_link/data/clingen.sqlite.zst` was committed at
-build time. To refresh data, rebuild the bundle in the repo
-(`uv run clingen-link refresh`, then re-compress to `.zst` + regenerate
-`.sha256`) and rebuild the image — the weekly `data-refresh.yml` Action automates
-the staleness check and opens a PR with a rebuilt bundle.
+The weekly `data-refresh.yml` workflow builds snapshot assets without credentials.
+An explicitly authorized publisher verifies the handoff, attests exact bytes,
+and publishes a draft-first immutable `data-clingen-YYYY-MM-DD` release. Deploys
+pin both compressed and canonical expanded-tree digests.
 
 ## Troubleshooting
 
 **Port conflicts** — set `CLINGEN_LINK_HOST_PORT` to another free port.
 
-**Snapshot too large for tmpfs** — increase the `/tmp/clingen-link` tmpfs size
-in the prod/npm overlay (the decompressed `.sqlite` is ~50 MB).
+**Snapshot identity mismatch** — verify the configured release, compressed and
+expanded-tree digests, and schema version; the service intentionally stays down.
 
 **NPM network missing**
 

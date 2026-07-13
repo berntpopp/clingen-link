@@ -95,7 +95,7 @@ class TestSnapshotResolution:
             Store(tmp_path / "does-not-exist.sqlite")
 
     def test_missing_bundle_raises(self, tmp_path: Path) -> None:
-        with pytest.raises(SnapshotUnavailableError, match="clingen-link refresh"):
+        with pytest.raises(SnapshotUnavailableError, match="materialize-data"):
             Store(tmp_path / "missing.sqlite.zst")
 
     def test_context_manager_closes(self, test_snapshot_path: Path) -> None:
@@ -105,7 +105,7 @@ class TestSnapshotResolution:
             with s.connection():
                 pass
 
-    def test_zst_bundle_decompresses_and_opens(
+    def test_zst_bundle_must_be_materialized_by_init_service(
         self, test_snapshot_path: Path, tmp_path: Path
     ) -> None:
         import hashlib
@@ -115,13 +115,12 @@ class TestSnapshotResolution:
         bundle = tmp_path / "clingen.sqlite.zst"
         data = test_snapshot_path.read_bytes()
         bundle.write_bytes(zstandard.ZstdCompressor().compress(data))
-        # A non-packaged bundle must present an authenticity anchor (F-16); a
-        # committed sibling ``.sha256`` sidecar is the operator-refresh path.
+        # A sidecar is not the production trust root and the application process
+        # never expands bundles; only the exact-pinned init path may do so.
         digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
         bundle.with_suffix(".sha256").write_text(f"{digest}  {bundle.name}\n")
-        with Store(bundle) as s:
-            assert s.resolve_gene("AARS1") == "AARS1"
-            assert set(s.meta()) == {"validity", "dosage", "actionability", "erepo", "cspec"}
+        with pytest.raises(SnapshotUnavailableError, match="materialized"):
+            Store(bundle)
 
 
 class TestThreadSafety:

@@ -12,12 +12,23 @@ def test_defaults_present() -> None:
     assert s.dosage_ftp_base.startswith("https://")
     assert s.actionability_api_base.startswith("https://")
     assert s.erepo_api_base.startswith("https://")
-    assert s.snapshot_path.endswith("clingen.sqlite.zst")
+    assert s.snapshot_path == "/data/current/clingen.sqlite"
+    assert s.data_root == "/data"
     assert s.max_concurrency == 5
     assert s.request_timeout_s == 30
     assert s.cache_size == 512
     assert s.cache_ttl_minutes == 60
     assert s.erepo_cache_ttl_minutes == 720
+
+
+def test_external_data_contract_requires_exact_identity(tmp_path) -> None:
+    s = Settings(data_bundle_path=str(tmp_path / "bundle.zst"))
+    try:
+        s.data_requirement()
+    except ValueError as exc:
+        assert "SHA-256" in str(exc)
+    else:  # pragma: no cover - assertion aid
+        raise AssertionError("missing bundle digests must fail closed")
 
 
 def test_env_prefix_override(monkeypatch) -> None:

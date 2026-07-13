@@ -1,4 +1,4 @@
-.PHONY: help install lock upgrade sync format format-check lint lint-ci lint-fix lint-loc typecheck typecheck-fast typecheck-stop typecheck-fresh test test-fast test-unit test-integration test-cov test-all check ci-local precommit clean dev run-dev run-prod docker-build docker-up docker-down docker-logs docker-prod-config docker-npm-config
+.PHONY: help install lock upgrade sync format format-check lint lint-ci lint-fix lint-loc typecheck typecheck-fast typecheck-stop typecheck-fresh test test-fast test-unit test-integration test-cov test-all check ci-local precommit clean dev run-dev run-prod vendor-check docker-build docker-up docker-down docker-logs docker-prod-config docker-npm-config
 
 .DEFAULT_GOAL := help
 
@@ -102,6 +102,15 @@ run-dev: dev ## Alias for dev
 run-prod: ## Run the unified server bound to all interfaces (JSON logs)
 	uv run clingen-link serve --transport unified --host 0.0.0.0 --port 8000
 
+vendor-check: ## Verify the vendored router data contract digest
+	@cd vendor/genefoundry && expected=$$(head -n 1 CONTRACT_SHA256 | cut -d' ' -f1); \
+		actual=$$(sha256sum data-release-manifest.schema.json | cut -d' ' -f1); \
+		test "$$actual" = "$$expected"
+	@if [ -n "$${GENEFOUNDRY_ROUTER_DIR:-}" ]; then \
+		cmp vendor/genefoundry/data-release-manifest.schema.json \
+		"$$GENEFOUNDRY_ROUTER_DIR/genefoundry_router/data/data-release-manifest.schema.json"; \
+	fi
+
 docker-build: ## Build Docker image
 	$(DOCKER_COMPOSE) -f docker/docker-compose.yml build
 
@@ -115,7 +124,7 @@ docker-logs: ## Follow Docker logs
 	$(DOCKER_COMPOSE) -f docker/docker-compose.yml logs -f
 
 docker-prod-config: ## Render production Compose configuration
-	$(DOCKER_COMPOSE) -f docker/docker-compose.yml -f docker/docker-compose.prod.yml config
+	$(DOCKER_COMPOSE) --env-file .env.docker.example -f docker/docker-compose.yml -f docker/docker-compose.prod.yml config
 
 docker-npm-config: ## Render NPM Compose configuration
 	$(DOCKER_COMPOSE) --env-file .env.docker.example -f docker/docker-compose.yml -f docker/docker-compose.prod.yml -f docker/docker-compose.npm.yml config

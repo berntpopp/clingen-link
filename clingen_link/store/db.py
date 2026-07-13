@@ -1,6 +1,6 @@
-"""Read-only SQLite store: open the snapshot + resolve genes + read freshness.
+"""Read-only SQLite store: open a selected snapshot + resolve genes + freshness.
 
-The store is the serve-time read boundary. It opens the bundled snapshot
+The store is the serve-time read boundary. It opens an externally materialized snapshot
 **read-only** (the ETL is the only writer) and is safe to share across threads:
 every read borrows a fresh short-lived :class:`sqlite3.Connection` from a small
 internal pool guarded by a lock, with ``check_same_thread=False`` so a
@@ -9,9 +9,7 @@ connection can be handed to whichever thread next needs it.
 Snapshot resolution (constructor):
 
 * A ``.sqlite`` path is opened directly read-only (mode=ro, immutable).
-* A ``.zst`` path (the shipped bundle) is decompressed **once** to a temp
-  ``.sqlite`` under the OS temp dir and that file is opened read-only. The temp
-  file is cleaned up on :meth:`close`.
+* A ``.zst`` path is rejected; the hardened init path is the only decompressor.
 * A missing snapshot raises :class:`SnapshotUnavailableError` telling the caller
   to run ``clingen-link refresh``.
 
@@ -23,10 +21,12 @@ so most case-insensitive hits resolve via a single alias lookup.
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
+import json
 import os
 import sqlite3
-import tempfile
+import stat
 import threading
 from collections import deque
 from collections.abc import Iterator
@@ -34,7 +34,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from ..config import settings
+from ..config import DataRequirement
 from ..exceptions import SnapshotUnavailableError
 
 # How many idle read connections to keep warm. Reads are short; a handful covers
@@ -53,36 +53,10 @@ _DOMAIN_TABLE: dict[str, str] = {
 
 _REFRESH_HINT = "Run `clingen-link refresh` to (re)build the snapshot, then restart the server."
 
-# --- F-16: .zst authenticity + decompression-bomb guard (EVERY path) --------
+# --- External immutable bundle verification ---------------------------------
 #
-# ANY ``.zst`` snapshot is authenticity-verified and bomb-guarded BEFORE it is
-# decompressed — the shipped/packaged bundle AND the operator-refresh / alternate
-# bundle path alike. Before decompression a bundle's SHA-256 must match a trusted
-# anchor and its expanded size is bounded, so a tampered / truncated /
-# decompression-bomb / unverified bundle fails closed rather than being opened as
-# a snapshot (defense in depth against package & supply-chain tampering).
-#
-# Trusted anchor, in order:
-#   * the shipped package artifact  -> committed in-source constant below;
-#   * any other bundle              -> operator pin ``settings.snapshot_zst_sha256``
-#                                      (env CLINGEN_LINK_SNAPSHOT_ZST_SHA256), else
-#                                      a sibling ``<name>.sha256`` sidecar.
-# A non-shipped bundle with no anchor has no way to be authenticated, so it is
-# REJECTED — never decompressed unverified.
-_BUNDLED_ZST_PATH = Path(__file__).resolve().parent.parent / "data" / "clingen.sqlite.zst"
-
-# SHA-256 of the packaged ``clingen.sqlite.zst``, pinned IN SOURCE so it is
-# independent of the same-directory ``.sha256`` sidecar (which a package
-# tamperer could rewrite alongside the artifact). Regenerated together with the
-# bundle by ``.github/workflows/data-refresh.yml``; a drift-guard test keeps it
-# in lockstep with the shipped artifact.
-_BUNDLED_ZST_SHA256 = "b389b1dbea7921d414c647fdc88ce19ff81bcf27acae39a7ce8b150ee0a2fc17"
-
-# Expanded-size ceiling (decompression-bomb guard). The real snapshot is
-# ~58.6 MiB; 256 MiB leaves generous room for growth while bounding a malicious
-# bundle to a fixed, streamed cost.
-_MAX_EXPANDED_BYTES = 256 * 1024 * 1024
-
+# The init path verifies the operator-reviewed compressed digest before bounded
+# streaming decompression. The application never opens a compressed artifact.
 # Chunk size for the streaming hash + streaming decompress passes.
 _STREAM_CHUNK = 1024 * 1024
 
@@ -108,44 +82,11 @@ def _normalize_digest(value: str, *, source: str) -> str:
     return candidate
 
 
-def _read_sidecar_digest(sidecar: Path) -> str:
-    """Parse a ``<sha256>  <name>`` checksum sidecar, returning the hex digest.
-
-    Raises:
-        ValueError: the sidecar does not start with a 64-character hex digest.
-    """
-    tokens = sidecar.read_text(encoding="utf-8").strip().split()
-    return _normalize_digest(tokens[0] if tokens else "", source="checksum sidecar")
-
-
-def _expected_zst_digest(bundle: Path) -> str | None:
-    """Return the SHA-256 to require for ``bundle`` before decompression.
-
-    The shipped package artifact is anchored to the in-repo constant
-    (authenticity — the security-relevant case). Any OTHER bundle (operator
-    ``refresh`` output / alternate volume) must present an out-of-band anchor:
-    the operator pin ``settings.snapshot_zst_sha256`` (env
-    ``CLINGEN_LINK_SNAPSHOT_ZST_SHA256``) takes precedence, else a committed
-    sibling ``.sha256`` sidecar. ``None`` is returned only when a non-shipped
-    bundle has NEITHER anchor — the caller then fails closed rather than
-    decompressing an unverified bundle (F-16 residual).
-
-    Raises:
-        ValueError: a configured/sidecar anchor is present but malformed.
-    """
-    try:
-        is_shipped = bundle.resolve() == _BUNDLED_ZST_PATH.resolve()
-    except OSError:  # pragma: no cover - defensive
-        is_shipped = False
-    if is_shipped:
-        return _BUNDLED_ZST_SHA256
-    configured = settings.snapshot_zst_sha256.strip()
-    if configured:
-        return _normalize_digest(configured, source="CLINGEN_LINK_SNAPSHOT_ZST_SHA256")
-    sidecar = bundle.with_suffix(".sha256")
-    if sidecar.exists():
-        return _read_sidecar_digest(sidecar)
-    return None
+def canonical_expanded_digest(path: Path, *, member_name: str) -> str:
+    """Hash the canonical one-member expanded-tree identity."""
+    file_digest = _file_sha256(path)
+    record = f"{member_name}\0{0o444:o}\0{path.stat().st_size}\0{file_digest}"
+    return hashlib.sha256(record.encode()).hexdigest()
 
 
 def _decompress_capped(bundle: Path, dest: Path, *, max_bytes: int) -> None:
@@ -188,17 +129,156 @@ def _decompress_capped(bundle: Path, dest: Path, *, max_bytes: int) -> None:
         raise
 
 
+def _verify_schema(path: Path, expected: str) -> None:
+    try:
+        uri = f"file:{path.resolve()}?mode=ro&immutable=1"
+        with sqlite3.connect(uri, uri=True) as conn:
+            rows = conn.execute("SELECT DISTINCT snapshot_version FROM meta").fetchall()
+    except sqlite3.Error as exc:
+        raise SnapshotUnavailableError(f"ClinGen snapshot schema probe failed: {exc}") from exc
+    actual = {str(row[0]) if "." in str(row[0]) else f"{row[0]}.0.0" for row in rows}
+    if actual != {expected}:
+        raise SnapshotUnavailableError(
+            f"ClinGen snapshot schema is incompatible (expected {expected}, got {sorted(actual)})"
+        )
+
+
+def _fsync_directory(path: Path) -> None:
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def materialize_bundle(requirement: DataRequirement, root: Path) -> Path:
+    """Verify and atomically select an immutable external ClinGen snapshot."""
+    bundle = requirement.bundle_path
+    root.mkdir(parents=True, exist_ok=True)
+    verified_bundle = root / f".verified-bundle-{os.getpid()}"
+    compressed_size = 0
+    digest = hashlib.sha256()
+    try:
+        flags = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+        fd = os.open(bundle, flags)
+        try:
+            source_stat = os.fstat(fd)
+            if not stat.S_ISREG(source_stat.st_mode) or source_stat.st_nlink != 1:
+                raise SnapshotUnavailableError(
+                    f"ClinGen bundle is not a private regular file: {bundle}"
+                )
+            with os.fdopen(fd, "rb", closefd=False) as src, verified_bundle.open("xb") as dst:
+                for chunk in iter(lambda: src.read(_STREAM_CHUNK), b""):
+                    compressed_size += len(chunk)
+                    if compressed_size > requirement.max_compressed_bytes:
+                        raise SnapshotUnavailableError(
+                            "ClinGen bundle exceeds the compressed size ceiling"
+                        )
+                    digest.update(chunk)
+                    dst.write(chunk)
+                dst.flush()
+                os.fsync(dst.fileno())
+        finally:
+            os.close(fd)
+        if digest.hexdigest() != requirement.compressed_sha256:
+            raise SnapshotUnavailableError(
+                "ClinGen snapshot bundle failed its compressed SHA-256 integrity check"
+            )
+
+        lock_path = root / ".materialize.lock"
+        with lock_path.open("a+b") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            version_dir = root / requirement.compressed_sha256[:16]
+            selected = version_dir / "clingen.sqlite"
+            identity_path = version_dir / "identity.json"
+            if not selected.exists():
+                staging = root / f".{requirement.compressed_sha256[:16]}.staging-{os.getpid()}"
+                staging.mkdir(mode=0o700)
+                staged = staging / "clingen.sqlite"
+                try:
+                    _decompress_capped(
+                        verified_bundle, staged, max_bytes=requirement.max_expanded_bytes
+                    )
+                    expanded_digest = canonical_expanded_digest(
+                        staged, member_name="clingen.sqlite"
+                    )
+                    if expanded_digest != requirement.expanded_tree_sha256:
+                        raise SnapshotUnavailableError(
+                            "ClinGen snapshot expanded-tree SHA-256 does not match deployment pin"
+                        )
+                    _verify_schema(staged, requirement.schema_version)
+                    staged.chmod(0o444)
+                    identity = {
+                        "mode": "external-reference",
+                        "compressed_sha256": requirement.compressed_sha256,
+                        "expanded_tree_sha256": expanded_digest,
+                        "schema_version": requirement.schema_version,
+                        "schema_minimum": requirement.schema_minimum,
+                        "schema_maximum": requirement.schema_maximum,
+                        "compressed_bytes": compressed_size,
+                        "expanded_bytes": staged.stat().st_size,
+                    }
+                    identity_tmp = staging / "identity.json.tmp"
+                    identity_tmp.write_text(
+                        json.dumps(identity, sort_keys=True, separators=(",", ":")) + "\n",
+                        encoding="utf-8",
+                    )
+                    identity_tmp.chmod(0o444)
+                    os.replace(identity_tmp, staging / "identity.json")
+                    with staged.open("rb") as handle:
+                        os.fsync(handle.fileno())
+                    _fsync_directory(staging)
+                    os.replace(staging, version_dir)
+                    _fsync_directory(root)
+                except BaseException:
+                    for child in staging.iterdir() if staging.exists() else ():
+                        child.unlink(missing_ok=True)
+                    staging.rmdir() if staging.exists() else None
+                    raise
+            else:
+                identity = json.loads(identity_path.read_text(encoding="utf-8"))
+                expected_identity = {
+                    "compressed_sha256": requirement.compressed_sha256,
+                    "expanded_tree_sha256": requirement.expanded_tree_sha256,
+                    "schema_version": requirement.schema_version,
+                    "schema_minimum": requirement.schema_minimum,
+                    "schema_maximum": requirement.schema_maximum,
+                }
+                if any(identity.get(key) != value for key, value in expected_identity.items()):
+                    raise SnapshotUnavailableError(
+                        "existing ClinGen materialization identity mismatch"
+                    )
+                if (
+                    canonical_expanded_digest(selected, member_name="clingen.sqlite")
+                    != requirement.expanded_tree_sha256
+                ):
+                    raise SnapshotUnavailableError(
+                        "existing ClinGen materialization expanded-tree digest mismatch"
+                    )
+                _verify_schema(selected, requirement.schema_version)
+
+            current_tmp = root / ".current.tmp"
+            current_tmp.unlink(missing_ok=True)
+            current_tmp.symlink_to(version_dir.name, target_is_directory=True)
+            os.replace(current_tmp, root / "current")
+            _fsync_directory(root)
+            return selected
+    except OSError as exc:
+        raise SnapshotUnavailableError(f"could not read ClinGen bundle safely: {exc}") from exc
+    finally:
+        verified_bundle.unlink(missing_ok=True)
+
+
 class Store:
-    """Read-only accessor for the bundled ClinGen SQLite snapshot."""
+    """Read-only accessor for a selected external ClinGen SQLite snapshot."""
 
     def __init__(self, path: str | Path) -> None:
-        """Open ``path`` read-only, decompressing a ``.zst`` bundle if needed.
+        """Open a materialized SQLite ``path`` read-only and immutable.
 
         Raises:
             SnapshotUnavailableError: the snapshot file is absent or unreadable.
         """
         source = Path(path)
-        self._tempdir: tempfile.TemporaryDirectory[str] | None = None
         self._db_path = self._resolve_db_path(source)
         self._lock = threading.Lock()
         self._pool: deque[sqlite3.Connection] = deque()
@@ -213,70 +293,40 @@ class Store:
             ) from exc
         self._pool.append(probe)
 
+    @property
+    def data_identity(self) -> dict[str, Any]:
+        """Return the materializer-written identity beside the selected database."""
+        identity_path = self._db_path.with_name("identity.json")
+        if not identity_path.is_file():
+            return {"mode": "test-fixture", "schema_version": self._schema_version()}
+        value = json.loads(identity_path.read_text(encoding="utf-8"))
+        identity = dict(value) if isinstance(value, dict) else {}
+        expected = identity.get("expanded_tree_sha256")
+        if expected != canonical_expanded_digest(self._db_path, member_name="clingen.sqlite"):
+            raise SnapshotUnavailableError("selected ClinGen expanded-tree identity is invalid")
+        return identity
+
+    def _schema_version(self) -> str:
+        with self.connection() as conn:
+            rows = conn.execute("SELECT DISTINCT snapshot_version FROM meta").fetchall()
+        versions = sorted(str(row[0]) for row in rows)
+        return versions[0] if len(versions) == 1 else "unknown"
+
     # ------------------------------------------------------------------
     # Snapshot resolution
     # ------------------------------------------------------------------
     def _resolve_db_path(self, source: Path) -> Path:
-        """Return a ``.sqlite`` path to open, decompressing a ``.zst`` bundle once."""
+        """Return a selected ``.sqlite`` path and reject compressed inputs."""
         if source.suffix == ".zst":
-            return self._decompress_bundle(source)
+            raise SnapshotUnavailableError(
+                "Compressed ClinGen bundles must be materialized by `clingen-link "
+                "materialize-data`; the application only opens a selected read-only SQLite file."
+            )
         if not source.exists():
             raise SnapshotUnavailableError(
                 f"ClinGen snapshot not found at {source}. {_REFRESH_HINT}"
             )
         return source
-
-    def _decompress_bundle(self, bundle: Path) -> Path:
-        """Verify + decompress ANY ``.zst`` bundle to a temp ``.sqlite`` once.
-
-        Applies to both the shipped/packaged bundle and the operator-refresh /
-        alternate bundle path. Fails closed BEFORE decompression on a missing
-        authenticity anchor or a checksum mismatch, and during a bounded
-        streaming decompress on an expanded-size bomb or a corrupt / truncated
-        stream. The output is written atomically.
-        """
-        if not bundle.exists():
-            raise SnapshotUnavailableError(
-                f"ClinGen snapshot bundle not found at {bundle}. {_REFRESH_HINT}"
-            )
-        self._verify_bundle_digest(bundle)
-        self._tempdir = tempfile.TemporaryDirectory(prefix="clingen-snapshot-")
-        out_path = Path(self._tempdir.name) / "clingen.sqlite"
-        try:
-            _decompress_capped(bundle, out_path, max_bytes=_MAX_EXPANDED_BYTES)
-        except BaseException:
-            self._tempdir.cleanup()
-            self._tempdir = None
-            raise
-        return out_path
-
-    @staticmethod
-    def _verify_bundle_digest(bundle: Path) -> None:
-        """Fail closed unless ``bundle``'s SHA-256 matches a trusted anchor.
-
-        A non-shipped bundle with no operator pin and no ``.sha256`` sidecar has
-        no authenticity anchor, so it is REJECTED rather than decompressed
-        unverified (F-16 residual — the operator-refresh / alternate path).
-        """
-        try:
-            expected = _expected_zst_digest(bundle)
-        except ValueError as exc:
-            raise SnapshotUnavailableError(
-                f"ClinGen snapshot bundle checksum anchor is malformed: {exc}. {_REFRESH_HINT}"
-            ) from exc
-        if expected is None:
-            raise SnapshotUnavailableError(
-                f"ClinGen snapshot bundle at {bundle} has no authenticity anchor: it is not "
-                "the packaged bundle and has neither a configured "
-                "CLINGEN_LINK_SNAPSHOT_ZST_SHA256 digest nor a sibling '.sha256' sidecar. "
-                f"Refusing to decompress an unverified bundle. {_REFRESH_HINT}"
-            )
-        actual = _file_sha256(bundle)
-        if actual != expected:
-            raise SnapshotUnavailableError(
-                "ClinGen snapshot bundle failed its SHA-256 integrity check "
-                f"(expected {expected}, got {actual}). {_REFRESH_HINT}"
-            )
 
     def _open(self) -> sqlite3.Connection:
         """Open a fresh read-only connection with row access by column name.
@@ -317,14 +367,11 @@ class Store:
                     conn.close()
 
     def close(self) -> None:
-        """Close every pooled connection and remove any decompressed temp file."""
+        """Close every pooled connection."""
         with self._lock:
             self._closed = True
             while self._pool:
                 self._pool.popleft().close()
-        if self._tempdir is not None:
-            self._tempdir.cleanup()
-            self._tempdir = None
 
     def __enter__(self) -> Store:
         """Context-manager entry returns the store."""

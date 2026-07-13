@@ -1,169 +1,214 @@
-name: Data refresh
-
-# Weekly freshness check of the bundled ClinGen SQLite snapshot. When any domain
-# has drifted, rebuild the snapshot, re-bundle the .zst + .sha256, and open a PR.
-# Modeled on the genereviews refresh discipline, adapted for the SQLite bundle.
+name: Immutable ClinGen data release
 
 on:
   schedule:
-    # Mondays 04:23 UTC (offset from other scheduled jobs).
     - cron: "23 4 * * 1"
   workflow_dispatch:
     inputs:
-      force_rebuild:
-        description: "Rebuild and open a PR even if the snapshot is up to date."
+      publish:
+        description: Publish the verified build artifact as an immutable data release
+        required: true
+        default: false
+        type: boolean
+      redistribution_allowed:
+        description: Confirm the dated ClinGen CC BY 4.0 redistribution review is affirmative
+        required: true
+        default: false
+        type: boolean
+      redistribution_review:
+        description: Reviewer and dated evidence reference
         required: false
-        default: "false"
         type: string
 
 concurrency:
-  group: data-refresh
+  group: data-clingen-${{ github.run_id }}
   cancel-in-progress: false
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
-  refresh:
-    name: Check and refresh snapshot
+  build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: write
-
+      contents: read
+    outputs:
+      tag: ${{ steps.bundle.outputs.tag }}
     steps:
-      - name: Checkout
+      - name: Checkout transformation source
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
-
       - name: Set up uv
         uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
-          enable-cache: true
           version: "0.8.7"
-
-      - name: Install dependencies
-        run: uv sync --group dev --frozen
-
-      - name: Check snapshot freshness
-        id: check
-        run: |
-          set +e
-          uv run clingen-link refresh --check | tee check.log
-          status=${PIPESTATUS[0]}
-          set -e
-          if [ "$status" -eq 0 ]; then
-            echo "stale=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "stale=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Rebuild snapshot
-        id: rebuild
-        if: ${{ steps.check.outputs.stale == 'true' || github.event.inputs.force_rebuild == 'true' }}
+          enable-cache: true
+      - name: Build snapshot and release evidence
+        id: bundle
+        env:
+          REDISTRIBUTION_ALLOWED: ${{ inputs.redistribution_allowed || false }}
+          REDISTRIBUTION_REVIEW: ${{ inputs.redistribution_review || '' }}
         run: |
           set -euo pipefail
-          # Build a fresh raw snapshot (gitignored), then re-bundle the .zst +
-          # .sha256 and re-pin the in-source authenticity anchor (F-16) so the
-          # store still opens the freshly rebuilt bundle.
-          uv run clingen-link refresh --out clingen_link/data/clingen.sqlite | tee refresh.log
+          uv sync --group dev --frozen
+          mkdir -p "$RUNNER_TEMP/data-release"
+          uv run clingen-link refresh --out "$RUNNER_TEMP/data-release/clingen.sqlite"
           uv run python - <<'PY'
           import hashlib
-          import re
+          import json
+          import os
+          import sqlite3
+          from datetime import UTC, datetime
           from pathlib import Path
-
           import zstandard
 
-          data = Path("clingen_link/data")
-          raw = data / "clingen.sqlite"
-          bundle = data / "clingen.sqlite.zst"
-          checksum = data / "clingen.sqlite.sha256"
-
-          cctx = zstandard.ZstdCompressor(level=19)
+          out = Path(os.environ["RUNNER_TEMP"]) / "data-release"
+          raw = out / "clingen.sqlite"
+          bundle = out / "clingen.sqlite.zst"
           with raw.open("rb") as src, bundle.open("wb") as dst:
-              cctx.copy_stream(src, dst)
-
-          digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
-          checksum.write_text(f"{digest}  {bundle.name}\n")
-
-          # Keep clingen_link/store/db.py:_BUNDLED_ZST_SHA256 in lockstep with the
-          # rebuilt bundle; a drift-guard test fails CI if this is ever missed.
-          db_py = Path("clingen_link/store/db.py")
-          src = db_py.read_text()
-          new_src, n = re.subn(
-              r'(_BUNDLED_ZST_SHA256 = ")[0-9a-f]{64}(")',
-              rf"\g<1>{digest}\g<2>",
-              src,
-              count=1,
+              zstandard.ZstdCompressor(level=19).copy_stream(src, dst)
+          file_sha = hashlib.sha256(raw.read_bytes()).hexdigest()
+          record = f"clingen.sqlite\0{0o444:o}\0{raw.stat().st_size}\0{file_sha}"
+          expanded = hashlib.sha256(record.encode()).hexdigest()
+          compressed = hashlib.sha256(bundle.read_bytes()).hexdigest()
+          with sqlite3.connect(raw) as conn:
+              counts = dict(conn.execute("SELECT domain, record_count FROM meta"))
+              retrieved = min(row[0] for row in conn.execute("SELECT fetched_at FROM meta"))
+              source_sha = hashlib.sha256(
+                  "".join(sorted(row[0] for row in conn.execute("SELECT content_sha256 FROM meta"))).encode()
+              ).hexdigest()
+          tag = f"data-clingen-{datetime.now(UTC):%Y-%m-%d}"
+          manifest = {
+              "schema_version": 1,
+              "dataset": {"name": "ClinGen curated evidence snapshot", "release": tag,
+                  "source": {"identifier": tag, "url": "https://clinicalgenome.org/",
+                      "retrieved_at": retrieved, "sha256": source_sha}},
+              "transformation": {"repository": os.environ["GITHUB_REPOSITORY"],
+                  "revision": os.environ["GITHUB_SHA"]},
+              "schema": {"minimum": "1.0.0", "maximum": "1.0.0", "actual": "1.0.0"},
+              "record_counts": counts,
+              "artifact": {"filename": bundle.name, "sha256": compressed,
+                  "compressed_size": bundle.stat().st_size, "max_compressed_size": 67108864,
+                  "expanded_tree_sha256": expanded, "expanded_size": raw.stat().st_size,
+                  "max_expanded_size": 268435456, "member_count": 1, "max_members": 1},
+              "license": {"name": "CC BY 4.0", "url": "https://creativecommons.org/licenses/by/4.0/",
+                  "redistribution_allowed": os.environ["REDISTRIBUTION_ALLOWED"] == "true",
+                  "reviewed_at": datetime.now(UTC).isoformat(),
+                  "reviewer": os.environ["REDISTRIBUTION_REVIEW"] or "publication-not-authorized"},
+              "previous_known_good_digest": "sha256:b389b1dbea7921d414c647fdc88ce19ff81bcf27acae39a7ce8b150ee0a2fc17",
+              # The snapshot schema (1.0.0) is stable across the 3.x application line, so any
+              # 3.x build from the first externalized-data release onwards can read it. Pinning
+              # the maximum to one exact patch would strand every later patch release.
+              "application_compatibility": {"minimum": "3.0.3", "maximum": "3.999.999"},
+              "disclaimer": "Research use only; not clinical decision support. ClinGen data © ClinGen.",
+          }
+          (out / "data-release-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          raw.unlink()
+          (out / "SHA256SUMS").write_text(
+              f"{compressed}  {bundle.name}\n{hashlib.sha256((out / 'data-release-manifest.json').read_bytes()).hexdigest()}  data-release-manifest.json\n"
           )
-          if n != 1:
-              raise SystemExit("could not re-pin _BUNDLED_ZST_SHA256 in db.py")
-          db_py.write_text(new_src)
-          print(f"Re-bundled {bundle} ({bundle.stat().st_size} bytes); sha256={digest}")
+          Path(os.environ["GITHUB_OUTPUT"]).open("a").write(f"tag={tag}\n")
           PY
-
-      - name: Verify rebuilt bundle loads
-        if: ${{ steps.rebuild.outcome == 'success' }}
-        run: |
-          set -euo pipefail
-          # The .sha256 must match the .zst, and the store must open it cleanly.
-          (cd clingen_link/data && sha256sum -c clingen.sqlite.sha256)
           uv run python - <<'PY'
-          from clingen_link.store.db import Store
-
-          store = Store("clingen_link/data/clingen.sqlite.zst")
-          meta = store.meta()
-          store.close()
-          assert meta, "rebuilt snapshot has no meta rows"
-          for domain, row in sorted(meta.items()):
-              print(f"{domain}: {row.get('record_count')} records (version {row.get('signal_value')})")
+          import json
+          import os
+          from pathlib import Path
+          import jsonschema
+          root = Path(os.environ["GITHUB_WORKSPACE"])
+          out = Path(os.environ["RUNNER_TEMP"]) / "data-release"
+          schema = json.loads((root / "vendor/genefoundry/data-release-manifest.schema.json").read_text())
+          manifest = json.loads((out / "data-release-manifest.json").read_text())
+          jsonschema.Draft202012Validator(schema, format_checker=jsonschema.FormatChecker()).validate(manifest)
           PY
-
-      - name: Open pull request
-        id: cpr
-        if: ${{ steps.rebuild.outcome == 'success' }}
-        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+      - name: Upload immutable build handoff
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
         with:
-          base: main
-          add-paths: |
-            clingen_link/data/clingen.sqlite.zst
-            clingen_link/data/clingen.sqlite.sha256
-            clingen_link/store/db.py
-          branch: data-refresh/snapshot
-          delete-branch: true
-          commit-message: |
-            chore: refresh ClinGen snapshot bundle
+          name: clingen-data-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/data-release
+          if-no-files-found: error
+          retention-days: 3
 
-            Automated weekly snapshot rebuild after detecting upstream drift.
-
-            Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
-          title: "chore: refresh ClinGen snapshot bundle"
-          body: |
-            Automated weekly snapshot refresh.
-
-            The freshness check detected upstream drift in at least one ClinGen
-            domain, so the bundled SQLite snapshot was rebuilt and re-bundled
-            (`clingen.sqlite.zst` + `clingen.sqlite.sha256`).
-
-            Review the row-count and freshness summary in the workflow logs
-            before merging. Research use only; not for clinical decision support.
-          labels: |
-            data-refresh
-            automated
-
-      - name: Verify pull request opened
-        if: ${{ steps.rebuild.outcome == 'success' }}
+  publish:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
+    needs: build
+    runs-on: ubuntu-latest
+    environment: data-release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      # This job is privileged and deliberately never checks out the source: it consumes
+      # only the sealed build handoff. `gh` therefore has no git remote to infer the
+      # repository from, so name it explicitly instead of granting it a working tree.
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Require affirmative redistribution review
+        env:
+          ALLOWED: ${{ inputs.redistribution_allowed }}
+          REVIEW: ${{ inputs.redistribution_review }}
+        run: |
+          test "$ALLOWED" = true
+          test -n "$REVIEW"
+      - name: Download exact build handoff
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4.3.0
+        with:
+          name: clingen-data-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/data-release
+      - name: Install checksum-pinned GitHub CLI
         run: |
           set -euo pipefail
-          num="${{ steps.cpr.outputs.pull-request-number }}"
-          if [ -z "$num" ]; then
-            echo "::error::create-pull-request produced no PR number: the snapshot branch was"
-            echo "::error::pushed without a PR. Enable Settings -> Actions -> General ->"
-            echo "::error::'Allow GitHub Actions to create and approve pull requests'."
-            exit 1
+          gh_version=2.96.0
+          gh_sha256=83d5c2ccad5498f58bf6368acb1ab32588cf43ab3a4b1c301bf36328b1c8bd60
+          curl -fsSL --proto '=https' --tlsv1.2 -o "$RUNNER_TEMP/gh.tar.gz" \
+            "https://github.com/cli/cli/releases/download/v${gh_version}/gh_${gh_version}_linux_amd64.tar.gz"
+          echo "$gh_sha256  $RUNNER_TEMP/gh.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/gh.tar.gz" -C "$RUNNER_TEMP"
+          install -m 0755 "$RUNNER_TEMP/gh_${gh_version}_linux_amd64/bin/gh" "$RUNNER_TEMP/gh"
+      - name: Verify handoff and create matching draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/data-release"
+          sha256sum --check SHA256SUMS
+          gh="$RUNNER_TEMP/gh"
+          if "$gh" release view "$TAG" --json isDraft >"$RUNNER_TEMP/release.json" 2>/dev/null; then
+            test "$(jq -r .isDraft "$RUNNER_TEMP/release.json")" = true
+            rm -rf "$RUNNER_TEMP/existing" && mkdir "$RUNNER_TEMP/existing"
+            "$gh" release download "$TAG" --dir "$RUNNER_TEMP/existing"
+            if ! diff -q clingen.sqlite.zst "$RUNNER_TEMP/existing/clingen.sqlite.zst" \
+                || ! diff -q data-release-manifest.json "$RUNNER_TEMP/existing/data-release-manifest.json" \
+                || ! diff -q SHA256SUMS "$RUNNER_TEMP/existing/SHA256SUMS"; then
+              "$gh" release delete "$TAG" --yes --cleanup-tag
+              "$gh" release create "$TAG" --draft --title "$TAG" --notes "Immutable ClinGen reference snapshot. Research use only; not clinical decision support."
+              "$gh" release upload "$TAG" clingen.sqlite.zst data-release-manifest.json SHA256SUMS
+            fi
+          else
+            "$gh" release create "$TAG" --draft --title "$TAG" --notes "Immutable ClinGen reference snapshot. Research use only; not clinical decision support."
+            "$gh" release upload "$TAG" clingen.sqlite.zst data-release-manifest.json SHA256SUMS
           fi
-          echo "Opened/updated PR #${num}: ${{ steps.cpr.outputs.pull-request-url }}"
+      - name: Attest exact data assets
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v4.1.0
+        with:
+          subject-path: |
+            ${{ runner.temp }}/data-release/clingen.sqlite.zst
+            ${{ runner.temp }}/data-release/data-release-manifest.json
+      - name: Publish once and verify immutable assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # `verify-asset` compares the published asset against the LOCAL file, so it must
+          # run from the handoff directory. Each `run:` block starts a fresh shell in the
+          # workspace, so the cd from the previous step does not carry over.
+          cd "$RUNNER_TEMP/data-release"
+          "$RUNNER_TEMP/gh" release edit "$TAG" --draft=false
+          "$RUNNER_TEMP/gh" release verify "$TAG"
+          "$RUNNER_TEMP/gh" release verify-asset "$TAG" clingen.sqlite.zst
+          "$RUNNER_TEMP/gh" release verify-asset "$TAG" data-release-manifest.json
+          "$RUNNER_TEMP/gh" release verify-asset "$TAG" SHA256SUMS
