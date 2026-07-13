@@ -16,11 +16,17 @@ import uvicorn
 from asgi_correlation_id import CorrelationIdMiddleware
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastmcp import FastMCP
 
 from clingen_link import __version__
 from clingen_link.config import ServerConfig, settings
-from clingen_link.exceptions import ConfigurationError, MCPIntegrationError, StartupError
+from clingen_link.exceptions import (
+    ConfigurationError,
+    MCPIntegrationError,
+    SnapshotUnavailableError,
+    StartupError,
+)
 from clingen_link.logging_config import configure_logging, get_server_logger
 from clingen_link.mcp.facade import create_clingen_mcp
 from clingen_link.mcp.service_adapters import ClingenServices, get_services
@@ -42,6 +48,25 @@ class UnifiedServerManager:
     def _create_services(self) -> ClingenServices:
         return get_services()
 
+    def _service_factory(self) -> ClingenServices:
+        """Return the request-shared services, failing closed when data is absent.
+
+        Raises:
+            SnapshotUnavailableError: no verified reference snapshot is selected. The
+                MCP error boundary maps this to the canonical ``snapshot_unavailable``
+                envelope, so a not-ready host declines to answer instead of guessing.
+        """
+        if self.app is None:
+            raise RuntimeError("FastAPI host not initialized")
+        services = getattr(self.app.state, "clingen_services", None)
+        if services is None:
+            # Retry construction: the init sidecar may have selected the snapshot after
+            # this host started. A still-absent snapshot re-raises, fail-closed.
+            services = self._create_services()
+            self.app.state.clingen_services = services
+            self.app.state.clingen_data_error = None
+        return cast(ClingenServices, services)
+
     # ---------------- FastAPI host (health only) ----------------
 
     def create_app(self) -> FastAPI:
@@ -59,8 +84,20 @@ class UnifiedServerManager:
         @asynccontextmanager
         async def lifespan(app: FastAPI) -> Any:
             self.logger.info("Starting clingen-link host application...")
-            app.state.clingen_services = self._create_services()
-            self.logger.info("Services ready")
+            # The production image is code-only: the reference snapshot is materialized
+            # into a mounted volume by the `clingen-data-init` sidecar, never baked in.
+            # A host that starts before (or without) that materialization is LIVE but NOT
+            # READY -- it must still serve MCP definitions, so record the fault instead of
+            # aborting the process. /health then reports 503 `degraded` and every
+            # data-bearing tool call fails closed with a `snapshot_unavailable` envelope.
+            app.state.clingen_services = None
+            app.state.clingen_data_error = None
+            try:
+                app.state.clingen_services = self._create_services()
+                self.logger.info("Services ready")
+            except SnapshotUnavailableError as exc:
+                app.state.clingen_data_error = str(exc)
+                self.logger.error(f"ClinGen reference snapshot unavailable: {exc}")
             try:
                 yield
             finally:
@@ -98,15 +135,24 @@ class UnifiedServerManager:
         )
 
         @app.get("/health")
-        async def health() -> dict[str, Any]:
+        async def health() -> Any:
             result: dict[str, Any] = {
                 "status": "healthy",
                 "version": __version__,
                 "transport": "streamable-http-stateless",
             }
             services = getattr(app.state, "clingen_services", None)
-            if services is not None:
-                result["data_identity"] = services.store.data_identity
+            if services is None:
+                # Readiness, not liveness: never report healthy to a proxy or an
+                # orchestrator while the authoritative snapshot is not selected.
+                result["status"] = "degraded"
+                result["data_available"] = False
+                reason = getattr(app.state, "clingen_data_error", None)
+                if reason:
+                    result["reason"] = reason
+                return JSONResponse(result, status_code=503)
+            result["data_available"] = True
+            result["data_identity"] = services.store.data_identity
             return result
 
         return app
@@ -135,13 +181,7 @@ class UnifiedServerManager:
 
     def _build_unified_app(self, config: ServerConfig) -> FastAPI:
         self.app = self._build_fastapi_app(config)
-
-        def service_factory() -> ClingenServices:
-            if self.app is None:
-                raise RuntimeError("FastAPI host not initialized")
-            return cast(ClingenServices, self.app.state.clingen_services)
-
-        self.mcp = self._create_mcp_server(service_factory)
+        self.mcp = self._create_mcp_server(self._service_factory)
         mcp_http_app = self.mcp.http_app(
             path=config.mcp_path,
             stateless_http=True,

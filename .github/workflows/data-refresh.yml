@@ -139,6 +139,11 @@ jobs:
       contents: write
       id-token: write
       attestations: write
+    env:
+      # This job is privileged and deliberately never checks out the source: it consumes
+      # only the sealed build handoff. `gh` therefore has no git remote to infer the
+      # repository from, so name it explicitly instead of granting it a working tree.
+      GH_REPO: ${{ github.repository }}
     steps:
       - name: Require affirmative redistribution review
         env:

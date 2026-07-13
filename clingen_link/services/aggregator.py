@@ -12,6 +12,7 @@ from pathlib import Path
 
 from ..api.clingen_client import ClingenClient
 from ..config import settings
+from ..exceptions import SnapshotUnavailableError
 from ..store import cspec_queries
 from ..store.db import Store
 from .actionability_service import ActionabilityService
@@ -54,11 +55,21 @@ class ClingenServices:
         snapshot = Path(path) if path is not None else Path(settings.snapshot_path)
         store = Store(snapshot)
         if path is None:
-            expected = settings.expected_data_identity()
+            # A deployment that cannot state its exact expected data identity, or whose
+            # selected snapshot does not match it, is not ready. Raise the typed
+            # fail-closed fault so the MCP boundary answers `snapshot_unavailable`
+            # instead of serving records from an unverified snapshot.
+            try:
+                expected = settings.expected_data_identity()
+            except ValueError as exc:
+                store.close()
+                raise SnapshotUnavailableError(
+                    f"ClinGen deployment data identity is not configured: {exc}"
+                ) from exc
             actual = store.data_identity
             if any(actual.get(key) != value for key, value in expected.items()):
                 store.close()
-                raise ValueError(
+                raise SnapshotUnavailableError(
                     f"selected ClinGen data identity does not match deployment pins: "
                     f"expected={expected}, actual={actual}"
                 )
