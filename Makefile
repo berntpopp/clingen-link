@@ -124,7 +124,7 @@ docker-logs: ## Follow Docker logs
 	$(DOCKER_COMPOSE) -f docker/docker-compose.yml logs -f
 
 docker-prod-config: ## Render production Compose configuration
-	$(DOCKER_COMPOSE) -f docker/docker-compose.yml -f docker/docker-compose.prod.yml config
+	$(DOCKER_COMPOSE) --env-file .env.docker.example -f docker/docker-compose.yml -f docker/docker-compose.prod.yml config
 
 docker-npm-config: ## Render NPM Compose configuration
 	$(DOCKER_COMPOSE) --env-file .env.docker.example -f docker/docker-compose.yml -f docker/docker-compose.prod.yml -f docker/docker-compose.npm.yml config

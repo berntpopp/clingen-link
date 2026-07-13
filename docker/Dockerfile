@@ -53,7 +53,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH="/home/app/web" \
     CLINGEN_LINK_MCP_HOST=0.0.0.0 \
     CLINGEN_LINK_MCP_PORT=8000 \
-    TMPDIR=/tmp/clingen-link
+    TMPDIR=/tmp
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
@@ -63,8 +63,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN groupadd --gid 10001 app && \
     useradd --uid 10001 --gid app --home /home/app --create-home app && \
-    mkdir -p /tmp/clingen-link /var/lib/clingen/reference && \
-    chown -R app:app /tmp/clingen-link /var/lib/clingen/reference /home/app
+    mkdir -p /data /seed && \
+    chown -R app:app /data /home/app
 
 COPY --from=builder /opt/venv /opt/venv
 
@@ -118,7 +118,7 @@ ENV VCS_REF="${VCS_REF}" \
     PATH="/opt/venv/bin:$PATH" \
     CLINGEN_LINK_MCP_HOST=0.0.0.0 \
     CLINGEN_LINK_MCP_PORT=8000 \
-    TMPDIR=/tmp/clingen-link
+    TMPDIR=/tmp
 
 WORKDIR /home/app/web
 USER 10001:10001

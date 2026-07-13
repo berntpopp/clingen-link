@@ -12,12 +12,26 @@
     "container_port": 8000,
     "health_path": "/health",
     "mcp_path": "/mcp",
-    "startup_timeout_seconds": 180
+    "startup_timeout_seconds": 180,
+    "auxiliary": [
+      {
+        "name": "clingen-data-init",
+        "role": "init",
+        "egress": "denied",
+        "writable_targets": [
+          "/data",
+          "/tmp"
+        ],
+        "read_only_targets": [
+          "/seed"
+        ]
+      }
+    ]
   },
   "data": {
     "mode": "external-reference",
-    "release_tag": "legacy-git-bundle-3.0.3",
-    "digest": "sha256:b389b1dbea7921d414c647fdc88ce19ff81bcf27acae39a7ce8b150ee0a2fc17",
+    "release_tag": "data-clingen-2026-07-13",
+    "digest": "sha256:e0204a40541e82fb86cf4725a2b5fa9edc5e0eec838ada9564fa8de973c51626",
     "image_allowlist": [
       "opt/venv/lib/python3.14/site-packages/clingen_link/data/svi_guidance.json"
     ]
@@ -27,5 +41,6 @@
   },
   "smoke": {
     "profile": "immutable-bundle"
-  }
+  },
+  "preparation": "docker/ci-prepare-smoke.sh"
 }

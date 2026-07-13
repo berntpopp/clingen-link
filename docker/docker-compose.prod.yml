@@ -1,5 +1,10 @@
-# Production docker-compose override.
-# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Production overlay.
+# Usage: docker compose -f docker/docker-compose.yml -f docker/docker-compose.prod.yml up -d
+#
+# Both services run the SAME attested image digest: the init sidecar is the application's own
+# `materialize-data` entry point, so it inherits the image's non-root user and hardening.
+# `!override` replaces (rather than list-merges) the inherited sequences, which would otherwise
+# yield duplicate mounts and duplicate security_opt entries.
 
 services:
   clingen-data-init:
@@ -11,10 +16,8 @@ services:
     build: !reset null
     image: "${CLINGEN_LINK_IMAGE:?set an attested image@sha256 digest}"
     pull_policy: missing
-    env_file: !reset []
-    # Production-specific environment variables
+
     environment:
-      CLINGEN_LINK_MCP_TRANSPORT: unified
       CLINGEN_LINK_LOG_LEVEL: INFO
       CLINGEN_LINK_CACHE_SIZE: 2000
       CLINGEN_LINK_CACHE_TTL_MINUTES: 120
@@ -22,55 +25,45 @@ services:
       CLINGEN_LINK_ALLOWED_ORIGINS: '["https://clingen-link.genefoundry.org"]'
       CLINGEN_LINK_CORS_ORIGINS: '["https://clingen-link.genefoundry.org"]'
 
-    # Remove development volume mounts and published ports.
-    volumes:
-      - clingen-reference:/var/lib/clingen/reference:ro
+    # The reverse proxy is the only ingress: publish no host port.
     ports: !reset []
-    expose: ["8000"]
+    expose:
+      - "8000"
 
-    # read_only, tmpfs, and security_opt are inherited from the base compose
-    # (Compose rejects a list-merge that yields duplicate security_opt entries).
     read_only: true
-
-    cap_drop:
+    volumes: !override
+      - type: volume
+        source: clingen-reference
+        target: /data
+        read_only: true
+    tmpfs: !override
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+    security_opt: !override
+      - no-new-privileges:true
+    cap_drop: !override
       - ALL
-
-    pids_limit: 256
     init: true
 
-    # Unified server (FastAPI host /health + MCP /mcp via the same port).
-    command: ["clingen-link", "serve", "--transport", "unified", "--host", "0.0.0.0", "--port", "8000"]
-
-    # Production resource limits
     deploy:
       resources:
         limits:
           memory: 1G
-          cpus: '1.0'
+          cpus: "1.0"
           pids: 256
-        reservations:
-          memory: 512M
-          cpus: '0.5'
 
-      # Production restart policy
-      restart_policy:
-        condition: on-failure
-        delay: 5s
-        max_attempts: 3
-        window: 120s
-
-    # Enhanced health check for production
     healthcheck:
-      test: ["CMD", "curl", "-f", "-H", "Host: localhost", "http://localhost:8000/health"]
+      test: ["CMD", "sh", "-c", "curl -f -H \"Host: $${GF_HEALTHCHECK_HOST}\" http://localhost:8000/health"]
       interval: 20s
       timeout: 5s
       retries: 5
       start_period: 30s
 
-    # Production logging with rotation
+    # Restart a crashed container, but never mask a container that fails to come up:
+    # a permanently failing service must stay down and visible.
+    restart: on-failure
+
     logging:
-      driver: "json-file"
+      driver: json-file
       options:
         max-size: "50m"
         max-file: "5"
-        labels: "service=clingen-link,environment=production"

@@ -203,6 +203,10 @@ jobs:
           TAG: ${{ needs.build.outputs.tag }}
         run: |
           set -euo pipefail
+          # `verify-asset` compares the published asset against the LOCAL file, so it must
+          # run from the handoff directory. Each `run:` block starts a fresh shell in the
+          # workspace, so the cd from the previous step does not carry over.
+          cd "$RUNNER_TEMP/data-release"
           "$RUNNER_TEMP/gh" release edit "$TAG" --draft=false
           "$RUNNER_TEMP/gh" release verify "$TAG"
           "$RUNNER_TEMP/gh" release verify-asset "$TAG" clingen.sqlite.zst

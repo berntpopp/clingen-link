@@ -15,7 +15,10 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-_DEFAULT_SNAPSHOT_PATH = "/var/lib/clingen/reference/current/clingen.sqlite"
+# The reference volume is mounted at /data — the only approved writable/readable data
+# path in the container hardening policy. `current` is the atomically selected version.
+_DEFAULT_DATA_ROOT = "/data"
+_DEFAULT_SNAPSHOT_PATH = f"{_DEFAULT_DATA_ROOT}/current/clingen.sqlite"
 
 
 class DataRequirement(BaseModel):
@@ -121,7 +124,7 @@ class Settings(BaseSettings):
     data_schema_maximum: str = "1.0.0"
     data_max_compressed_bytes: int = 64 * 1024 * 1024
     data_max_expanded_bytes: int = 256 * 1024 * 1024
-    data_root: str = "/var/lib/clingen/reference"
+    data_root: str = _DEFAULT_DATA_ROOT
 
     # ---- Live client resilience ----
     # Max concurrent in-flight upstream requests; bounds burst pressure.

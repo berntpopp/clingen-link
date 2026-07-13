@@ -12,7 +12,8 @@ def test_defaults_present() -> None:
     assert s.dosage_ftp_base.startswith("https://")
     assert s.actionability_api_base.startswith("https://")
     assert s.erepo_api_base.startswith("https://")
-    assert s.snapshot_path == "/var/lib/clingen/reference/current/clingen.sqlite"
+    assert s.snapshot_path == "/data/current/clingen.sqlite"
+    assert s.data_root == "/data"
     assert s.max_concurrency == 5
     assert s.request_timeout_s == 30
     assert s.cache_size == 512

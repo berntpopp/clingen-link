@@ -194,7 +194,7 @@ optional `.env`; see [`.env.example`](.env.example)).
 | `CLINGEN_LINK_DOSAGE_FTP_BASE` | `https://ftp.clinicalgenome.org` | Dosage TSV source (ETL). |
 | `CLINGEN_LINK_ACTIONABILITY_API_BASE` | `https://actionability.clinicalgenome.org/ac` | Actionability API base (ETL + live SEPIO). |
 | `CLINGEN_LINK_EREPO_API_BASE` | `https://erepo.clinicalgenome.org/evrepo` | ERepo API base (ETL + live drill-down). |
-| `CLINGEN_LINK_SNAPSHOT_PATH` | `/var/lib/clingen/reference/current/clingen.sqlite` | Selected read-only snapshot. |
+| `CLINGEN_LINK_SNAPSHOT_PATH` | `/data/current/clingen.sqlite` | Selected read-only snapshot. |
 | `CLINGEN_LINK_DATA_BUNDLE_PATH` | required | Reviewed pre-seeded `.zst` bundle path used only by the init service. |
 | `CLINGEN_LINK_DATA_BUNDLE_SHA256` | required | Exact compressed bundle SHA-256. |
 | `CLINGEN_LINK_DATA_EXPANDED_SHA256` | required | Canonical expanded-tree SHA-256. |

@@ -37,7 +37,9 @@ jobs:
         run: docker compose -f docker/docker-compose.yml config
 
       - name: Render production compose
-        run: docker compose -f docker/docker-compose.yml -f docker/docker-compose.prod.yml config
+        run: >-
+          docker compose --env-file .env.docker.example
+          -f docker/docker-compose.yml -f docker/docker-compose.prod.yml config
 
       - name: Render NPM compose
         run: docker compose -f docker/docker-compose.npm.yml --env-file .env.docker.example config
