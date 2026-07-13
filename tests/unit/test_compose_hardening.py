@@ -18,14 +18,22 @@ DOCKER = Path(__file__).resolve().parents[2] / "docker"
 class _ComposeLoader(yaml.SafeLoader):
     """SafeLoader that understands the Compose-spec merge tag `!reset`.
 
-    Overlay files (e.g. `docker-compose.prod.yml`) use `ports: !reset []` to
-    clear a base-declared sequence instead of appending to it. `!reset` isn't
-    a standard YAML tag, so plain `yaml.safe_load` raises `ConstructorError`
-    on it; we only need the underlying value for these assertions.
+    Overlay files use `!reset` to clear inherited base values instead of
+    merging them. `!reset` isn't a standard YAML tag, so plain
+    `yaml.safe_load` raises `ConstructorError` on it; we only need the
+    underlying value for these assertions.
     """
 
 
-_ComposeLoader.add_constructor("!reset", yaml.SafeLoader.construct_sequence)
+def _construct_reset(loader: _ComposeLoader, node: yaml.Node) -> Any:
+    if isinstance(node, yaml.SequenceNode):
+        return loader.construct_sequence(node)
+    if isinstance(node, yaml.MappingNode):
+        return loader.construct_mapping(node)
+    return loader.construct_scalar(node)
+
+
+_ComposeLoader.add_constructor("!reset", _construct_reset)
 
 
 def _service(compose_file: str, service: str) -> dict[str, Any]:

@@ -6,7 +6,7 @@ evidence, across all four of ClinGen's data domains.
 
 Part of the `*-link` family of MCP servers. Built on the `gnomad-link` house
 style: a hand-authored FastMCP v3 facade with the full canonical response
-envelope, Streamable-HTTP transport (unified / http), and a self-contained
+envelope, Streamable-HTTP transport (unified / http), and an immutable external
 SQLite snapshot for offline, token-efficient queries plus a thin live HTTP
 layer for single-record drill-down.
 
@@ -21,8 +21,8 @@ layer for single-record drill-down.
   - **Gene Dosage** — is a gene/region haploinsufficient or triplosensitive?
   - **Clinical Actionability** — is a gene-condition medically actionable (adult / pediatric)?
   - **Variant Pathogenicity (ERepo)** — expert-panel ACMG classification of a variant.
-- **Snapshot + live hybrid.** A bundled, read-only SQLite snapshot (shipped
-  inside the package) backs fast, offline search and retrieval across every
+- **Snapshot + live hybrid.** An exact-digest external SQLite snapshot mounted
+  read-only backs fast, offline search and retrieval across every
   domain; a resilient `httpx` client adds live drill-down for single-variant
   ERepo evidence (`refresh=true`) and actionability SEPIO documents
   (`include_detail=true`).
@@ -60,7 +60,7 @@ uv run clingen-link serve --transport unified --host 0.0.0.0 --port 8000
 ```
 
 The CLI is a single `typer` app; run `uv run clingen-link --help` to list the
-`serve`, `config`, `health`, `refresh`, and `version` commands. Once the unified
+`serve`, `config`, `health`, `materialize-data`, `refresh`, and `version` commands. Once the unified
 server is up, check health and the MCP endpoint:
 
 ```bash
@@ -70,18 +70,17 @@ uv run clingen-link health --url http://127.0.0.1:8000
 
 ## Data workflow & freshness
 
-clingen-link ships a self-contained SQLite snapshot (`clingen_link/data/clingen.sqlite.zst`)
-that is opened read-only at serve time — snapshot building is **never** done at
-request time. The offline ETL builds it from ClinGen's bulk endpoints.
+clingen-link ships a code-only application. The offline ETL builds an immutable
+snapshot release from ClinGen's bulk endpoints; a no-egress init service verifies
+its compressed digest, canonical expanded-tree digest, size ceilings, and schema
+before atomically selecting it for the read-only application mount.
 
 ```bash
-# Check whether the bundled snapshot is stale (fetches only cheap freshness
+# Check whether a selected raw snapshot is stale (fetches only cheap freshness
 # signals, writes nothing, exits non-zero if any domain is stale):
 uv run clingen-link refresh --check
 
-# Rebuild the snapshot from live ClinGen sources (writes to the bundled path
-# unless --out is given):
-uv run clingen-link refresh
+# Rebuild a raw snapshot from live ClinGen sources:
 uv run clingen-link refresh --out /tmp/clingen.sqlite
 
 # Same ETL via the module entry point:
@@ -97,8 +96,8 @@ tuples. `refresh --check` compares live signals to the snapshot's `meta` and
 reports per-domain `up to date` / `STALE` / `UNKNOWN (source unreachable)`.
 Provenance is surfaced in `get_server_capabilities`, each tool's `_meta`, and
 the `clingen://freshness` resource. A weekly GitHub Action
-(`.github/workflows/data-refresh.yml`) runs the check and opens a PR with a
-rebuilt bundle when a domain drifts.
+(`.github/workflows/data-refresh.yml`) builds a credential-free workflow artifact;
+an explicitly authorized publisher creates an attested immutable data release.
 
 ## MCP tools
 
@@ -195,7 +194,11 @@ optional `.env`; see [`.env.example`](.env.example)).
 | `CLINGEN_LINK_DOSAGE_FTP_BASE` | `https://ftp.clinicalgenome.org` | Dosage TSV source (ETL). |
 | `CLINGEN_LINK_ACTIONABILITY_API_BASE` | `https://actionability.clinicalgenome.org/ac` | Actionability API base (ETL + live SEPIO). |
 | `CLINGEN_LINK_EREPO_API_BASE` | `https://erepo.clinicalgenome.org/evrepo` | ERepo API base (ETL + live drill-down). |
-| `CLINGEN_LINK_SNAPSHOT_PATH` | bundled `clingen_link/data/clingen.sqlite.zst` | Read-only snapshot location. |
+| `CLINGEN_LINK_SNAPSHOT_PATH` | `/var/lib/clingen/reference/current/clingen.sqlite` | Selected read-only snapshot. |
+| `CLINGEN_LINK_DATA_BUNDLE_PATH` | required | Reviewed pre-seeded `.zst` bundle path used only by the init service. |
+| `CLINGEN_LINK_DATA_BUNDLE_SHA256` | required | Exact compressed bundle SHA-256. |
+| `CLINGEN_LINK_DATA_EXPANDED_SHA256` | required | Canonical expanded-tree SHA-256. |
+| `CLINGEN_LINK_DATA_SCHEMA_VERSION` | `1.0.0` | Exact expected snapshot schema version. |
 | `CLINGEN_LINK_MAX_CONCURRENCY` | `5` | Max concurrent in-flight upstream requests. |
 | `CLINGEN_LINK_REQUEST_TIMEOUT_S` | `30` | Per-request upstream timeout (seconds). |
 | `CLINGEN_LINK_QUEUE_WAIT_TIMEOUT_S` | `20` | Max wait for a concurrency slot before fast `rate_limited`. |

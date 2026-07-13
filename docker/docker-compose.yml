@@ -1,11 +1,44 @@
 name: clingen-link
 
 services:
+  clingen-data-init:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: production
+    image: clingen-link:local
+    command: ["clingen-link", "materialize-data"]
+    environment:
+      CLINGEN_LINK_DATA_BUNDLE_PATH: /seed/clingen.sqlite.zst
+      CLINGEN_LINK_DATA_BUNDLE_SHA256: "${CLINGEN_LINK_DATA_BUNDLE_SHA256:?set exact compressed SHA-256}"
+      CLINGEN_LINK_DATA_EXPANDED_SHA256: "${CLINGEN_LINK_DATA_EXPANDED_SHA256:?set exact expanded-tree SHA-256}"
+      CLINGEN_LINK_DATA_SCHEMA_VERSION: "${CLINGEN_LINK_DATA_SCHEMA_VERSION:-1.0.0}"
+      CLINGEN_LINK_DATA_SCHEMA_MINIMUM: "${CLINGEN_LINK_DATA_SCHEMA_MINIMUM:-1.0.0}"
+      CLINGEN_LINK_DATA_SCHEMA_MAXIMUM: "${CLINGEN_LINK_DATA_SCHEMA_MAXIMUM:-1.0.0}"
+    volumes:
+      - type: bind
+        source: "${CLINGEN_LINK_DATA_BUNDLE_PATH:?set reviewed local bundle path}"
+        target: /seed/clingen.sqlite.zst
+        read_only: true
+      - clingen-reference:/var/lib/clingen/reference
+    read_only: true
+    tmpfs:
+      - /tmp/clingen-link:rw,noexec,nosuid,size=16m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    network_mode: none
+    restart: "no"
+
   clingen-link:
     build:
       context: ..
       dockerfile: docker/Dockerfile
       target: production
+    image: clingen-link:local
+    depends_on:
+      clingen-data-init:
+        condition: service_completed_successfully
     container_name: clingen-link-prod
     ports:
       # Loopback only: an auth=none backend must never be published on 0.0.0.0.
@@ -25,13 +58,20 @@ services:
       CLINGEN_LINK_ALLOWED_HOSTS: '["localhost","127.0.0.1","::1"]'
       CLINGEN_LINK_ALLOWED_ORIGINS: '[]'
       CLINGEN_LINK_LOG_LEVEL: INFO
+      CLINGEN_LINK_SNAPSHOT_PATH: /var/lib/clingen/reference/current/clingen.sqlite
+      CLINGEN_LINK_DATA_BUNDLE_PATH: /seed/clingen.sqlite.zst
+      CLINGEN_LINK_DATA_BUNDLE_SHA256: "${CLINGEN_LINK_DATA_BUNDLE_SHA256:?set exact compressed SHA-256}"
+      CLINGEN_LINK_DATA_EXPANDED_SHA256: "${CLINGEN_LINK_DATA_EXPANDED_SHA256:?set exact expanded-tree SHA-256}"
+      CLINGEN_LINK_DATA_SCHEMA_VERSION: "${CLINGEN_LINK_DATA_SCHEMA_VERSION:-1.0.0}"
+      CLINGEN_LINK_DATA_SCHEMA_MINIMUM: "${CLINGEN_LINK_DATA_SCHEMA_MINIMUM:-1.0.0}"
+      CLINGEN_LINK_DATA_SCHEMA_MAXIMUM: "${CLINGEN_LINK_DATA_SCHEMA_MAXIMUM:-1.0.0}"
     command: ["clingen-link", "serve", "--transport", "unified", "--host", "0.0.0.0", "--port", "8000"]
     # --- Container & Deployment Hardening Standard v1 (universal gap #1: harden the base) ---
     read_only: true
+    volumes:
+      - clingen-reference:/var/lib/clingen/reference:ro
     tmpfs:
-      # The store decompresses the snapshot .zst to a temp .sqlite at startup,
-      # so the writable tmpfs must be large enough to hold it.
-      - /tmp/clingen-link:rw,noexec,nosuid,size=256m,mode=1777
+      - /tmp/clingen-link:rw,noexec,nosuid,size=16m,mode=1777
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -62,3 +102,6 @@ services:
 networks:
   clingen-network:
     driver: bridge
+
+volumes:
+  clingen-reference:

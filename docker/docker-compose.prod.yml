@@ -2,7 +2,16 @@
 # Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 services:
+  clingen-data-init:
+    build: !reset null
+    image: "${CLINGEN_LINK_IMAGE:?set an attested image@sha256 digest}"
+    pull_policy: missing
+
   clingen-link:
+    build: !reset null
+    image: "${CLINGEN_LINK_IMAGE:?set an attested image@sha256 digest}"
+    pull_policy: missing
+    env_file: !reset []
     # Production-specific environment variables
     environment:
       CLINGEN_LINK_MCP_TRANSPORT: unified
@@ -14,8 +23,10 @@ services:
       CLINGEN_LINK_CORS_ORIGINS: '["https://clingen-link.genefoundry.org"]'
 
     # Remove development volume mounts and published ports.
-    volumes: []
+    volumes:
+      - clingen-reference:/var/lib/clingen/reference:ro
     ports: !reset []
+    expose: ["8000"]
 
     # read_only, tmpfs, and security_opt are inherited from the base compose
     # (Compose rejects a list-merge that yields duplicate security_opt entries).

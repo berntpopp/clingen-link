@@ -98,12 +98,16 @@ class UnifiedServerManager:
         )
 
         @app.get("/health")
-        async def health() -> dict[str, str]:
-            return {
+        async def health() -> dict[str, Any]:
+            result: dict[str, Any] = {
                 "status": "healthy",
                 "version": __version__,
                 "transport": "streamable-http-stateless",
             }
+            services = getattr(app.state, "clingen_services", None)
+            if services is not None:
+                result["data_identity"] = services.store.data_identity
+            return result
 
         return app
 

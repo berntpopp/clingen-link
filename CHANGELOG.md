@@ -2,6 +2,15 @@
 
 All notable changes to clingen-link are documented here.
 
+## [3.0.4] - 2026-07-13
+
+### Changed
+
+- Adopt the GeneFoundry container-release caller workflow and external-reference
+  data release configuration for the code-only production image. The initial
+  data identity records the legacy git-bundled snapshot digest until the data
+  release workflow publishes a standalone ClinGen data release.
+
 ## [3.0.2] - 2026-07-11
 
 ### Security

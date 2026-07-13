@@ -1,12 +1,35 @@
 name: clingen-link-npm
 
 services:
+  clingen_data_init:
+    image: "${CLINGEN_LINK_IMAGE:?set an attested image digest}"
+    command: ["clingen-link", "materialize-data"]
+    environment:
+      CLINGEN_LINK_DATA_BUNDLE_PATH: /seed/clingen.sqlite.zst
+      CLINGEN_LINK_DATA_BUNDLE_SHA256: "${CLINGEN_LINK_DATA_BUNDLE_SHA256:?set exact compressed SHA-256}"
+      CLINGEN_LINK_DATA_EXPANDED_SHA256: "${CLINGEN_LINK_DATA_EXPANDED_SHA256:?set exact expanded-tree SHA-256}"
+      CLINGEN_LINK_DATA_SCHEMA_VERSION: "${CLINGEN_LINK_DATA_SCHEMA_VERSION:-1.0.0}"
+      CLINGEN_LINK_DATA_SCHEMA_MINIMUM: "${CLINGEN_LINK_DATA_SCHEMA_MINIMUM:-1.0.0}"
+      CLINGEN_LINK_DATA_SCHEMA_MAXIMUM: "${CLINGEN_LINK_DATA_SCHEMA_MAXIMUM:-1.0.0}"
+    volumes:
+      - "${CLINGEN_LINK_DATA_BUNDLE_PATH:?set reviewed local bundle path}:/seed/clingen.sqlite.zst:ro"
+      - clingen_reference:/var/lib/clingen/reference
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: "no"
+
   clingen_link:
     build:
       context: ..
       dockerfile: docker/Dockerfile
       target: production
     container_name: clingen-link-npm
+    image: "${CLINGEN_LINK_IMAGE:?set an attested image digest}"
+    depends_on:
+      clingen_data_init:
+        condition: service_completed_successfully
     # NO direct ports exposed - NPM handles all routing.
     # Unified server: FastAPI host /health and MCP /mcp via the same port.
     expose:
@@ -22,6 +45,10 @@ services:
       - 'CLINGEN_LINK_ALLOWED_HOSTS=["localhost","127.0.0.1","::1","clingen-link.genefoundry.org"]'
       - 'CLINGEN_LINK_ALLOWED_ORIGINS=["https://clingen-link.genefoundry.org"]'
       - 'CLINGEN_LINK_CORS_ORIGINS=["https://clingen-link.genefoundry.org"]'
+      - CLINGEN_LINK_SNAPSHOT_PATH=/var/lib/clingen/reference/current/clingen.sqlite
+      - CLINGEN_LINK_DATA_BUNDLE_PATH=/seed/clingen.sqlite.zst
+      - CLINGEN_LINK_DATA_BUNDLE_SHA256=${CLINGEN_LINK_DATA_BUNDLE_SHA256:?set exact compressed SHA-256}
+      - CLINGEN_LINK_DATA_EXPANDED_SHA256=${CLINGEN_LINK_DATA_EXPANDED_SHA256:?set exact expanded-tree SHA-256}
     # env_file is provided via the --env-file flag for consistency with siblings.
     command: ["clingen-link", "serve", "--transport", "unified", "--host", "0.0.0.0", "--port", "8000"]
     healthcheck:
@@ -37,13 +64,11 @@ services:
     # `clingen-link` in the base), so nothing from the base is inherited.
     # read_only, the writable tmpfs, and security_opt must be declared here.
     read_only: true
+    volumes:
+      - clingen_reference:/var/lib/clingen/reference:ro
     tmpfs:
-      # The store decompresses the snapshot .zst to a temp .sqlite at startup
-      # (clingen_link/store/db.py::_decompress_bundle -> tempfile.TemporaryDirectory,
-      # TMPDIR=/tmp/clingen-link). Under the read-only rootfs this MUST be a
-      # writable tmpfs, large enough to hold the decompressed .sqlite, or the
-      # server crash-loops with "No usable temporary directory".
-      - /tmp/clingen-link:rw,noexec,nosuid,size=256m,mode=1777
+      # Small scratch space only; authoritative reference data is read-only.
+      - /tmp/clingen-link:rw,noexec,nosuid,size=16m,mode=1777
     security_opt:
       - no-new-privileges:true
     networks:
@@ -76,3 +101,6 @@ networks:
   npm_proxy_network:
     external: true
     name: ${NPM_SHARED_NETWORK_NAME:-npm_default}
+
+volumes:
+  clingen_reference:

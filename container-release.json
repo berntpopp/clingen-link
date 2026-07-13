@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "dockerfile": "docker/Dockerfile",
+  "target": "production",
+  "platform": "linux/amd64",
+  "service": {
+    "compose_files": [
+      "docker/docker-compose.yml",
+      "docker/docker-compose.prod.yml"
+    ],
+    "name": "clingen-link",
+    "container_port": 8000,
+    "health_path": "/health",
+    "mcp_path": "/mcp",
+    "startup_timeout_seconds": 180
+  },
+  "data": {
+    "mode": "external-reference",
+    "release_tag": "legacy-git-bundle-3.0.3",
+    "digest": "sha256:b389b1dbea7921d414c647fdc88ce19ff81bcf27acae39a7ce8b150ee0a2fc17",
+    "image_allowlist": [
+      "opt/venv/lib/python3.14/site-packages/clingen_link/data/svi_guidance.json"
+    ]
+  },
+  "definitions": {
+    "contract": "data-bound"
+  },
+  "smoke": {
+    "profile": "immutable-bundle"
+  }
+}

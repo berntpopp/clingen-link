@@ -9,6 +9,7 @@ transport (Streamable HTTP only).
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 import httpx
 import typer
@@ -17,6 +18,7 @@ from rich.table import Table
 
 from . import __version__
 from .config import ServerConfig, settings
+from .exceptions import SnapshotUnavailableError
 
 app = typer.Typer(
     name="clingen-link",
@@ -139,6 +141,23 @@ def refresh(
     out_path = Path(out) if out else default_snapshot_path()
     code = run_check(out_path) if check else run_refresh(out_path)
     raise typer.Exit(code=code)
+
+
+@app.command("materialize-data")
+def materialize_data(
+    root: str | None = typer.Option(
+        None, "--root", help="Writable root for immutable versioned snapshots."
+    ),
+) -> None:
+    """Verify, expand, schema-probe, and atomically select the configured bundle."""
+    from .store.db import materialize_bundle
+
+    try:
+        selected = materialize_bundle(settings.data_requirement(), Path(root or settings.data_root))
+    except (OSError, SnapshotUnavailableError, ValueError) as exc:
+        console.print(f"[red]Data materialization failed: {exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    console.print(str(selected))
 
 
 @app.command()

@@ -53,6 +53,15 @@ class ClingenServices:
         """
         snapshot = Path(path) if path is not None else Path(settings.snapshot_path)
         store = Store(snapshot)
+        if path is None:
+            expected = settings.expected_data_identity()
+            actual = store.data_identity
+            if any(actual.get(key) != value for key, value in expected.items()):
+                store.close()
+                raise ValueError(
+                    f"selected ClinGen data identity does not match deployment pins: "
+                    f"expected={expected}, actual={actual}"
+                )
         return cls(store, client=client)
 
     async def aclose(self) -> None:
