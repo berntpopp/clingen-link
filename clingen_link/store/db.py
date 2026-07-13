@@ -76,7 +76,7 @@ _BUNDLED_ZST_PATH = Path(__file__).resolve().parent.parent / "data" / "clingen.s
 # tamperer could rewrite alongside the artifact). Regenerated together with the
 # bundle by ``.github/workflows/data-refresh.yml``; a drift-guard test keeps it
 # in lockstep with the shipped artifact.
-_BUNDLED_ZST_SHA256 = "b389b1dbea7921d414c647fdc88ce19ff81bcf27acae39a7ce8b150ee0a2fc17"
+_BUNDLED_ZST_SHA256 = "0f9aa4134b8a8ef41b7b2042c0149a8b5205ba143e486e5fc7deeb92eca1f7d9"
 
 # Expanded-size ceiling (decompression-bomb guard). The real snapshot is
 # ~58.6 MiB; 256 MiB leaves generous room for growth while bounding a malicious
