@@ -98,7 +98,10 @@ jobs:
                   "reviewed_at": datetime.now(UTC).isoformat(),
                   "reviewer": os.environ["REDISTRIBUTION_REVIEW"] or "publication-not-authorized"},
               "previous_known_good_digest": "sha256:b389b1dbea7921d414c647fdc88ce19ff81bcf27acae39a7ce8b150ee0a2fc17",
-              "application_compatibility": {"minimum": "3.0.3", "maximum": "3.0.3"},
+              # The snapshot schema (1.0.0) is stable across the 3.x application line, so any
+              # 3.x build from the first externalized-data release onwards can read it. Pinning
+              # the maximum to one exact patch would strand every later patch release.
+              "application_compatibility": {"minimum": "3.0.3", "maximum": "3.999.999"},
               "disclaimer": "Research use only; not clinical decision support. ClinGen data © ClinGen.",
           }
           (out / "data-release-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
