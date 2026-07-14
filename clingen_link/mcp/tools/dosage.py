@@ -17,11 +17,11 @@ from pydantic import Field
 
 from clingen_link.exceptions import DataNotFoundError
 from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
-from clingen_link.mcp.envelope import build_meta, data_version_for
+from clingen_link.mcp.envelope import build_meta, data_version_for, pagination
 from clingen_link.mcp.errors import McpErrorContext, run_mcp_tool
+from clingen_link.mcp.filters import Identifier, ensure_identifier
 from clingen_link.mcp.next_commands import cmd
 from clingen_link.mcp.patterns import GENE_SYMBOL_PATTERN
-from clingen_link.mcp.schema_relax import relax_output_schema
 from clingen_link.mcp.service_adapters import ClingenServices
 from clingen_link.mcp.shaping import (
     collect_fenced_objects,
@@ -29,11 +29,15 @@ from clingen_link.mcp.shaping import (
     truncated_block,
 )
 from clingen_link.mcp.untrusted_content import enforce_untrusted_text_limits
-from clingen_link.mcp.untrusted_schema import record_items
 from clingen_link.models.models import DosageRecord
 from clingen_link.vocab import DOSAGE_NOT_EVALUATED, DOSAGE_SCORE_TEXT, DosageScoreCode
 
 _RESPONSE_MODE = Literal["minimal", "compact", "standard", "full"]
+
+# TOOL-SURFACE-BUDGET v1 (B1/B2): outputSchema is suppressed on every tool. It was 60% of
+# this server's 14,519-token surface — a per-request tax on a field the MCP spec makes
+# OPTIONAL and no model reads. `structuredContent` is unaffected: FastMCP still emits it for
+# any dict return, and every tool here returns the dict envelope.
 
 # The score filters' vocabulary is declared as an `enum` (via `DosageScoreCode`), so an
 # unrecognised code is REJECTED by the schema instead of silently matching nothing
@@ -41,23 +45,16 @@ _RESPONSE_MODE = Literal["minimal", "compact", "standard", "full"]
 # vocabulary is not enough — it must be machine-declared.
 _SCORE_EXAMPLES = ["3", "30"]
 
-_LIST_SCHEMA = relax_output_schema(
-    {
-        "type": "object",
-        "properties": {
-            "headline": {"type": "string"},
-            # haplo/triplo_description are fenced untrusted_text objects (v1.1).
-            "records": {
-                "type": "array",
-                "items": record_items("haplo_description", "triplo_description"),
-            },
-            "total": {"type": "integer"},
-            "page": {"type": "integer"},
-            "size": {"type": "integer"},
-            "recommended_citation": {"type": ["string", "null"]},
-            "_meta": {"type": "object"},
-        },
-    }
+# Identifier filters, validated against the snapshot's own index before the search runs.
+_REGION = Identifier(
+    param="region", table="dosage", column="isca_id", resolver="search_dosage (query=...)"
+)
+_CYTOBAND = Identifier(
+    param="cytoband",
+    table="dosage",
+    column="cytoband",
+    match="prefix",
+    resolver="search_dosage (query=...)",
 )
 
 
@@ -116,7 +113,7 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
         name="get_gene_dosage",
         title="Get Gene Dosage Sensitivity",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=_LIST_SCHEMA,
+        output_schema=None,
         tags={"dosage"},
     )
     async def get_gene_dosage(
@@ -178,7 +175,7 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
         name="search_dosage",
         title="Search Gene/Region Dosage",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=_LIST_SCHEMA,
+        output_schema=None,
         tags={"dosage"},
     )
     async def search_dosage(
@@ -231,6 +228,14 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
 
         async def call() -> dict[str, Any]:
             services = service_factory()
+            # An identifier that matches nothing anywhere is a value to FIX, not an empty
+            # result to believe (issue #46). The score filters are schema `enum`s, so an
+            # unrecognised code never reaches here at all.
+            for spec, value in (
+                (_REGION, region),
+                (_CYTOBAND, cytoband),
+            ):
+                ensure_identifier(services.store, spec, value)
             models, total = await services.dosage.search(
                 text=query,
                 isca_id=region,
@@ -284,6 +289,7 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
                     data_version=data_version_for(services.meta(), "dosage"),
                     next_commands=next_commands,
                     record_count=shown,
+                    pagination_block=pagination(total=total, page=page, size=size, shown=shown),
                     truncated=trunc,
                 ),
             }

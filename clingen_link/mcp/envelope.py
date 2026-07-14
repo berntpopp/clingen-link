@@ -47,6 +47,23 @@ def cross_domain_version(meta: dict[str, dict[str, Any]]) -> dict[str, Any]:
     return {domain: data_version_for(meta, domain) for domain in _DOMAIN_META_KEY}
 
 
+def pagination(*, total: int, page: int, size: int, shown: int) -> dict[str, Any]:
+    """The Response-Envelope v1 ``_meta.pagination`` block.
+
+    ``has_more`` is the load-bearing field: a partial page that does not say so lets the
+    model conclude it has seen everything. It is derived from the counts rather than passed
+    in, so it cannot disagree with them (issue #46: a `truncated` block was emitted with no
+    boolean anywhere for a client to branch on).
+    """
+    return {
+        "total_count": total,
+        "page": page,
+        "size": size,
+        "returned": shown,
+        "has_more": (page - 1) * size + shown < total,
+    }
+
+
 def build_meta(
     *,
     data_version: dict[str, Any],
@@ -54,6 +71,7 @@ def build_meta(
     record_count: int | None = None,
     truncated: dict[str, Any] | None = None,
     fetched_at: str | None = None,
+    pagination_block: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Assemble the canonical success ``_meta`` block.
 
@@ -72,6 +90,8 @@ def build_meta(
         meta["fetched_at"] = data_version["fetched_at"]
     if record_count is not None:
         meta["record_count"] = record_count
+    if pagination_block is not None:
+        meta["pagination"] = pagination_block
     if truncated is not None:
         meta["truncated"] = truncated
     return meta

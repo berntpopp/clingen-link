@@ -16,11 +16,17 @@ from pydantic import Field
 
 from clingen_link.exceptions import DataNotFoundError
 from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
-from clingen_link.mcp.envelope import build_meta, data_version_for
+from clingen_link.mcp.envelope import build_meta, data_version_for, pagination
 from clingen_link.mcp.errors import McpErrorContext, run_mcp_tool
+from clingen_link.mcp.filters import (
+    Identifier,
+    Vocabulary,
+    ensure_gene,
+    ensure_identifier,
+    ensure_vocabulary,
+)
 from clingen_link.mcp.next_commands import cmd
 from clingen_link.mcp.patterns import GENE_SYMBOL_PATTERN
-from clingen_link.mcp.schema_relax import relax_output_schema
 from clingen_link.mcp.service_adapters import ClingenServices
 from clingen_link.mcp.shaping import (
     collect_fenced_objects,
@@ -29,26 +35,30 @@ from clingen_link.mcp.shaping import (
     truncated_block,
 )
 from clingen_link.mcp.untrusted_content import enforce_untrusted_text_limits
-from clingen_link.mcp.untrusted_schema import record_items
 
 _RESPONSE_MODE = Literal["minimal", "compact", "standard", "full"]
+
+# TOOL-SURFACE-BUDGET v1 (B1/B2): outputSchema is suppressed on every tool. It was 60% of
+# this server's 14,519-token surface — a per-request tax on a field the MCP spec makes
+# OPTIONAL and no model reads. `structuredContent` is unaffected: FastMCP still emits it for
+# any dict return, and every tool here returns the dict envelope.
 _CONTEXT = Literal["Adult", "Pediatric"]
 
-_LIST_SCHEMA = relax_output_schema(
-    {
-        "type": "object",
-        "properties": {
-            "headline": {"type": "string"},
-            # sepio_detail (include_detail=true) is the fenced live SEPIO blob.
-            "records": {"type": "array", "items": record_items("sepio_detail")},
-            "total": {"type": "integer"},
-            "page": {"type": "integer"},
-            "size": {"type": "integer"},
-            "context": {"type": ["string", "null"]},
-            "recommended_citation": {"type": ["string", "null"]},
-            "_meta": {"type": "object"},
-        },
-    }
+# Identifier + vocabulary filters, validated against the snapshot before the search runs.
+_DISEASE = Identifier(
+    param="disease",
+    table="actionability_fts",
+    column="disease",
+    match="fts",
+    resolver="search_actionability (a broader disease term)",
+)
+# `assertion` filters the curation STATUS of the adult/pediatric assertion. The vocabulary is
+# upstream's and is read from the data — never guessed — so the server cannot advertise a
+# value it would then fail to match (issue #46).
+_ASSERTION = Vocabulary(
+    param="assertion",
+    table="actionability",
+    columns=("adult_status", "pediatric_status"),
 )
 
 
@@ -61,7 +71,7 @@ def register_actionability_tools(
         name="get_gene_actionability",
         title="Get Clinical Actionability",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=_LIST_SCHEMA,
+        output_schema=None,
         tags={"actionability"},
     )
     async def get_gene_actionability(
@@ -151,7 +161,7 @@ def register_actionability_tools(
         name="search_actionability",
         title="Search Clinical Actionability",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=_LIST_SCHEMA,
+        output_schema=None,
         tags={"actionability"},
     )
     async def search_actionability(
@@ -169,7 +179,14 @@ def register_actionability_tools(
         ] = None,
         assertion: Annotated[
             str | None,
-            Field(description="Filter by assertion outcome text (post-filter)."),
+            Field(
+                description=(
+                    "Curation status of the adult/pediatric assertion, e.g. 'Released'. "
+                    "An unrecognised value is rejected with the list this snapshot carries "
+                    "(it is upstream's vocabulary, not ours)."
+                ),
+                examples=["Released"],
+            ),
         ] = None,
         page: Annotated[int, Field(ge=1, le=1000, description="1-based page number.")] = 1,
         size: Annotated[int, Field(ge=1, le=100, description="Page size (max 100).")] = 25,
@@ -182,17 +199,16 @@ def register_actionability_tools(
 
         async def call() -> dict[str, Any]:
             services = service_factory()
-            resolved_gene = services.gene.resolve(gene_symbol) if gene_symbol else None
+            resolved_gene = ensure_gene(services.store, gene_symbol)
+            ensure_identifier(services.store, _DISEASE, disease)
+            ensure_vocabulary(services.store, _ASSERTION, assertion)
             models, total = await services.actionability.search(
-                text=disease, gene=resolved_gene or gene_symbol, page=page, size=size
+                text=disease,
+                gene=resolved_gene,
+                status=assertion,
+                page=page,
+                size=size,
             )
-            if assertion:
-                models = [
-                    m
-                    for m in models
-                    if assertion.lower()
-                    in f"{m.adult_status or ''} {m.pediatric_status or ''}".lower()
-                ]
             records = shape_records(models, domain="actionability", response_mode=response_mode)
             shown = len(records)
             dropped = max(0, total - (page - 1) * size - shown)
@@ -232,6 +248,7 @@ def register_actionability_tools(
                     data_version=data_version_for(services.meta(), "actionability"),
                     next_commands=next_commands,
                     record_count=shown,
+                    pagination_block=pagination(total=total, page=page, size=size, shown=shown),
                     truncated=trunc,
                 ),
             }

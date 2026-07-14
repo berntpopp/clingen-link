@@ -21,13 +21,16 @@ from clingen_link.mcp.envelope import build_meta, cross_domain_version
 from clingen_link.mcp.errors import McpErrorContext, run_mcp_tool
 from clingen_link.mcp.next_commands import cmd
 from clingen_link.mcp.patterns import GENE_SYMBOL_PATTERN
-from clingen_link.mcp.schema_relax import relax_output_schema
 from clingen_link.mcp.service_adapters import ClingenServices
 from clingen_link.mcp.shaping import collect_fenced_objects, shape_records
 from clingen_link.mcp.untrusted_content import enforce_untrusted_text_limits
-from clingen_link.mcp.untrusted_schema import record_items
 
 _RESPONSE_MODE = Literal["minimal", "compact", "standard", "full"]
+
+# TOOL-SURFACE-BUDGET v1 (B1/B2): outputSchema is suppressed on every tool. It was 60% of
+# this server's 14,519-token surface — a per-request tax on a field the MCP spec makes
+# OPTIONAL and no model reads. `structuredContent` is unaffected: FastMCP still emits it for
+# any dict return, and every tool here returns the dict envelope.
 
 _GENE_QUERY = Annotated[
     str,
@@ -50,41 +53,6 @@ _GENE_ARG = Annotated[
     ),
 ]
 
-_SEARCH_SCHEMA = relax_output_schema(
-    {
-        "type": "object",
-        "properties": {
-            "headline": {"type": "string"},
-            "query": {"type": "string"},
-            "resolved_symbol": {"type": ["string", "null"]},
-            "candidates": {"type": "array", "items": {"type": "object"}},
-            "_meta": {"type": "object"},
-        },
-    }
-)
-
-_SUMMARY_SCHEMA = relax_output_schema(
-    {
-        "type": "object",
-        "properties": {
-            "headline": {"type": "string"},
-            "symbol": {"type": "string"},
-            "hgnc_id": {"type": ["string", "null"]},
-            "counts": {"type": "object"},
-            # Embedded validity/dosage records carry the same fenced fields (v1.1).
-            "validity": {"type": "array", "items": record_items("disease_name")},
-            "dosage": {
-                "type": "array",
-                "items": record_items("haplo_description", "triplo_description"),
-            },
-            "actionability": {"type": "array", "items": {"type": "object"}},
-            "erepo_variant_count": {"type": "integer"},
-            "recommended_citation": {"type": "string"},
-            "_meta": {"type": "object"},
-        },
-    }
-)
-
 
 def _availability(row: dict[str, Any]) -> dict[str, Any]:
     """Project a gene-index row into a compact availability + counts dict."""
@@ -106,7 +74,7 @@ def register_gene_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenSe
         name="search_genes",
         title="Search / Resolve Genes",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=_SEARCH_SCHEMA,
+        output_schema=None,
         tags={"gene"},
     )
     async def search_genes(
@@ -155,7 +123,7 @@ def register_gene_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenSe
         name="get_gene_summary",
         title="Get Gene Cross-Domain Summary",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=_SUMMARY_SCHEMA,
+        output_schema=None,
         tags={"gene"},
     )
     async def get_gene_summary(

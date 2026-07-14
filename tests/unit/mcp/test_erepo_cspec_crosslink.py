@@ -44,7 +44,7 @@ class TestVariantDetailCarriesCspecCommand:
         # CA281951 (BRAF) carries guideline .../affiliation/50021 in the erepo fixture.
         # The test snapshot has no cspec rows, so the affiliation resolves to no unique
         # gn_id -> the response must still carry the {affiliation, gene} get_cspec affordance.
-        payload = await _call(tool_mcp, "get_variant_interpretation", {"caid": "CA281951"})
+        payload = await _call(tool_mcp, "get_variant_interpretation", {"variant_id": "CA281951"})
         assert payload["success"] is True
         cmds = payload["_meta"]["next_commands"]
         get_cspec = [c for c in cmds if c["tool"] == "get_cspec"]

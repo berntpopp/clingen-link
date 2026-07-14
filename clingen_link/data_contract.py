@@ -8,7 +8,7 @@ Keeping the two forms in one leaf module is deliberate: as two hardcoded constan
 could silently disagree, and the failure mode of *that* is a server that happily serves a
 bundle built under a different contract.
 
-**2.0.0** — dosage score columns hold ClinGen's CODE (``0``–``3``, ``30``, ``40``, or NULL),
+**2.0.0** — dosage score columns hold ClinGen's CODE (``0``-``3``, ``30``, ``40``, or NULL),
 never its description text (issue #46). A 1.x bundle stores prose in those columns, so
 ``search_dosage(haplo_score="30")`` would silently return zero rows: refusing to load it is
 the point.

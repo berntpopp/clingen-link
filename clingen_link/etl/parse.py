@@ -193,7 +193,7 @@ def parse_dosage(
 
     ``record_type`` is ``"gene"`` (Gene Symbol / Gene ID first cols) or
     ``"region"`` (ISCA ID / ISCA Region Name). Score columns keep upstream's
-    **code** (``0``–``3``, ``30``, ``40``; ``NULL`` when unscored) with the prose
+    **code** (``0``-``3``, ``30``, ``40``; ``NULL`` when unscored) with the prose
     left in the Description columns, PMID1..6 are collapsed into ``haplo_pmids`` /
     ``triplo_pmids`` lists, and GRCh38 coordinates are kept. Optional GRCh37 TSVs,
     if provided, backfill the ``grch37`` coordinate by matching on the first column

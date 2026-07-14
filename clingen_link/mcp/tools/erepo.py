@@ -19,11 +19,16 @@ from pydantic import Field
 
 from clingen_link.exceptions import DataNotFoundError, UpstreamInputError
 from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
-from clingen_link.mcp.envelope import build_meta, data_version_for
+from clingen_link.mcp.envelope import build_meta, data_version_for, pagination
 from clingen_link.mcp.errors import McpErrorContext, run_mcp_tool
+from clingen_link.mcp.filters import Identifier, ensure_gene, ensure_identifier
 from clingen_link.mcp.next_commands import cmd
-from clingen_link.mcp.patterns import CAID_PATTERN, HGVS_PATTERN
-from clingen_link.mcp.schema_relax import relax_output_schema
+from clingen_link.mcp.patterns import (
+    CAID_PATTERN,
+    CLINVAR_VARIATION_ID_PATTERN,
+    HGVS_PATTERN,
+    VARIANT_ID_PATTERN,
+)
 from clingen_link.mcp.service_adapters import ClingenServices
 from clingen_link.mcp.shaping import (
     collect_fenced_objects,
@@ -32,11 +37,15 @@ from clingen_link.mcp.shaping import (
     truncated_block,
 )
 from clingen_link.mcp.untrusted_content import enforce_untrusted_text_limits
-from clingen_link.mcp.untrusted_schema import UNTRUSTED_TEXT_OR_NULL, record_items
 from clingen_link.models.models import VariantInterpretation
 from clingen_link.store import queries
 
 _RESPONSE_MODE = Literal["minimal", "compact", "standard", "full"]
+
+# TOOL-SURFACE-BUDGET v1 (B1/B2): outputSchema is suppressed on every tool. It was 60% of
+# this server's 14,519-token surface — a per-request tax on a field the MCP spec makes
+# OPTIONAL and no model reads. `structuredContent` is unaffected: FastMCP still emits it for
+# any dict return, and every tool here returns the dict envelope.
 _CLASSIFICATION = Literal[
     "Pathogenic",
     "Likely Pathogenic",
@@ -45,38 +54,28 @@ _CLASSIFICATION = Literal[
     "Benign",
 ]
 
-_LIST_SCHEMA = relax_output_schema(
-    {
-        "type": "object",
-        "properties": {
-            "headline": {"type": "string"},
-            # Each record's `summary` is a fenced untrusted_text object (v1.1).
-            "records": {"type": "array", "items": record_items("summary")},
-            "total": {"type": "integer"},
-            "page": {"type": "integer"},
-            "size": {"type": "integer"},
-            "recommended_citation": {"type": ["string", "null"]},
-            "_meta": {"type": "object"},
-        },
-    }
+# Identifier filters, validated against the snapshot's index before the search runs, so an
+# unknown gene / disease / panel is an error the model can fix — not zero rows it will report
+# as "ClinGen has no interpretations" (issue #46).
+_DISEASE_TEXT = Identifier(
+    param="disease",
+    table="erepo_fts",
+    column="disease",
+    match="fts",
+    resolver="get_variant_interpretations (a broader disease term)",
 )
-
-_DETAIL_SCHEMA = relax_output_schema(
-    {
-        "type": "object",
-        "properties": {
-            "headline": {"type": "string"},
-            # The interpretation's `summary` is a fenced untrusted_text object (v1.1).
-            "interpretation": {
-                "type": "object",
-                "properties": {"summary": UNTRUSTED_TEXT_OR_NULL},
-            },
-            "source": {"type": "string"},
-            "notice": {"type": ["string", "null"]},
-            "recommended_citation": {"type": ["string", "null"]},
-            "_meta": {"type": "object"},
-        },
-    }
+_DISEASE_MONDO = Identifier(
+    param="disease",
+    table="erepo",
+    column="mondo",
+    resolver="search_validity (to find the MONDO id)",
+)
+_PANEL = Identifier(
+    param="expert_panel",
+    table="erepo",
+    column="expert_panel",
+    match="like",
+    resolver="list_expert_panels",
 )
 
 
@@ -117,7 +116,7 @@ def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
         name="get_variant_interpretations",
         title="List ERepo Variant Interpretations",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=_LIST_SCHEMA,
+        output_schema=None,
         tags={"erepo", "variant"},
     )
     async def get_variant_interpretations(
@@ -153,12 +152,15 @@ def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
 
         async def call() -> dict[str, Any]:
             services = service_factory()
-            resolved_gene = services.gene.resolve(gene_symbol) if gene_symbol else None
+            resolved_gene = ensure_gene(services.store, gene_symbol)
             mondo = disease if disease and disease.startswith("MONDO:") else None
             text = disease if disease and not mondo else None
+            ensure_identifier(services.store, _DISEASE_MONDO, mondo)
+            ensure_identifier(services.store, _DISEASE_TEXT, text)
+            ensure_identifier(services.store, _PANEL, expert_panel)
             models, total = await services.erepo.search(
                 text=text,
-                gene=resolved_gene or gene_symbol,
+                gene=resolved_gene,
                 mondo=mondo,
                 expert_panel=expert_panel,
                 assertion=classification,
@@ -193,7 +195,7 @@ def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
             )
             first_caid = next((m.caid for m in models if m.caid), None)
             next_commands = (
-                [cmd("get_variant_interpretation", caid=first_caid)]
+                [cmd("get_variant_interpretation", variant_id=first_caid)]
                 if first_caid
                 else [cmd("search_genes", query=gene_symbol or disease or "BRCA1")]
             )
@@ -210,6 +212,7 @@ def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
                     data_version=data_version_for(services.meta(), "erepo"),
                     next_commands=next_commands,
                     record_count=shown,
+                    pagination_block=pagination(total=total, page=page, size=size, shown=shown),
                     truncated=trunc,
                 ),
             }
@@ -226,33 +229,25 @@ def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
         name="get_variant_interpretation",
         title="Get ERepo Variant ACMG Detail",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=_DETAIL_SCHEMA,
+        output_schema=None,
         tags={"erepo", "variant"},
     )
     async def get_variant_interpretation(
-        caid: Annotated[
-            str | None,
+        variant_id: Annotated[
+            str,
             Field(
-                description="ClinGen Allele Registry id.",
-                pattern=CAID_PATTERN,
-                examples=["CA003783"],
+                description=(
+                    "The variant to look up, in any ONE of the three identifier shapes ERepo "
+                    "keys on: a ClinGen Allele Registry id (CA003783), a ClinVar VariationID "
+                    "(17662), or an HGVS expression (NM_007294.4:c.68_69del). The shape is "
+                    "detected from the value."
+                ),
+                min_length=1,
+                max_length=256,
+                pattern=VARIANT_ID_PATTERN,
+                examples=["CA003783", "NM_007294.4:c.68_69del", "17662"],
             ),
-        ] = None,
-        hgvs: Annotated[
-            str | None,
-            Field(
-                description="HGVS expression (genomic/coding/protein).",
-                pattern=HGVS_PATTERN,
-                examples=["NM_007294.4:c.68_69del"],
-            ),
-        ] = None,
-        clinvar_variation_id: Annotated[
-            str | None,
-            Field(
-                description="ClinVar VariationID (matched against the snapshot).",
-                examples=["17662"],
-            ),
-        ] = None,
+        ],
         refresh: Annotated[
             bool,
             Field(description="Bypass the snapshot and fetch the live SEPIO interpretation."),
@@ -262,14 +257,10 @@ def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
             Field(description="compact (default) trims verbose blocks; full keeps every field."),
         ] = "compact",
     ) -> dict[str, Any]:
-        """Use this for the full ACMG interpretation of one expert-panel variant: evidence codes Met / Not Met, the classification outcome, guideline/CSpec, PubMed evidence, and the permalink. Supply caid, hgvs, or clinvar_variation_id. refresh=true bypasses the snapshot for the live SEPIO JSON. Returns ~2-8kB."""
+        """Use this for the full ACMG interpretation of one expert-panel variant: evidence codes Met / Not Met, the classification outcome, guideline/CSpec, PubMed evidence, and the permalink. variant_id takes a CAID, a ClinVar VariationID, or an HGVS expression. refresh=true bypasses the snapshot for the live SEPIO JSON. Returns ~2-8kB."""
 
         async def call() -> dict[str, Any]:
-            selectors = [s for s in (caid, hgvs, clinvar_variation_id) if s]
-            if len(selectors) != 1:
-                raise UpstreamInputError(
-                    "Supply exactly one of caid, hgvs, or clinvar_variation_id."
-                )
+            caid, hgvs, clinvar_variation_id = _split_variant_id(variant_id)
             services = service_factory()
             # clinvar_variation_id is snapshot-only (the live API keys on caid/hgvs).
             if clinvar_variation_id and not refresh:
@@ -279,9 +270,9 @@ def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
                 model, source, notice = await services.erepo.get_interpretation(
                     caid=caid, hgvs=hgvs, refresh=refresh
                 )
-            shaped = shape_record(model, domain="erepo", response_mode=response_mode)
-            # minimal omits the per-record body (headline + source only), matching the other tools.
-            interpretation = {} if response_mode == "minimal" else shaped
+            # Every tier keeps the record: `minimal` narrows it to identifiers, it does not
+            # replace it with {} (issue #46).
+            interpretation = shape_record(model, domain="erepo", response_mode=response_mode)
             # Single-record surface (one summary max) -- the default v1.1 object-count ceiling.
             enforce_untrusted_text_limits(collect_fenced_objects(interpretation))
             headline = (
@@ -315,8 +306,28 @@ def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
         return await run_mcp_tool(
             "get_variant_interpretation",
             call,
-            context=McpErrorContext(tool_name="get_variant_interpretation", caid=caid, hgvs=hgvs),
+            context=McpErrorContext(tool_name="get_variant_interpretation", caid=variant_id),
         )
+
+
+def _split_variant_id(variant_id: str) -> tuple[str | None, str | None, str | None]:
+    """Route one ``variant_id`` to the id kind ERepo needs: (caid, hgvs, clinvar_variation_id).
+
+    The three shapes are mutually exclusive and trivially distinguishable — a CAID starts
+    "CA", a ClinVar VariationID is all digits, an HGVS expression has a ``:x.`` body — so the
+    caller supplies ONE parameter instead of choosing which of three optional ones to fill.
+    """
+    value = variant_id.strip()
+    if re.match(CAID_PATTERN, value, re.IGNORECASE):
+        return value, None, None
+    if re.match(CLINVAR_VARIATION_ID_PATTERN, value):
+        return None, None, value
+    if re.match(HGVS_PATTERN, value):
+        return None, value, None
+    raise UpstreamInputError(
+        "variant_id must be a ClinGen Allele Registry id (CA003783), a ClinVar VariationID "
+        "(17662), or an HGVS expression (NM_007294.4:c.68_69del)."
+    )
 
 
 def _by_clinvar(services: ClingenServices, clinvar_variation_id: str) -> VariantInterpretation:

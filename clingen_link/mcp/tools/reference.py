@@ -12,22 +12,14 @@ from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
 from clingen_link.mcp.envelope import build_meta, cross_domain_version
 from clingen_link.mcp.errors import McpErrorContext, run_mcp_tool
 from clingen_link.mcp.next_commands import cmd
-from clingen_link.mcp.schema_relax import relax_output_schema
 from clingen_link.mcp.service_adapters import ClingenServices
 
 _RESPONSE_MODE = Literal["minimal", "compact", "standard", "full"]
 
-_PANELS_SCHEMA = relax_output_schema(
-    {
-        "type": "object",
-        "properties": {
-            "headline": {"type": "string"},
-            "expert_panels": {"type": "array", "items": {"type": "object"}},
-            "total": {"type": "integer"},
-            "_meta": {"type": "object"},
-        },
-    }
-)
+# TOOL-SURFACE-BUDGET v1 (B1/B2): outputSchema is suppressed on every tool. It was 60% of
+# this server's 14,519-token surface — a per-request tax on a field the MCP spec makes
+# OPTIONAL and no model reads. `structuredContent` is unaffected: FastMCP still emits it for
+# any dict return, and every tool here returns the dict envelope.
 
 
 def register_reference_tools(
@@ -39,7 +31,7 @@ def register_reference_tools(
         name="list_expert_panels",
         title="List ClinGen Expert Panels",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=_PANELS_SCHEMA,
+        output_schema=None,
         tags={"reference"},
     )
     async def list_expert_panels(

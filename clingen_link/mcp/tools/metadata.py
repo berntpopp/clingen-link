@@ -19,31 +19,9 @@ from clingen_link.mcp.resources import (
     get_research_use_resource,
     get_usage_resource,
 )
-from clingen_link.mcp.schema_relax import relax_output_schema
 from clingen_link.mcp.service_adapters import ClingenServices
 
 _RESOURCE_ANNOTATIONS = Annotations(audience=["assistant"], priority=1.0)
-
-_CAPABILITIES_OUTPUT_SCHEMA = relax_output_schema(
-    {
-        "type": "object",
-        "properties": {
-            "server": {"type": "string"},
-            "server_version": {"type": "string"},
-            "mcp_protocol_version": {"type": "string"},
-            "research_use_only": {"type": "boolean"},
-            "datasets": {"type": "object"},
-            "tools": {"type": "array", "items": {"type": "string"}},
-            "token_cost_hints": {"type": "object"},
-            "resources": {"type": "object"},
-            "error_codes": {"type": "array", "items": {"type": "string"}},
-            "parameter_conventions": {"type": "object"},
-            "capabilities_version": {"type": "string"},
-            "research_use_notice": {"type": "string"},
-            "_meta": {"type": "object"},
-        },
-    }
-)
 
 
 def _safe_meta(service_factory: Callable[[], ClingenServices]) -> dict[str, Any] | None:
@@ -65,7 +43,7 @@ def register_metadata_tools(
         name="get_server_capabilities",
         title="Get clingen-link Capabilities",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=_CAPABILITIES_OUTPUT_SCHEMA,
+        output_schema=None,
         tags={"metadata"},
     )
     async def get_server_capabilities() -> dict[str, Any]:

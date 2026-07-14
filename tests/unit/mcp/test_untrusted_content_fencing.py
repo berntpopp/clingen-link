@@ -200,7 +200,7 @@ async def test_get_variant_interpretation_summary_fenced(tool_mcp, monkeypatch) 
     monkeypatch.setattr(services.erepo, "get_interpretation", _get_interp)
 
     structured, mirror = await _both_views(
-        tool_mcp, "get_variant_interpretation", {"caid": "CA000001", "response_mode": "full"}
+        tool_mcp, "get_variant_interpretation", {"variant_id": "CA000001", "response_mode": "full"}
     )
     _assert_ok(structured, mirror)
     for payload in (structured, mirror):
@@ -231,10 +231,16 @@ async def test_get_cspec_criterion_description_and_strength_fenced(tool_mcp, mon
     async def _get_criterion(*, criteria_id):
         return hostile
 
+    async def _resolve_criterion_ids(*, gn_id, code, rule_set_id=None):
+        return ["55"]
+
     monkeypatch.setattr(services.cspec, "get_criterion", _get_criterion)
+    monkeypatch.setattr(services.cspec, "resolve_criterion_ids", _resolve_criterion_ids)
 
     structured, mirror = await _both_views(
-        tool_mcp, "get_cspec_criterion", {"criteria_id": "55", "response_mode": "full"}
+        tool_mcp,
+        "get_cspec_criterion",
+        {"gn_id": "GN092", "code": "PVS1", "response_mode": "full"},
     )
     _assert_ok(structured, mirror)
     for payload in (structured, mirror):
