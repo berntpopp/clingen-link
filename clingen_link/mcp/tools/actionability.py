@@ -105,11 +105,10 @@ def register_actionability_tools(
             # The gene resolved; an empty domain is success+0 (not not_found) — reserved for a gene
             # absent from the index entirely (assessment M5).
             records = shape_records(models, domain="actionability", response_mode=response_mode)
-            # Guard on `records`, not `models`: response_mode="minimal" yields an empty records
-            # list even when models is non-empty, so zipping against models would mismatch. In
-            # minimal mode there are no per-record bodies to attach sepio_detail to — a valid
-            # minimal response simply omits it.
-            if include_detail and records:
+            # `minimal` is the identifiers-only tier (Response-Envelope v1), so the live SEPIO
+            # document is not attached there — hanging a multi-kB blob off a "minimal" record
+            # would contradict the mode the caller asked for.
+            if include_detail and response_mode != "minimal":
                 for model, record in zip(models, records, strict=True):
                     # The live SEPIO document is raw upstream JSON with nested external
                     # prose; fence the whole blob as one opaque untrusted_text object

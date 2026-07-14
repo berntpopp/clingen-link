@@ -92,8 +92,17 @@ class TestShapeRecord:
 
 
 class TestShapeRecords:
-    def test_minimal_returns_empty_list(self) -> None:
-        assert shape_records([_validity()], domain="validity", response_mode="minimal") == []
+    def test_minimal_keeps_identifiers_and_never_empties_the_list(self) -> None:
+        # Response-Envelope v1: minimal is "the envelope plus stable identifiers". Returning []
+        # was a silent-empty by another name, and it forged a pagination `truncated` block
+        # (issue #46, audit defect 2).
+        out = shape_records([_validity()], domain="validity", response_mode="minimal")
+
+        assert len(out) == 1
+        assert out[0]["symbol"]
+        assert "recommended_citation" in out[0]
+        # ...and nothing but identifiers + the citation contract.
+        assert "classification" not in out[0]
 
     def test_compact_list(self) -> None:
         out = shape_records([_validity(), _validity()], domain="validity", response_mode="compact")
