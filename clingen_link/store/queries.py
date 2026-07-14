@@ -401,6 +401,31 @@ def search_genes(conn: sqlite3.Connection, query: str, *, limit: int = 25) -> li
     return [dict(r) for r in rows]
 
 
+def count_genes(conn: sqlite3.Connection, query: str) -> int:
+    """How many genes ``query`` matches in total — the count behind search_genes' has_more.
+
+    ``search_genes`` caps its candidate list, and a capped list with no count cannot tell the
+    caller whether more exist: the model concludes it has seen everything (Response-Envelope
+    v1: "Always populate _meta.pagination: total_count, has_more"). The predicate mirrors
+    ``search_genes`` exactly, so the count and the rows can never disagree.
+    """
+    if _HGNC_ID_RE.match(query.strip()):
+        hgnc = query.strip()
+        sql = (
+            "SELECT COUNT(*) FROM (SELECT g.symbol FROM gene g WHERE g.hgnc_id = ? COLLATE NOCASE "
+            "UNION SELECT g.symbol FROM gene g JOIN gene_alias a ON a.symbol = g.symbol "
+            "WHERE a.alias = ? COLLATE NOCASE)"
+        )
+        return int(conn.execute(sql, (hgnc, hgnc)).fetchone()[0])
+    like = f"{query}%"
+    sql = (
+        "SELECT COUNT(*) FROM (SELECT g.symbol FROM gene g WHERE g.symbol LIKE ? COLLATE NOCASE "
+        "UNION SELECT g.symbol FROM gene g JOIN gene_alias a ON a.symbol = g.symbol "
+        "WHERE a.alias LIKE ? COLLATE NOCASE)"
+    )
+    return int(conn.execute(sql, (like, like)).fetchone()[0])
+
+
 def expert_panels(
     conn: sqlite3.Connection, *, query: str | None = None, limit: int = 100
 ) -> list[dict[str, Any]]:

@@ -10,7 +10,7 @@ from pydantic import Field
 
 from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
 from clingen_link.mcp.envelope import build_meta, cross_domain_version
-from clingen_link.mcp.errors import McpErrorContext, run_mcp_tool
+from clingen_link.mcp.errors import McpErrorContext, ToolReturn, run_mcp_tool
 from clingen_link.mcp.next_commands import cmd
 from clingen_link.mcp.service_adapters import ClingenServices
 
@@ -46,7 +46,7 @@ def register_reference_tools(
             _RESPONSE_MODE,
             Field(description="compact (default) is the same compact list; full is identical."),
         ] = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         """Use this to list ClinGen GCEP/VCEP expert panels (affiliates) with their curation counts, optionally filtered by label text. Useful to resolve an expert-panel name before filtering validity or variant interpretations. Returns ~1-5kB."""
 
         async def call() -> dict[str, Any]:

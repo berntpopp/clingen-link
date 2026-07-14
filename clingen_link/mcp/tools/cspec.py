@@ -26,7 +26,7 @@ from pydantic import Field
 from clingen_link.exceptions import AmbiguousQueryError, DataNotFoundError
 from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
 from clingen_link.mcp.envelope import build_meta, data_version_for, pagination
-from clingen_link.mcp.errors import McpErrorContext, run_mcp_tool
+from clingen_link.mcp.errors import McpErrorContext, ToolReturn, run_mcp_tool
 from clingen_link.mcp.filters import (
     Identifier,
     Vocabulary,
@@ -95,7 +95,7 @@ def register_cspec_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
             _RESPONSE_MODE,
             Field(description="compact (default) drops nulls + verbose header fields."),
         ] = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         """Use this to browse ClinGen criteria-specification (CSpec) headers, filtered by gene, curating affiliation (VCEP), or lifecycle status. Each row carries the GN id, affiliation, label, version, and status. Drill into one with get_cspec. Paginated; returns ~1-8kB."""
         return await _list_cspecs_impl(
             gene=gene_symbol,
@@ -130,7 +130,7 @@ def register_cspec_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
             _RESPONSE_MODE,
             Field(description="compact (default) trims verbose header fields; full keeps them."),
         ] = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         """Use this for one criteria specification in full: its genes/diseases, every ACMG/AMP criterion with strength rules, and the attached guidance files. Resolve a gn_id first with list_cspecs (by gene, affiliation, or status). Returns ~3-30kB depending on the spec."""
         return await _get_cspec_impl(
             gn_id=gn_id,
@@ -176,7 +176,7 @@ def register_cspec_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
             _RESPONSE_MODE,
             Field(description="compact (default) trims nulls; full keeps every field."),
         ] = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         """Use this for a single CSpec criterion's specification: its ACMG/AMP code, description, the VCEP's strength rules, and any attached evidence files. Addressed by its natural key — the specification (gn_id) plus the ACMG/AMP code — with rule_set_id only for a code a spec defines twice. Returns ~1-4kB."""
         return await _get_criterion_impl(
             gn_id=gn_id,
@@ -205,7 +205,7 @@ def register_cspec_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
         ],
         page: Annotated[int, Field(ge=1, le=1000, description="1-based page number.")] = 1,
         size: Annotated[int, Field(ge=1, le=100, description="Page size (max 100).")] = 25,
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         """Use this to full-text search the CSpec catalog (spec labels, criteria descriptions, attachment filenames). Each hit names its entity_type + ids so you can chain into get_cspec or get_cspec_criterion. Paginated; returns ~1-6kB."""
         return await _search_cspec_impl(
             query=query, page=page, size=size, service_factory=service_factory
@@ -233,7 +233,7 @@ async def _list_cspecs_impl(
     size: int,
     response_mode: _RESPONSE_MODE,
     service_factory: Callable[[], ClingenServices] = get_services,
-) -> dict[str, Any]:
+) -> ToolReturn:
     """List CSpec headers (wrapped envelope)."""
 
     async def call() -> dict[str, Any]:
@@ -300,7 +300,7 @@ async def _get_cspec_impl(
     gn_id: str,
     response_mode: _RESPONSE_MODE,
     service_factory: Callable[[], ClingenServices] = get_services,
-) -> dict[str, Any]:
+) -> ToolReturn:
     """Return one full CSpec detail (wrapped envelope).
 
     Takes the id and nothing else. It used to accept gn_id OR affiliation OR gene — all
@@ -359,7 +359,7 @@ async def _get_criterion_impl(
     rule_set_id: str | None = None,
     response_mode: _RESPONSE_MODE,
     service_factory: Callable[[], ClingenServices] = get_services,
-) -> dict[str, Any]:
+) -> ToolReturn:
     """Return one CSpec criterion (wrapped envelope)."""
 
     async def call() -> dict[str, Any]:
@@ -408,7 +408,7 @@ async def _search_cspec_impl(
     page: int,
     size: int,
     service_factory: Callable[[], ClingenServices] = get_services,
-) -> dict[str, Any]:
+) -> ToolReturn:
     """Full-text search the CSpec catalog (wrapped envelope)."""
 
     async def call() -> dict[str, Any]:

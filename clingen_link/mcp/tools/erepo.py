@@ -20,7 +20,7 @@ from pydantic import Field
 from clingen_link.exceptions import DataNotFoundError, UpstreamInputError
 from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
 from clingen_link.mcp.envelope import build_meta, data_version_for, pagination
-from clingen_link.mcp.errors import McpErrorContext, run_mcp_tool
+from clingen_link.mcp.errors import McpErrorContext, ToolReturn, run_mcp_tool
 from clingen_link.mcp.filters import Identifier, ensure_gene, ensure_identifier
 from clingen_link.mcp.next_commands import cmd
 from clingen_link.mcp.patterns import (
@@ -147,7 +147,7 @@ def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
                 description="compact (default) trims evidence-code/PubMed lists; full keeps them."
             ),
         ] = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         """Use this to list ClinGen ERepo expert-panel variant interpretations by gene, disease (disease text/MONDO), expert panel, or classification. Returns each variant's CAID, canonical HGVS, MONDO, ACMG classification, VCEP, dates, and permalink. Drill into one with get_variant_interpretation. Paginated. Returns ~2-12kB."""
 
         async def call() -> dict[str, Any]:
@@ -256,7 +256,7 @@ def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
             _RESPONSE_MODE,
             Field(description="compact (default) trims verbose blocks; full keeps every field."),
         ] = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         """Use this for the full ACMG interpretation of one expert-panel variant: evidence codes Met / Not Met, the classification outcome, guideline/CSpec, PubMed evidence, and the permalink. variant_id takes a CAID, a ClinVar VariationID, or an HGVS expression. refresh=true bypasses the snapshot for the live SEPIO JSON. Returns ~2-8kB."""
 
         async def call() -> dict[str, Any]:

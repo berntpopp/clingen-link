@@ -17,7 +17,7 @@ from pydantic import Field
 from clingen_link.exceptions import DataNotFoundError
 from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
 from clingen_link.mcp.envelope import build_meta, data_version_for, pagination
-from clingen_link.mcp.errors import McpErrorContext, run_mcp_tool
+from clingen_link.mcp.errors import McpErrorContext, ToolReturn, run_mcp_tool
 from clingen_link.mcp.filters import (
     Identifier,
     Vocabulary,
@@ -100,7 +100,7 @@ def register_actionability_tools(
             _RESPONSE_MODE,
             Field(description="compact (default) trims SEPIO IRIs; full keeps everything."),
         ] = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         """Use this for ClinGen clinical actionability of a gene: adult/pediatric assertion status, release, disease, and SEPIO links. Set include_detail=true to fetch the live SEPIO assertion document for the chosen context. Resolve free text with search_genes first. Returns snapshot ~1-4kB; include_detail adds the live SEPIO payload."""
 
         async def call() -> dict[str, Any]:
@@ -194,7 +194,7 @@ def register_actionability_tools(
             _RESPONSE_MODE,
             Field(description="compact (default) trims SEPIO IRIs; full keeps everything."),
         ] = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         """Use this to search ClinGen clinical actionability by disease text or gene. Paginated; a `truncated` block appears when more matches exist. Each record carries the actionability permalink + recommended_citation. Returns ~2-8kB."""
 
         async def call() -> dict[str, Any]:

@@ -9,7 +9,12 @@ from typing import Any
 from fastmcp import FastMCP
 
 from clingen_link.mcp.annotations import READ_ONLY_CLOSED_WORLD
-from clingen_link.mcp.errors import get_recent_errors, get_recent_schema_drift, run_mcp_tool
+from clingen_link.mcp.errors import (
+    ToolReturn,
+    get_recent_errors,
+    get_recent_schema_drift,
+    run_mcp_tool,
+)
 from clingen_link.mcp.resources import MCP_PROTOCOL_VERSION, _server_version
 from clingen_link.mcp.service_adapters import ClingenServices
 
@@ -28,7 +33,7 @@ def register_diagnostics_tools(
         tags={"metadata", "diagnostics"},
         output_schema=None,
     )
-    async def get_diagnostics() -> dict[str, Any]:
+    async def get_diagnostics() -> ToolReturn:
         """Use this when an LLM hits repeated errors or needs server health information; returns recent error history, server version, snapshot freshness, and recent_schema_drift entries so an LLM that hit output_validation_failed can self-diagnose. Returns <1kB."""
 
         async def call() -> dict[str, Any]:

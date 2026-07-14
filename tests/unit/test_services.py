@@ -246,7 +246,8 @@ class TestGeneService:
         assert services.gene.resolve("hgnc:20") == "AARS1"
 
     def test_search(self, services: ClingenServices) -> None:
-        rows = services.gene.search("AAR")
+        rows, total = services.gene.search("AAR")
+        assert total >= len(rows)
         assert {r["symbol"] for r in rows} >= {"AARS1", "AARS2"}
 
     def test_expert_panels(self, services: ClingenServices) -> None:

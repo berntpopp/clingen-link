@@ -17,13 +17,17 @@ from pydantic import Field
 
 from clingen_link.exceptions import DataNotFoundError
 from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
-from clingen_link.mcp.envelope import build_meta, cross_domain_version
-from clingen_link.mcp.errors import McpErrorContext, run_mcp_tool
+from clingen_link.mcp.envelope import build_meta, cross_domain_version, pagination
+from clingen_link.mcp.errors import McpErrorContext, ToolReturn, run_mcp_tool
 from clingen_link.mcp.next_commands import cmd
 from clingen_link.mcp.patterns import GENE_SYMBOL_PATTERN
 from clingen_link.mcp.service_adapters import ClingenServices
 from clingen_link.mcp.shaping import collect_fenced_objects, shape_records
 from clingen_link.mcp.untrusted_content import enforce_untrusted_text_limits
+
+# search_genes caps its candidate list at this many rows; the response reports the true
+# match count beside it so a capped list never reads as the whole set.
+_CANDIDATE_LIMIT = 25
 
 _RESPONSE_MODE = Literal["minimal", "compact", "standard", "full"]
 
@@ -83,13 +87,14 @@ def register_gene_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenSe
             _RESPONSE_MODE,
             Field(description="compact (default) trims null fields; full keeps everything."),
         ] = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         """Use this FIRST to resolve a free-text gene (symbol / HGNC id / alias) into a canonical ClinGen gene plus its per-domain availability and counts. Follow the _meta.next_commands into get_gene_summary. Unknown input returns a not_found envelope with a fallback. Returns ~1-3kB."""
 
         async def call() -> dict[str, Any]:
             services = service_factory()
             resolved = services.gene.resolve(query)
-            candidates = [_availability(r) for r in services.gene.search(query, limit=25)]
+            rows, total = services.gene.search(query, limit=_CANDIDATE_LIMIT)
+            candidates = [_availability(r) for r in rows]
             meta = services.meta()
             if resolved is None and not candidates:
                 raise DataNotFoundError(
@@ -106,10 +111,16 @@ def register_gene_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenSe
                 "query": query,
                 "resolved_symbol": resolved,
                 "candidates": candidates,
+                # The candidate list is capped. Saying so — with the true match count — is what
+                # stops the model concluding the first 25 are all there are.
+                "total": total,
                 "_meta": build_meta(
                     data_version=cross_domain_version(meta),
                     next_commands=next_commands,
                     record_count=len(candidates),
+                    pagination_block=pagination(
+                        total=total, page=1, size=_CANDIDATE_LIMIT, shown=len(candidates)
+                    ),
                 ),
             }
 
@@ -137,7 +148,7 @@ def register_gene_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenSe
                 )
             ),
         ] = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         """Use this for a one-call cross-domain overview of a gene: validity classifications by disease, dosage haplo/triplo scores, actionability adult/pediatric, and ERepo variant counts. Resolve free text with search_genes first. The _meta.next_commands drill into each domain tool. Returns compact ~3-8kB (minimal ~0.5kB)."""
 
         async def call() -> dict[str, Any]:

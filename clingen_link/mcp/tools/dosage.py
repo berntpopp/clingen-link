@@ -18,7 +18,7 @@ from pydantic import Field
 from clingen_link.exceptions import DataNotFoundError
 from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
 from clingen_link.mcp.envelope import build_meta, data_version_for, pagination
-from clingen_link.mcp.errors import McpErrorContext, run_mcp_tool
+from clingen_link.mcp.errors import McpErrorContext, ToolReturn, run_mcp_tool
 from clingen_link.mcp.filters import Identifier, ensure_identifier
 from clingen_link.mcp.next_commands import cmd
 from clingen_link.mcp.patterns import GENE_SYMBOL_PATTERN
@@ -131,7 +131,7 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
             _RESPONSE_MODE,
             Field(description="compact (default) trims verbose fields; full keeps the PMID lists."),
         ] = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         """Use this for ClinGen dosage sensitivity of a gene: haploinsufficiency + triplosensitivity score with plain-English interpretation, GRCh37/GRCh38 coordinates, disease/MONDO, and PMIDs. Resolve free text with search_genes first. Returns ~1-3kB."""
 
         async def call() -> dict[str, Any]:
@@ -223,7 +223,7 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
             _RESPONSE_MODE,
             Field(description="compact (default) trims verbose fields; full keeps the PMID lists."),
         ] = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         """Use this to search ClinGen dosage (genes + regions) by text, ISCA region, cytoband, or haplo/triplo score, optionally restricted to gene or region records. Paginated; a `truncated` block appears when more matches exist. Returns ~2-10kB."""
 
         async def call() -> dict[str, Any]:

@@ -16,7 +16,7 @@ from pydantic import Field
 from clingen_link.exceptions import DataNotFoundError
 from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
 from clingen_link.mcp.envelope import build_meta, data_version_for, pagination
-from clingen_link.mcp.errors import McpErrorContext, run_mcp_tool
+from clingen_link.mcp.errors import McpErrorContext, ToolReturn, run_mcp_tool
 from clingen_link.mcp.filters import Identifier, ensure_gene, ensure_identifier
 from clingen_link.mcp.next_commands import cmd
 from clingen_link.mcp.patterns import GENE_SYMBOL_PATTERN, MONDO_PATTERN
@@ -103,7 +103,7 @@ def register_validity_tools(
             _RESPONSE_MODE,
             Field(description="compact (default) trims verbose fields; full keeps everything."),
         ] = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         """Use this to list ClinGen gene-disease validity assertions (Definitive…Refuted) for one gene, optionally filtered by classification or mode of inheritance. Each record carries a CGGV permalink + recommended_citation. Returns ~1-6kB."""
 
         async def call() -> dict[str, Any]:
@@ -183,7 +183,7 @@ def register_validity_tools(
             _RESPONSE_MODE,
             Field(description="compact (default) trims verbose fields; full keeps everything."),
         ] = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         """Use this to search ClinGen gene-disease validity by disease text/MONDO, expert panel, classification, MOI, or gene. Paginated; a `truncated` block appears when more matches exist. Each record carries a recommended_citation. Returns ~2-10kB."""
 
         async def call() -> dict[str, Any]:
