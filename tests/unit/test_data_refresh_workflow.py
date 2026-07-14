@@ -2,12 +2,22 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "data-refresh.yml"
+
+HANDOFF_DIR = 'cd "$RUNNER_TEMP/data-release"'
+
+# A handoff filename written as a bare token -- i.e. resolved against the shell's cwd,
+# not against a directory it carries with it. The lookbehind excludes any occurrence
+# already prefixed with a path (``$RUNNER_TEMP/existing/clingen.sqlite.zst``).
+BARE_HANDOFF_FILE = re.compile(
+    r"(?<![\w/.$-])(?:clingen\.sqlite\.zst|data-release-manifest\.json|SHA256SUMS)\b"
+)
 
 
 def _workflow() -> dict[str, Any]:
@@ -47,6 +57,45 @@ def test_publication_requires_affirmative_redistribution_review() -> None:
     assert "redistribution_allowed" in text
     assert "redistribution_review" in text
     assert "data-clingen-" in text
+
+
+def test_publish_steps_naming_handoff_files_run_from_the_handoff_dir() -> None:
+    """Every publish step that names a handoff file by bare name must cd to it first.
+
+    Each ``run:`` block starts a fresh shell in the workspace, so a ``cd`` in the
+    preceding step does not carry over. The publish job never checks out the source
+    and consumes only the downloaded handoff, so a bare filename there resolves to
+    nothing unless the block cds itself.
+
+    This is not hypothetical: run 29279142644 flipped the release to public, then
+    failed on ``gh release verify-asset`` with "failed to open local artifact: open
+    clingen.sqlite.zst: no such file or directory" -- leaving a published release
+    behind a red workflow. The structural guards above all passed, because a missing
+    cd is invisible to them.
+
+    Scoped to ``publish``: only that job resolves names against the handoff dir. The
+    build job writes the same names from Python, where they are paths under ``out``.
+    """
+    for step in _steps("publish"):
+        script = step.get("run")
+        if not script:
+            continue
+        offenders = sorted(
+            {
+                line.strip()
+                for line in script.splitlines()
+                if BARE_HANDOFF_FILE.search(line.split("#", 1)[0])
+            }
+        )
+        if offenders:
+            listing = "\n  ".join(offenders)
+            assert HANDOFF_DIR in script, (
+                f"publish step {step['name']!r} names handoff files by bare name but "
+                f"never cds into the handoff directory, so they resolve against the "
+                f"workspace and do not exist:\n  {listing}\n"
+                f"Add `{HANDOFF_DIR}` to this step -- a `run:` block does not inherit "
+                f"the previous step's cwd."
+            )
 
 
 def test_all_actions_are_full_sha_pinned() -> None:
