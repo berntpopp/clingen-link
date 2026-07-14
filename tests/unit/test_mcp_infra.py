@@ -60,7 +60,7 @@ def test_capabilities_resource_shape() -> None:
     assert cap["server"] == "clingen-link"
     assert cap["mcp_protocol_version"] == MCP_PROTOCOL_VERSION
     assert "validity" in cap["datasets"]
-    assert "snapshot_unavailable" in cap["error_codes"]
+    assert "upstream_unavailable" in cap["error_codes"]
     assert cap["research_use_notice"] == RESEARCH_USE_NOTICE
 
 

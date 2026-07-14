@@ -15,10 +15,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from fastmcp.exceptions import ValidationError as FastMCPValidationError
+from fastmcp.tools.base import ToolResult
 from pydantic import ValidationError as PydanticValidationError
 
 from clingen_link.config import settings
 from clingen_link.exceptions import (
+    AmbiguousQueryError,
     ClingenApiError,
     DataNotFoundError,
     RateLimitedError,
@@ -28,6 +30,21 @@ from clingen_link.exceptions import (
 from clingen_link.mcp.untrusted_content import UntrustedTextLimitError, sanitize_message
 
 logger = logging.getLogger(__name__)
+
+# Response-Envelope Standard v1 §2: `error_code` is a CLOSED enum. A code outside this set
+# (the old `validation_failed` / `internal_error` / `snapshot_unavailable` /
+# `output_validation_failed`) is a contract violation however sensible it reads — a client
+# branching on the taxonomy cannot act on a code the taxonomy does not define.
+ERROR_CODES: frozenset[str] = frozenset(
+    {
+        "invalid_input",
+        "not_found",
+        "ambiguous_query",
+        "upstream_unavailable",
+        "rate_limited",
+        "internal",
+    }
+)
 
 RECENT_MCP_ERROR_LIMIT = 50
 _RECENT_ERRORS: deque[dict[str, Any]] = deque(maxlen=RECENT_MCP_ERROR_LIMIT)
@@ -76,8 +93,8 @@ class ToolInputError(ValueError):
     A bare ``ValueError`` may carry raw user input, so its message is redacted in
     the envelope. The strings raised by our own guard sites contain no user
     VALUES -- only static guidance or parameter NAMES -- so a ``ToolInputError``
-    message is safe to surface verbatim (capped by ``_safe_message``). It still
-    classifies as ``validation_failed`` because it subclasses ``ValueError``.
+    message is safe to surface verbatim (capped by ``_safe_message``). It classifies as
+    ``invalid_input`` (the closed-enum code) because it subclasses ``ValueError``.
     """
 
 
@@ -126,13 +143,16 @@ def _classify(
     upstream_unavailable bucket. The load-bearing invariant: retryable=true means
     an identical call may later succeed; false means it never will.
     """
+    if isinstance(exc, AmbiguousQueryError):
+        # Checked BEFORE DataNotFoundError-style branches: "several match" is not "none exists".
+        return "ambiguous_query", False, "get_server_capabilities", None
     if isinstance(exc, DataNotFoundError):
         tool, args = _fallback_for(context)
         return "not_found", False, tool, args
     if isinstance(exc, SnapshotUnavailableError):
-        # The bundled snapshot is missing/unreadable. The caller cannot fix this;
-        # steer to diagnostics so the operator can run `clingen-link refresh`.
-        return "snapshot_unavailable", False, "get_diagnostics", {}
+        # The snapshot is missing/unreadable: the SERVER is broken, not the request. `internal`
+        # (was the non-canon `snapshot_unavailable`); the operator, not the caller, fixes it.
+        return "internal", False, "get_diagnostics", {}
     if isinstance(exc, UpstreamInputError):
         # Deterministic upstream rejection (wrong id shape). Retrying unchanged
         # can never succeed.
@@ -141,18 +161,20 @@ def _classify(
     if isinstance(exc, RateLimitedError):
         return "rate_limited", True, "get_diagnostics", {}
     if isinstance(exc, UntrustedTextLimitError):
-        # A fenced-prose response exceeded a Response-Envelope v1.1 ceiling (per-object
-        # 2 MiB, 128/10000 objects, or 8 MiB total). Distinct typed limit error — never a
-        # generic validation_failed/internal_error — so the caller narrows the request
-        # rather than retrying an identical, still-too-large call.
-        return "response_too_large", False, "get_server_capabilities", None
+        # A fenced-prose response exceeded a Response-Envelope v1.1 ceiling. The fix is the
+        # caller's (narrow the request), so it is `invalid_input` — the old `response_too_large`
+        # is outside the closed enum. `recovery_action` stays reformulate_input and the recovery
+        # text still says exactly how to narrow it.
+        return "invalid_input", False, "get_server_capabilities", None
     if isinstance(exc, ValueError):
-        return "validation_failed", False, "get_server_capabilities", None
+        # Local validation failure (incl. ToolInputError). `invalid_input`, never the non-canon
+        # `validation_failed`: the caller's arguments are wrong and only the caller can fix them.
+        return "invalid_input", False, "get_server_capabilities", None
     if isinstance(exc, ClingenApiError):
         return "upstream_unavailable", True, "get_diagnostics", {}
     if isinstance(exc, TimeoutError):
         return "upstream_unavailable", True, "get_diagnostics", {}
-    return "internal_error", False, "get_diagnostics", {}
+    return "internal", False, "get_diagnostics", {}
 
 
 def _recovery_action(error_code: str, retryable: bool) -> str:
@@ -163,12 +185,40 @@ def _recovery_action(error_code: str, retryable: bool) -> str:
     """
     if retryable:
         return "retry_backoff"
-    if error_code in {"invalid_input", "validation_failed", "response_too_large"}:
+    if error_code == "invalid_input":
         return "reformulate_input"
     return "switch_tool"
 
 
-def _recovery_text(error_code: str, fallback_tool: str | None, tool_name: str | None = None) -> str:
+def _recovery_text(
+    error_code: str,
+    fallback_tool: str | None,
+    tool_name: str | None = None,
+    exc: BaseException | None = None,
+) -> str:
+    """Actionable recovery guidance.
+
+    Keyed on the EXCEPTION first where the closed enum is coarser than the cause: the
+    size-limit and missing-snapshot cases both collapse into a canon code, but the caller
+    still needs to be told precisely what to do about them.
+    """
+    if isinstance(exc, UntrustedTextLimitError):
+        return (
+            "The response's fenced free-text content exceeded a Response-Envelope v1.1 "
+            "size ceiling. Do not retry unchanged. Narrow the request (a smaller "
+            "response_mode, a tighter filter, or a smaller page size) so the payload fits."
+        )
+    if isinstance(exc, SnapshotUnavailableError):
+        return (
+            "The ClinGen snapshot this server reads is missing or unreadable — a server-side "
+            "fault the caller cannot fix. Call get_diagnostics for snapshot freshness details; "
+            "the operator must materialize the data bundle."
+        )
+    if error_code == "ambiguous_query":
+        return (
+            "Several records matched a selector that addresses one. Do not retry unchanged: "
+            "re-call with the disambiguating identifier named in the message."
+        )
     if error_code == "not_found":
         resolver = fallback_tool or "search_genes"
         return (
@@ -189,23 +239,6 @@ def _recovery_text(error_code: str, fallback_tool: str | None, tool_name: str | 
             "Upstream rate limit (HTTP 429) or local concurrency saturation. Safe to "
             f"retry after backing off exponentially (start around {floor}s) and reduce "
             "the number of concurrent calls to this server."
-        )
-    if error_code == "validation_failed":
-        return (
-            "Inputs failed validation. Check the tool schema and call "
-            "get_server_capabilities for accepted identifier shapes and filters."
-        )
-    if error_code == "response_too_large":
-        return (
-            "The response's fenced free-text content exceeded a Response-Envelope v1.1 "
-            "size ceiling. Do not retry unchanged. Narrow the request (a smaller "
-            "response_mode, a tighter filter, or a smaller page size) so the payload fits."
-        )
-    if error_code == "snapshot_unavailable":
-        return (
-            "The bundled ClinGen snapshot is missing or unreadable. The operator "
-            "must run `clingen-link refresh` to (re)build it. Call "
-            "get_diagnostics for snapshot freshness details."
         )
     if error_code == "upstream_unavailable":
         return (
@@ -230,9 +263,14 @@ def _envelope_message(exc: BaseException, error_code: str) -> str:
         # Developer-authored guard string (static or parameter NAMES only, no user
         # values), so it is safe to surface verbatim instead of redacting.
         return _safe_message(exc)
-    if error_code == "validation_failed":
+    if isinstance(exc, UntrustedTextLimitError):
+        # Also developer-authored (a size, never a value).
+        return _safe_message(exc)
+    if isinstance(exc, ValueError):
+        # A bare ValueError's message may carry the raw user input; keyed on the TYPE, not on
+        # the code, because ValueError now classifies as the canon `invalid_input`.
         return f"Invalid input: {exc.__class__.__name__}"
-    if error_code == "internal_error":
+    if error_code == "internal":
         return f"Internal error: {exc.__class__.__name__}"
     return _safe_message(exc)
 
@@ -312,6 +350,7 @@ def mcp_validation_tool_error(
     *,
     tool_name: str,
     exc: PydanticValidationError | None,
+    accepted: list[str] | None = None,
 ) -> McpToolError:
     """Build a sanitized validation failure raised before tool execution starts.
 
@@ -320,20 +359,33 @@ def mcp_validation_tool_error(
     ValidationError with no pydantic cause), ``field_errors`` is empty -- the raw
     framework message, which can embed the caller-supplied argument NAME/VALUE (and
     control code points), is never surfaced.
+
+    ``accepted`` is the tool's own DECLARED parameter names, so the message tells the model
+    what it MAY pass. MCP 2025-11-25 (SEP-1303): "Tool Execution Errors contain actionable
+    feedback that language models can use to self-correct." "Invalid MCP arguments." named
+    nothing and left the model with nothing to act on. The caller-supplied (rejected) name is
+    still never echoed -- it is attacker-controlled text; the server's own schema is not.
     """
     field_errors = _extract_field_errors(list(exc.errors())) if exc is not None else []
+    names = ", ".join(accepted) if accepted else ""
+    message = (
+        f"Invalid arguments for {tool_name}. Accepted parameters: {names}."
+        if names
+        else f"Invalid arguments for {tool_name}."
+    )
     payload: dict[str, Any] = {
         "success": False,
-        "error_code": "validation_failed",
-        "message": "Invalid MCP arguments.",
+        "error_code": "invalid_input",
+        "message": message,
         "retryable": False,
         "recovery_action": "reformulate_input",
         "fallback_tool": _FALLBACK_TOOL,
         "fallback_args": {},
         "field_errors": field_errors,
         "recovery": (
-            "Inputs failed validation. Check field_errors for details and call "
-            f"{_FALLBACK_TOOL} for accepted identifier shapes and filters."
+            "Inputs failed schema validation. Check field_errors for which argument, re-read "
+            f"this tool's inputSchema, and call {_FALLBACK_TOOL} for accepted identifier shapes "
+            "and filters."
         ),
         "_meta": {
             "next_commands": [{"tool": _FALLBACK_TOOL, "arguments": {}}],
@@ -341,6 +393,16 @@ def mcp_validation_tool_error(
         },
     }
     return McpToolError(payload)
+
+
+def _declared_parameters(tool: Any) -> list[str]:
+    """The tool's own declared parameter names, read off its inputSchema."""
+    schema = getattr(tool, "parameters", None)
+    if isinstance(schema, dict):
+        properties = schema.get("properties")
+        if isinstance(properties, dict):
+            return sorted(str(name) for name in properties)
+    return []
 
 
 def install_validation_error_handler(mcp_server: Any) -> None:
@@ -389,19 +451,31 @@ def install_validation_error_handler(mcp_server: Any) -> None:
                 envelope = mcp_validation_tool_error(
                     tool_name=tool_name,
                     exc=pydantic_exc,
+                    accepted=_declared_parameters(_tool),
                 ).payload
                 record_mcp_error(
                     tool_name=tool_name,
-                    error_code="validation_failed",
+                    error_code="invalid_input",
                     exc_type=type(exc).__name__,
                 )
-                convert_result = getattr(_tool, "convert_result", None)
-                if callable(convert_result):
-                    return convert_result(envelope)
-                return envelope
+                # ToolResult, not convert_result(): only this shape carries BOTH the protocol
+                # `isError: true` and the structured envelope (Response-Envelope v1 §2).
+                return ToolResult(structured_content=envelope, is_error=True)
 
         object.__setattr__(tool, "run", wrapped_run)
         object.__setattr__(tool, "_clingen_validation_wrapped", True)
+
+
+def error_result(payload: dict[str, Any]) -> ToolResult:
+    """Wrap an error envelope so it carries the MCP protocol's ``isError: true``.
+
+    Response-Envelope v1: "isError: true is REQUIRED so clients surface the error to the
+    model for self-correction." A returned *dict* never sets it (fastmcp 3.4.4,
+    ``tools/base.py``), so a client branching on the flag read every structured failure as a
+    successful call. ``raise`` would set the flag but discard ``structuredContent`` — this
+    shape is the only one that keeps both.
+    """
+    return ToolResult(structured_content=payload, is_error=True)
 
 
 def mcp_tool_error(exc: BaseException, context: McpErrorContext) -> McpToolError:
@@ -422,7 +496,7 @@ def mcp_tool_error(exc: BaseException, context: McpErrorContext) -> McpToolError
         "recovery_action": _recovery_action(error_code, retryable),
         "fallback_tool": fallback_tool,
         "fallback_args": fallback_args,
-        "recovery": _recovery_text(error_code, fallback_tool, context.tool_name),
+        "recovery": _recovery_text(error_code, fallback_tool, context.tool_name, exc),
         "_meta": {
             "tool": context.tool_name,
             "next_commands": next_commands,
@@ -494,12 +568,13 @@ async def run_mcp_tool(
     call: Callable[[], Awaitable[dict[str, Any]]],
     *,
     context: McpErrorContext | None = None,
-) -> dict[str, Any]:
-    """Execute an MCP tool body, converting any exception to an envelope dict.
+) -> dict[str, Any] | ToolResult:
+    """Execute an MCP tool body: a dict on success, an ``isError`` ToolResult on failure.
 
-    Returning the envelope (rather than raising) is what pubtator-link does so
-    that the LLM sees a structured failure instead of an `isError: true` MCP
-    response with an opaque message.
+    The failure path returns :func:`error_result` rather than the bare envelope dict, so the
+    structured envelope reaches the model *and* the call is flagged as an error at the
+    protocol level (Response-Envelope v1). Raising instead would set the flag but throw the
+    envelope away.
     """
     ctx = context or McpErrorContext(tool_name=tool_name)
     try:
@@ -515,10 +590,10 @@ async def run_mcp_tool(
     except McpToolError as exc:
         record_mcp_error(
             tool_name=tool_name,
-            error_code=exc.payload.get("error_code", "internal_error"),
+            error_code=exc.payload.get("error_code", "internal"),
             exc_type=type(exc).__name__,
         )
-        return exc.payload
+        return error_result(exc.payload)
     except Exception as exc:  # broad catch is the error-boundary contract
         wrapped = mcp_tool_error(exc, ctx)
         logger.warning(
@@ -532,4 +607,4 @@ async def run_mcp_tool(
             error_code=wrapped.payload["error_code"],
             exc_type=type(exc).__name__,
         )
-        return wrapped.payload
+        return error_result(wrapped.payload)

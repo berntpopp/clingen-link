@@ -29,12 +29,13 @@ def test_actionable_envelope_shape_and_recording() -> None:
         message="Output validation error: 'classification' is a required property",
     )
     assert payload["success"] is False
-    assert payload["error_code"] == "output_validation_failed"
+    # schema drift is a server-side fault: `internal` in the closed enum (issue #46).
+    assert payload["error_code"] == "internal"
     assert payload["error_field"] == "classification"
     assert payload["_meta"]["unsafe_for_clinical_use"] is True
 
     # Recorded on both the general error ring and the schema-drift ring.
-    assert get_recent_errors()[-1]["error_code"] == "output_validation_failed"
+    assert get_recent_errors()[-1]["error_code"] == "internal"
     assert get_recent_schema_drift()[-1]["error_field"] == "classification"
 
 
@@ -79,4 +80,4 @@ async def test_install_handler_wraps_output_validation_error() -> None:
     wrapped = server._mcp_server.request_handlers[mcp.types.CallToolRequest]
     result = await wrapped(request)
     payload = result.root.content[0].text
-    assert "output_validation_failed" in payload
+    assert "internal" in payload

@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 
 import pytest
+from fastmcp.tools.base import ToolResult
 
 from clingen_link.etl import build, cspec_parse, schema
 from clingen_link.mcp.service_adapters import ClingenServices, reset_services, set_services
@@ -239,6 +240,9 @@ async def test_get_cspec_criterion_by_code() -> None:
         rule_set_id=None,
         response_mode="compact",
     )
+    if isinstance(out, ToolResult):
+        assert out.is_error is True
+        out = out.structured_content or {}
     assert out["success"] is True
     assert out["record"]["code"] == "PVS1"
     nxt = out["_meta"]["next_commands"][0]
@@ -250,6 +254,8 @@ async def test_get_cspec_not_found() -> None:
     out = await cspec_tools._get_cspec_impl(
         gn_id="GN999", affiliation=None, gene=None, response_mode="compact"
     )
+    assert isinstance(out, ToolResult) and out.is_error is True
+    out = out.structured_content or {}
     assert out["success"] is False
     assert out["error_code"] == "not_found"
 
@@ -287,9 +293,12 @@ async def test_get_cspec_criterion_ambiguous_returns_error(_multi_services) -> N
         rule_set_id=None,
         response_mode="compact",
     )
+    assert isinstance(out, ToolResult) and out.is_error is True
+    out = out.structured_content or {}
     assert out["success"] is False
-    # Same error envelope shape as test_get_cspec_not_found: error_code + message.
-    assert out["error_code"] == "not_found"
+    # "Several records match" has its own code in the closed enum — it is not a not_found
+    # ("the thing does not exist"), which would tell the model to stop looking (issue #46).
+    assert out["error_code"] == "ambiguous_query"
     message = out["message"]
     assert "rule_set_id" in message
     assert "criteria_id" in message

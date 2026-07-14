@@ -23,7 +23,7 @@ from typing import Annotated, Any, Literal
 from fastmcp import FastMCP
 from pydantic import Field
 
-from clingen_link.exceptions import DataNotFoundError
+from clingen_link.exceptions import AmbiguousQueryError, DataNotFoundError
 from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
 from clingen_link.mcp.envelope import build_meta, data_version_for
 from clingen_link.mcp.errors import McpErrorContext, run_mcp_tool
@@ -403,10 +403,14 @@ async def _get_criterion_impl(
             ids = await services.cspec.resolve_criterion_ids(
                 gn_id=gn_id, code=code, rule_set_id=rule_set_id
             )
-            if len(ids) != 1:
-                raise DataNotFoundError(
+            if len(ids) > 1:
+                raise AmbiguousQueryError(
                     f"{len(ids)} criteria match (gn_id={gn_id}, code={code}); "
                     "supply criteria_id or rule_set_id to disambiguate."
+                )
+            if not ids:
+                raise DataNotFoundError(
+                    f"No criterion for gn_id={gn_id}, code={code} in the ClinGen snapshot."
                 )
             resolved_id = ids[0]
         criterion = await services.cspec.get_criterion(criteria_id=resolved_id)
