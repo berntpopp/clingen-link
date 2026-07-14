@@ -25,29 +25,21 @@ from clingen_link.mcp.schema_relax import relax_output_schema
 from clingen_link.mcp.service_adapters import ClingenServices
 from clingen_link.mcp.shaping import (
     collect_fenced_objects,
-    shape_record,
     shape_records,
     truncated_block,
 )
 from clingen_link.mcp.untrusted_content import enforce_untrusted_text_limits
 from clingen_link.mcp.untrusted_schema import record_items
+from clingen_link.models.models import DosageRecord
+from clingen_link.vocab import DOSAGE_NOT_EVALUATED, DOSAGE_SCORE_TEXT, DosageScoreCode
 
 _RESPONSE_MODE = Literal["minimal", "compact", "standard", "full"]
 
-# ClinGen dosage evidence scale → plain-English interpretation. Keys cover the
-# numeric 0-3 scale plus the textual special codes seen in the snapshot.
-_SCORE_TEXT: dict[str, str] = {
-    "0": "No evidence",
-    "1": "Little evidence",
-    "2": "Some evidence (emerging)",
-    "3": "Sufficient evidence for dosage pathogenicity",
-    "30": "Gene associated with autosomal recessive phenotype",
-    "40": "Dosage sensitivity unlikely",
-    "Dosage sensitivity unlikely": "Dosage sensitivity unlikely",
-    "Gene associated with autosomal recessive phenotype": (
-        "Gene associated with autosomal recessive phenotype"
-    ),
-}
+# The score filters' vocabulary is declared as an `enum` (via `DosageScoreCode`), so an
+# unrecognised code is REJECTED by the schema instead of silently matching nothing
+# (TOOL-SCHEMA-DOCUMENTATION-STANDARD S4; issue #46 D1). A prose description of the
+# vocabulary is not enough — it must be machine-declared.
+_SCORE_EXAMPLES = ["3", "30"]
 
 _LIST_SCHEMA = relax_output_schema(
     {
@@ -69,18 +61,52 @@ _LIST_SCHEMA = relax_output_schema(
 )
 
 
-def _interpret(score: str | None) -> str | None:
-    """Return interpretation text for a haplo/triplo score code, or None."""
-    if score is None or score == "":
-        return None
-    return _SCORE_TEXT.get(str(score), str(score))
+def _interpret(score: str | None, description: str | None) -> str | None:
+    """Return plain-English text for a score code, or the un-evaluated sentinel.
+
+    ``score`` is a code or ``None``; the prose lives in its own fields
+    (``haplo_score`` is numeric-or-null, never a sentence — issue #46 D2). When the
+    code is absent, upstream's own ``Not yet evaluated`` marker is surfaced so the
+    caller can tell "not evaluated" from "no dosage record" in every response_mode.
+    """
+    if score:
+        return DOSAGE_SCORE_TEXT.get(score, score)
+    if description and description.strip() == DOSAGE_NOT_EVALUATED:
+        return DOSAGE_NOT_EVALUATED
+    return None
 
 
-def _annotate(record: dict[str, Any]) -> dict[str, Any]:
-    """Attach haplo/triplo interpretation text to a shaped dosage record."""
-    record["haplo_interpretation"] = _interpret(record.get("haplo_score"))
-    record["triplo_interpretation"] = _interpret(record.get("triplo_score"))
+def _annotate(record: dict[str, Any], model: DosageRecord) -> dict[str, Any]:
+    """Attach haplo/triplo interpretation text to a shaped dosage record.
+
+    Reads the description off the *model*, not the shaped record: the shaped copy has
+    been fenced (v1.1 ``untrusted_text``) and compact mode drops it entirely.
+    """
+    record["haplo_interpretation"] = _interpret(model.haplo_score, model.haplo_description)
+    record["triplo_interpretation"] = _interpret(model.triplo_score, model.triplo_description)
     return record
+
+
+def _shape_dosage(models: list[DosageRecord], response_mode: str) -> list[dict[str, Any]]:
+    """Shape dosage records, attaching the interpretation to every detail-bearing tier.
+
+    ``minimal`` carries stable identifiers only (Response-Envelope v1), so there is no
+    score field there to interpret.
+    """
+    records = shape_records(models, domain="dosage", response_mode=response_mode)
+    if response_mode == "minimal":
+        return records
+    return [_annotate(r, m) for r, m in zip(records, models, strict=True)]
+
+
+def _headline(symbol: str, models: list[DosageRecord]) -> str:
+    """One-line dosage summary, read off the models so every response_mode agrees."""
+    if not models:
+        return f"{symbol}: no ClinGen dosage record."
+    first = models[0]
+    haplo = _interpret(first.haplo_score, first.haplo_description) or "n/a"
+    triplo = _interpret(first.triplo_score, first.triplo_description) or "n/a"
+    return f"{symbol} dosage — haploinsufficiency: {haplo}; triplosensitivity: {triplo}."
 
 
 def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenServices]) -> None:
@@ -122,24 +148,11 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
             models = await services.dosage.for_gene(symbol)
             # The gene resolved; an empty domain is success+0 (not not_found) — that is reserved for
             # a gene absent from the index entirely (assessment M5).
-            shaped = [
-                _annotate(shape_record(m, domain="dosage", response_mode=response_mode))
-                for m in models
-            ]
-            # minimal omits per-record bodies (headline + counts only), like the list/summary tools.
-            records = [] if response_mode == "minimal" else shaped
+            records = _shape_dosage(models, response_mode)
             # List-bearing (not paginated); v1.1 limit backstop over the fenced haplo/triplo text.
             enforce_untrusted_text_limits(collect_fenced_objects(records), max_objects=10000)
             citation = models[0].recommended_citation if models else None
-            head = shaped[0] if shaped else {}
-            if models:
-                headline = (
-                    f"{symbol} dosage — haploinsufficiency: "
-                    f"{head.get('haplo_interpretation') or 'n/a'}; triplosensitivity: "
-                    f"{head.get('triplo_interpretation') or 'n/a'}."
-                )
-            else:
-                headline = f"{symbol}: no ClinGen dosage record."
+            headline = _headline(symbol, models)
             return {
                 "headline": headline,
                 "records": records,
@@ -182,12 +195,26 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
             Field(description="Cytoband prefix (e.g. 17q21).", examples=["17q21"]),
         ] = None,
         haplo_score: Annotated[
-            str | None,
-            Field(description="Exact haploinsufficiency score code (0-3, 30, 40).", examples=["3"]),
+            DosageScoreCode | None,
+            Field(
+                description=(
+                    "Exact ClinGen haploinsufficiency score CODE (not its description): "
+                    "0 no evidence, 1 little, 2 some, 3 sufficient evidence; "
+                    "30 gene associated with an autosomal-recessive phenotype; "
+                    "40 dosage sensitivity unlikely. 30 and 40 are flags, not 'more than 3'."
+                ),
+                examples=_SCORE_EXAMPLES,
+            ),
         ] = None,
         triplo_score: Annotated[
-            str | None,
-            Field(description="Exact triplosensitivity score code.", examples=["3"]),
+            DosageScoreCode | None,
+            Field(
+                description=(
+                    "Exact ClinGen triplosensitivity score CODE (same scale as haplo_score). "
+                    "Genes upstream has not evaluated carry no code and are not matched by any."
+                ),
+                examples=_SCORE_EXAMPLES,
+            ),
         ] = None,
         record_type: Annotated[
             Literal["gene", "region"] | None,
@@ -214,10 +241,7 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
                 page=page,
                 size=size,
             )
-            records = [
-                _annotate(r)
-                for r in shape_records(models, domain="dosage", response_mode=response_mode)
-            ]
+            records = _shape_dosage(models, response_mode)
             # List-bearing (page size up to 100); v1.1 limit backstop over the fenced text.
             enforce_untrusted_text_limits(collect_fenced_objects(records), max_objects=10000)
             shown = len(records)

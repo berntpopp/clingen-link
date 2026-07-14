@@ -17,6 +17,7 @@ import pytest
 import zstandard
 
 from clingen_link.config import DataRequirement
+from clingen_link.data_contract import SNAPSHOT_SCHEMA_SEMVER
 from clingen_link.exceptions import SnapshotUnavailableError
 from clingen_link.store.db import Store, canonical_expanded_digest, materialize_bundle
 
@@ -41,9 +42,9 @@ def _requirement(bundle: Path, raw: Path) -> DataRequirement:
         bundle_path=bundle,
         compressed_sha256=hashlib.sha256(bundle.read_bytes()).hexdigest(),
         expanded_tree_sha256=canonical_expanded_digest(raw, member_name="clingen.sqlite"),
-        schema_version="1.0.0",
-        schema_minimum="1.0.0",
-        schema_maximum="1.0.0",
+        schema_version=SNAPSHOT_SCHEMA_SEMVER,
+        schema_minimum=SNAPSHOT_SCHEMA_SEMVER,
+        schema_maximum=SNAPSHOT_SCHEMA_SEMVER,
         max_compressed_bytes=4 * 1024 * 1024,
         max_expanded_bytes=16 * 1024 * 1024,
     )
@@ -124,9 +125,9 @@ class TestChecksumMismatch:
                 bundle_path=bundle,
                 compressed_sha256="invalid",
                 expanded_tree_sha256="0" * 64,
-                schema_version="1.0.0",
-                schema_minimum="1.0.0",
-                schema_maximum="1.0.0",
+                schema_version=SNAPSHOT_SCHEMA_SEMVER,
+                schema_minimum=SNAPSHOT_SCHEMA_SEMVER,
+                schema_maximum=SNAPSHOT_SCHEMA_SEMVER,
                 max_compressed_bytes=1024,
                 max_expanded_bytes=1024,
             )
@@ -173,9 +174,9 @@ class TestUnverifiedNonPackagedBundle:
                 bundle_path=bundle,
                 compressed_sha256="",
                 expanded_tree_sha256="0" * 64,
-                schema_version="1.0.0",
-                schema_minimum="1.0.0",
-                schema_maximum="1.0.0",
+                schema_version=SNAPSHOT_SCHEMA_SEMVER,
+                schema_minimum=SNAPSHOT_SCHEMA_SEMVER,
+                schema_maximum=SNAPSHOT_SCHEMA_SEMVER,
                 max_compressed_bytes=1024,
                 max_expanded_bytes=1024,
             )
@@ -231,9 +232,9 @@ class TestDecompressionBomb:
             bundle_path=bomb,
             compressed_sha256=hashlib.sha256(bomb.read_bytes()).hexdigest(),
             expanded_tree_sha256="0" * 64,
-            schema_version="1.0.0",
-            schema_minimum="1.0.0",
-            schema_maximum="1.0.0",
+            schema_version=SNAPSHOT_SCHEMA_SEMVER,
+            schema_minimum=SNAPSHOT_SCHEMA_SEMVER,
+            schema_maximum=SNAPSHOT_SCHEMA_SEMVER,
             max_compressed_bytes=1024 * 1024,
             max_expanded_bytes=1024 * 1024,
         )

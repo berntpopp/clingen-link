@@ -15,6 +15,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .data_contract import SNAPSHOT_SCHEMA_SEMVER
+
 # The reference volume is mounted at /data — the only approved writable/readable data
 # path in the container hardening policy. `current` is the atomically selected version.
 _DEFAULT_DATA_ROOT = "/data"
@@ -119,9 +121,11 @@ class Settings(BaseSettings):
     data_bundle_path: str = ""
     data_bundle_sha256: str = ""
     data_expanded_sha256: str = ""
-    data_schema_version: str = "1.0.0"
-    data_schema_minimum: str = "1.0.0"
-    data_schema_maximum: str = "1.0.0"
+    # Single-sourced with the ETL's stamp: a bundle built under a different contract is
+    # refused at materialization rather than served (see clingen_link.data_contract).
+    data_schema_version: str = SNAPSHOT_SCHEMA_SEMVER
+    data_schema_minimum: str = SNAPSHOT_SCHEMA_SEMVER
+    data_schema_maximum: str = SNAPSHOT_SCHEMA_SEMVER
     data_max_compressed_bytes: int = 64 * 1024 * 1024
     data_max_expanded_bytes: int = 256 * 1024 * 1024
     data_root: str = _DEFAULT_DATA_ROOT
