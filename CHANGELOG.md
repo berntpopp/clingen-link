@@ -2,6 +2,17 @@
 
 All notable changes to clingen-link are documented here.
 
+## [3.0.6] - 2026-07-14
+
+### Fixed
+
+- **The NPM overlay no longer pins the container name NPM resolves as its upstream.**
+  nginx-proxy-manager forwards by container name (`proxy_pass http://clingen-link-npm:8000`).
+  Without the pin Compose auto-names the container `clingen-link-npm-clingen_link-1`, nginx
+  cannot resolve the upstream, and clingen-link.genefoundry.org goes down on the next deploy.
+  An unresolvable upstream also makes `nginx -s reload` fail, which blocks NPM configuration
+  changes for every other site on the host.
+
 ## [3.0.5] - 2026-07-13
 
 ### Fixed

@@ -54,6 +54,12 @@ services:
   clingen_link:
     image: "${CLINGEN_LINK_IMAGE:?set an attested image@sha256 digest}"
     pull_policy: missing
+    # NPM resolves its upstream by container name (`proxy_pass http://clingen-link-npm:8000`),
+    # so it must be pinned. Without it Compose auto-names the container
+    # `clingen-link-npm-clingen_link-1`, nginx cannot resolve the upstream, and
+    # clingen-link.genefoundry.org goes down. An unresolvable upstream also makes
+    # `nginx -s reload` fail, which blocks NPM config changes for every other site.
+    container_name: clingen-link-npm
     depends_on:
       clingen_data_init:
         condition: service_completed_successfully
