@@ -47,7 +47,7 @@ class TestCapabilities:
 
     async def test_error_codes_and_conventions(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "get_server_capabilities", {})
-        assert "snapshot_unavailable" in payload["error_codes"]
+        assert "upstream_unavailable" in payload["error_codes"]
         assert "response_mode" in payload["parameter_conventions"]
         assert payload["resources"]["clingen://citations"]
 

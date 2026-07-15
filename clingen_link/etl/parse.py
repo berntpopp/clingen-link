@@ -21,24 +21,47 @@ import io
 import json
 from typing import Any
 
+from ..exceptions import SnapshotBuildError
+from ..vocab import DOSAGE_NOT_EVALUATED, DOSAGE_SCORE_CODES
 from .sanitize import is_obsolete_label, strip_html
 
 # ---------------------------------------------------------------------------
-# Dosage score-code decoding (FTP README + spec Task 2.2)
+# Dosage score codes
 # ---------------------------------------------------------------------------
-# The TSV Description column already carries the human-readable text, but the
-# Score column is the canonical numeric code. Two codes are non-ordinal and map
-# to a text phrase per the FTP README; the rest (0/1/2/3) are kept verbatim.
-_DOSAGE_SCORE_TEXT: dict[str, str] = {
-    "40": "Dosage sensitivity unlikely",
-    "30": "Gene associated with autosomal recessive phenotype",
-}
+# The Score column is a CODE; the Description column beside it is that code's
+# prose. They are stored separately, verbatim.
+#
+# This function used to *expand* the codes 30 and 40 into their description text
+# before storing, which put a sentence in a numeric column: `haplo_score="30"`
+# then matched nothing (the snapshot held prose), and `get_gene_dosage(CFTR)`
+# answered a numeric field with "Gene associated with autosomal recessive
+# phenotype" (issue #46, D1 + D2). The decode belongs at the presentation edge —
+# see `DOSAGE_SCORE_TEXT` — never in the stored column.
 
 
-def _decode_dosage_score(score: str) -> str:
-    """Return the canonical score string, expanding the two non-ordinal codes."""
-    score = score.strip()
-    return _DOSAGE_SCORE_TEXT.get(score, score)
+def _dosage_score_code(raw: str) -> str | None:
+    """Return the upstream score code, ``None`` for an absent score.
+
+    Upstream ships blanks and the literal sentinel ``Not yet evaluated`` *in the
+    score column* (211 gene rows carry it for triplosensitivity); both mean "no
+    score assigned" and are stored as ``NULL``. The accompanying Description
+    column keeps the sentinel verbatim, so nothing is lost.
+
+    Raises:
+        SnapshotBuildError: the code is outside ClinGen's published vocabulary.
+            Vocabulary drift fails the build loudly rather than shipping a value
+            no ``search_dosage`` filter could ever reach.
+    """
+    score = raw.strip()
+    if not score or score == DOSAGE_NOT_EVALUATED:
+        return None
+    if score not in DOSAGE_SCORE_CODES:
+        raise SnapshotBuildError(
+            f"unknown ClinGen dosage score code {score!r} (expected one of "
+            f"{sorted(DOSAGE_SCORE_CODES)} or {DOSAGE_NOT_EVALUATED!r}). Upstream's vocabulary "
+            "changed: add the code to clingen_link.vocab so the tool schema advertises it too."
+        )
+    return score
 
 
 # ---------------------------------------------------------------------------
@@ -144,10 +167,10 @@ def _parse_dosage_record(cells: list[str], record_type: str) -> dict[str, Any]:
         "cytoband": cytoband,
         "grch38": grch38,
         "grch37": None,
-        "haplo_score": _decode_dosage_score(_cell(cells, _DOSAGE_HAPLO_SCORE)),
+        "haplo_score": _dosage_score_code(_cell(cells, _DOSAGE_HAPLO_SCORE)),
         "haplo_description": _cell(cells, _DOSAGE_HAPLO_DESC),
         "haplo_pmids": haplo_pmids,
-        "triplo_score": _decode_dosage_score(_cell(cells, _DOSAGE_TRIPLO_SCORE)),
+        "triplo_score": _dosage_score_code(_cell(cells, _DOSAGE_TRIPLO_SCORE)),
         "triplo_description": _cell(cells, _DOSAGE_TRIPLO_DESC),
         "triplo_pmids": triplo_pmids,
         "date_last_evaluated": _cell(cells, _DOSAGE_DATE),
@@ -169,10 +192,15 @@ def parse_dosage(
     """Parse the dosage gene + region TSVs into normalized dosage dicts.
 
     ``record_type`` is ``"gene"`` (Gene Symbol / Gene ID first cols) or
-    ``"region"`` (ISCA ID / ISCA Region Name). Score codes are decoded, PMID1..6
-    are collapsed into ``haplo_pmids`` / ``triplo_pmids`` lists, and GRCh38
-    coordinates are kept. Optional GRCh37 TSVs, if provided, backfill the
-    ``grch37`` coordinate by matching on the first column (symbol / ISCA id).
+    ``"region"`` (ISCA ID / ISCA Region Name). Score columns keep upstream's
+    **code** (``0``-``3``, ``30``, ``40``; ``NULL`` when unscored) with the prose
+    left in the Description columns, PMID1..6 are collapsed into ``haplo_pmids`` /
+    ``triplo_pmids`` lists, and GRCh38 coordinates are kept. Optional GRCh37 TSVs,
+    if provided, backfill the ``grch37`` coordinate by matching on the first column
+    (symbol / ISCA id).
+
+    Raises:
+        SnapshotBuildError: a score code outside ClinGen's published vocabulary.
     """
     records: list[dict[str, Any]] = []
     for cells in _split_dosage_rows(gene_tsv):

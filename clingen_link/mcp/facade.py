@@ -71,6 +71,10 @@ def create_clingen_mcp(
         version=__version__,
         instructions=_INSTRUCTIONS,
         mask_error_details=True,
+        # TOOL-SURFACE-BUDGET v1: inline every $ref instead of shipping a $defs block the
+        # model pays for on every request. None of our INPUT schemas contain a $ref, so this
+        # only shrinks what goes on the wire.
+        dereference_schemas=False,
     )
     # Guard the FastMCP-core not-found reflection surface: core echoes the caller's
     # OWN requested tool name / resource URI / prompt name (with any

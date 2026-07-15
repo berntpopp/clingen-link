@@ -54,8 +54,8 @@ class TestGetGeneActionability:
 
     @respx.mock
     async def test_include_detail_minimal_is_valid(self, tool_mcp: FastMCP) -> None:
-        # response_mode="minimal" yields an empty records list; include_detail must NOT try to
-        # zip it against the non-empty models (that raised) — it returns a valid minimal response.
+        # minimal is the identifiers-only tier: the records survive (they are no longer dropped,
+        # issue #46) but the multi-kB live SEPIO blob is not attached to them.
         route = respx.get(f"{ACTION_TEST_BASE}/Adult/api/sepio/doc/AC1034").mock(
             return_value=httpx.Response(200, json={"docId": "AC1034"})
         )
@@ -66,8 +66,10 @@ class TestGetGeneActionability:
         )
         assert payload["success"] is True
         assert payload["total"] >= 1
-        assert payload["records"] == []
-        # minimal omits per-record bodies, so no live SEPIO fetch is made.
+        records = payload["records"]
+        assert records and all("doc_id" in r for r in records)
+        assert all("sepio_detail" not in r for r in records)
+        # minimal carries no per-record bodies, so no live SEPIO fetch is made.
         assert not route.called
 
     async def test_resolvable_gene_no_curation_is_success_zero(self, tool_mcp: FastMCP) -> None:

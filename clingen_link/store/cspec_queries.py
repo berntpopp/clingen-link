@@ -181,10 +181,14 @@ def search_cspec(
     placeholders = ",".join("?" * len(ids))
     total = len(ids)
     pg: Page = paginate(page, size)
+    # LEFT JOIN the criterion so a criterion hit carries its ACMG/AMP `code` (+ `rule_set_id`):
+    # get_cspec_criterion is now addressed by (gn_id, code), so a hit that could only offer the
+    # internal criteria_id could not build a valid follow-up call (issue #46, next_commands).
     sql = (
-        "SELECT rowid, entity_type, gn_id, criteria_id, file_uuid "  # noqa: S608 - int rowids
-        f"FROM cspec_search_doc WHERE rowid IN ({placeholders}) "
-        "ORDER BY rowid LIMIT ? OFFSET ?"
+        "SELECT d.rowid, d.entity_type, d.gn_id, d.criteria_id, d.file_uuid, "  # noqa: S608
+        "c.code, c.rule_set_id "
+        f"FROM cspec_search_doc d LEFT JOIN cspec_criteria c ON c.criteria_id = d.criteria_id "
+        f"WHERE d.rowid IN ({placeholders}) ORDER BY d.rowid LIMIT ? OFFSET ?"
     )
     rows = _rows(conn, sql, (*ids, pg.size, pg.offset))
     return [dict(r) for r in rows], total

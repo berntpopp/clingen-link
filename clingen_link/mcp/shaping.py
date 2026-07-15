@@ -59,6 +59,21 @@ _VERBOSE_FIELDS: dict[str, frozenset[str]] = {
 # minimal/compact tiers and kept whole in standard/full (assessment M2).
 _ARRAY_TRIM: dict[str, str] = {"erepo": "hgvs"}
 
+# Response-Envelope Standard v1 defines ``minimal`` as "the mandatory envelope plus stable
+# IDENTIFIERS, omitting all optional record detail" — the identifiers are explicitly retained.
+# ``minimal`` used to return an EMPTY record list, which is a silent-empty by another name: the
+# caller got `success: true`, `total: 7`, `records: []` and a bogus
+# `truncated: {kind: "pagination", to_restore: "page=2"}` block (paging can never restore what the
+# response_mode dropped), sending an agent into a retry loop that could not produce rows
+# (issue #46, audit defect 2). Each domain's stable identifiers, and nothing else:
+_MINIMAL_FIELDS: dict[str, frozenset[str]] = {
+    "validity": frozenset({"symbol", "hgnc_id", "mondo", "perm_id"}),
+    "dosage": frozenset({"record_type", "symbol", "hgnc_id", "isca_id"}),
+    "actionability": frozenset({"doc_id", "genes"}),
+    "erepo": frozenset({"caid", "clinvar_variation_id", "gene"}),
+    "cspec": frozenset({"gn_id", "criteria_id", "code", "affiliation_id"}),
+}
+
 
 def _trim_arrays(row: dict[str, Any], domain: str) -> dict[str, Any]:
     """Replace a domain's big identifying array with a canonical few + a count (compact tiers)."""
@@ -214,10 +229,17 @@ def shape_record(
     if response_mode == "full":
         return row
     verbose = _VERBOSE_FIELDS.get(domain, frozenset())
-    # minimal and compact share the same record projection so the verbosity tiers form a strict
-    # subset lattice (minimal ⊆ compact ⊆ standard ⊆ full). Previously ``minimal`` fell through to
-    # the standard branch and kept nulls, making it *more* verbose than compact (assessment M3).
-    if response_mode in ("compact", "minimal"):
+    # minimal: the stable identifiers (plus the always-kept citation fields below), so the tiers
+    # form a strict subset lattice (minimal ⊆ compact ⊆ standard ⊆ full) and a narrowed payload is
+    # never an empty one.
+    if response_mode == "minimal":
+        keep = _MINIMAL_FIELDS.get(domain, frozenset())
+        kept = _drop_nulls({k: v for k, v in row.items() if k in keep})
+        for must in ("permalink", "recommended_citation"):
+            if must in row:
+                kept[must] = row[must]
+        return kept
+    if response_mode == "compact":
         trimmed = {k: v for k, v in row.items() if k not in verbose}
         trimmed = _trim_arrays(trimmed, domain)
         kept = _drop_nulls(trimmed)
@@ -233,9 +255,7 @@ def shape_record(
 def shape_records(
     models: list[Any], *, domain: str, response_mode: ResponseMode
 ) -> list[dict[str, Any]]:
-    """Project a list of domain records (empty when ``minimal``)."""
-    if response_mode == "minimal":
-        return []
+    """Project a list of domain records. ``minimal`` narrows each record; it never drops them."""
     return [shape_record(m, domain=domain, response_mode=response_mode) for m in models]
 
 

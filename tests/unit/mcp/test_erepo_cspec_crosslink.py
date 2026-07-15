@@ -17,15 +17,17 @@ def test_unique_affiliation_gene_emits_gn_id() -> None:
     assert cmd_ == {"tool": "get_cspec", "arguments": {"gn_id": "GN092"}}
 
 
-def test_ambiguous_emits_affiliation_plus_gene() -> None:
+def test_ambiguous_chains_to_the_list_cspecs_resolver() -> None:
+    # get_cspec takes only gn_id now; an affiliation covering several specs must chain to the
+    # resolver (list_cspecs), never re-invoke get_cspec with removed params (issue #46).
     cmd_ = cspec_next_command(
         "https://cspec.clinicalgenome.org/cspec/ui/svi/affiliation/50087",
         gene="BRCA1",
         resolve=lambda aff, gene: ["GN092", "GN101"],
     )
     assert cmd_ == {
-        "tool": "get_cspec",
-        "arguments": {"affiliation": "50087", "gene": "BRCA1"},
+        "tool": "list_cspecs",
+        "arguments": {"affiliation": "50087", "gene_symbol": "BRCA1"},
     }
 
 
@@ -44,9 +46,11 @@ class TestVariantDetailCarriesCspecCommand:
         # CA281951 (BRAF) carries guideline .../affiliation/50021 in the erepo fixture.
         # The test snapshot has no cspec rows, so the affiliation resolves to no unique
         # gn_id -> the response must still carry the {affiliation, gene} get_cspec affordance.
-        payload = await _call(tool_mcp, "get_variant_interpretation", {"caid": "CA281951"})
+        payload = await _call(tool_mcp, "get_variant_interpretation", {"variant_id": "CA281951"})
         assert payload["success"] is True
         cmds = payload["_meta"]["next_commands"]
-        get_cspec = [c for c in cmds if c["tool"] == "get_cspec"]
-        assert len(get_cspec) == 1
-        assert get_cspec[0]["arguments"] == {"affiliation": "50021", "gene": "BRAF"}
+        # No cspec rows in the fixture → the affiliation resolves to no unique gn_id → the
+        # response carries the list_cspecs browse affordance (a call the tool actually accepts).
+        list_cspecs = [c for c in cmds if c["tool"] == "list_cspecs"]
+        assert len(list_cspecs) == 1
+        assert list_cspecs[0]["arguments"] == {"affiliation": "50021", "gene_symbol": "BRAF"}

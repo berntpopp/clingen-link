@@ -20,10 +20,13 @@ from pathlib import Path
 from typing import Any
 
 from ..config import settings
+from ..data_contract import SNAPSHOT_SCHEMA_VERSION
 from ..exceptions import SnapshotBuildError
 from . import cspec_parse, freshness, hgnc, parse, schema
 
-SNAPSHOT_VERSION = "1"
+# The stamp written into every meta row. Single-sourced with the deployment pin so the two
+# can never drift apart (see clingen_link.data_contract).
+SNAPSHOT_VERSION = SNAPSHOT_SCHEMA_VERSION
 
 # Source URLs recorded in meta rows (for provenance surfacing in capabilities).
 _SOURCE_URLS: dict[str, str] = {

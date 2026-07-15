@@ -72,6 +72,16 @@ class DataNotFoundError(ClingenApiError):
     """
 
 
+class AmbiguousQueryError(ClingenApiError):
+    """The selector matched SEVERAL records where the caller asked for one.
+
+    Maps to ``ambiguous_query`` (not retryable). Distinct from ``not_found`` on purpose:
+    "several match" and "none exists" call for opposite next moves, and answering the first
+    with the second tells the model to stop looking (issue #46). The message names the
+    parameter that disambiguates.
+    """
+
+
 class UpstreamInputError(ClingenApiError):
     """A deterministic upstream rejection (wrong identifier shape, bad parameters).
 

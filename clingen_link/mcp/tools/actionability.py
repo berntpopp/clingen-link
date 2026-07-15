@@ -16,11 +16,11 @@ from pydantic import Field
 
 from clingen_link.exceptions import DataNotFoundError
 from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
-from clingen_link.mcp.envelope import build_meta, data_version_for
-from clingen_link.mcp.errors import McpErrorContext, run_mcp_tool
+from clingen_link.mcp.envelope import build_meta, data_version_for, pagination
+from clingen_link.mcp.errors import McpErrorContext, ToolReturn, run_mcp_tool
+from clingen_link.mcp.filters import Identifier, ensure_gene, ensure_identifier
 from clingen_link.mcp.next_commands import cmd
 from clingen_link.mcp.patterns import GENE_SYMBOL_PATTERN
-from clingen_link.mcp.schema_relax import relax_output_schema
 from clingen_link.mcp.service_adapters import ClingenServices
 from clingen_link.mcp.shaping import (
     collect_fenced_objects,
@@ -29,27 +29,35 @@ from clingen_link.mcp.shaping import (
     truncated_block,
 )
 from clingen_link.mcp.untrusted_content import enforce_untrusted_text_limits
-from clingen_link.mcp.untrusted_schema import record_items
 
 _RESPONSE_MODE = Literal["minimal", "compact", "standard", "full"]
+
+# TOOL-SURFACE-BUDGET v1 (B1/B2): outputSchema is suppressed on every tool. It was 60% of
+# this server's 14,519-token surface — a per-request tax on a field the MCP spec makes
+# OPTIONAL and no model reads. `structuredContent` is unaffected: FastMCP still emits it for
+# any dict return, and every tool here returns the dict envelope.
 _CONTEXT = Literal["Adult", "Pediatric"]
 
-_LIST_SCHEMA = relax_output_schema(
-    {
-        "type": "object",
-        "properties": {
-            "headline": {"type": "string"},
-            # sepio_detail (include_detail=true) is the fenced live SEPIO blob.
-            "records": {"type": "array", "items": record_items("sepio_detail")},
-            "total": {"type": "integer"},
-            "page": {"type": "integer"},
-            "size": {"type": "integer"},
-            "context": {"type": ["string", "null"]},
-            "recommended_citation": {"type": ["string", "null"]},
-            "_meta": {"type": "object"},
-        },
-    }
+# Identifier + vocabulary filters, validated against the snapshot before the search runs.
+_DISEASE = Identifier(
+    param="disease",
+    table="actionability_fts",
+    column="disease",
+    match="fts",
+    resolver="search_actionability (a broader disease term)",
 )
+# `assertion` filters the curation STATUS of the adult/pediatric assertion. It is a CLOSED
+# vocabulary, so it is declared as a schema enum (finding 4) — an arbitrary string is now
+# rejected by validation before the tool body runs, not merely at runtime. The value set is the
+# union of the two status columns in the snapshot; test_closed_enums_are_supersets_of_data proves
+# the enum stays a superset of the data on every rebuild (issue #46).
+_ACTIONABILITY_STATUS = Literal[
+    "Entered",
+    "In Preparation",
+    "Released",
+    "Released - Under Revision",
+    "Retracted",
+]
 
 
 def register_actionability_tools(
@@ -61,7 +69,7 @@ def register_actionability_tools(
         name="get_gene_actionability",
         title="Get Clinical Actionability",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=_LIST_SCHEMA,
+        output_schema=None,
         tags={"actionability"},
     )
     async def get_gene_actionability(
@@ -90,7 +98,7 @@ def register_actionability_tools(
             _RESPONSE_MODE,
             Field(description="compact (default) trims SEPIO IRIs; full keeps everything."),
         ] = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         """Use this for ClinGen clinical actionability of a gene: adult/pediatric assertion status, release, disease, and SEPIO links. Set include_detail=true to fetch the live SEPIO assertion document for the chosen context. Resolve free text with search_genes first. Returns snapshot ~1-4kB; include_detail adds the live SEPIO payload."""
 
         async def call() -> dict[str, Any]:
@@ -105,11 +113,10 @@ def register_actionability_tools(
             # The gene resolved; an empty domain is success+0 (not not_found) — reserved for a gene
             # absent from the index entirely (assessment M5).
             records = shape_records(models, domain="actionability", response_mode=response_mode)
-            # Guard on `records`, not `models`: response_mode="minimal" yields an empty records
-            # list even when models is non-empty, so zipping against models would mismatch. In
-            # minimal mode there are no per-record bodies to attach sepio_detail to — a valid
-            # minimal response simply omits it.
-            if include_detail and records:
+            # `minimal` is the identifiers-only tier (Response-Envelope v1), so the live SEPIO
+            # document is not attached there — hanging a multi-kB blob off a "minimal" record
+            # would contradict the mode the caller asked for.
+            if include_detail and response_mode != "minimal":
                 for model, record in zip(models, records, strict=True):
                     # The live SEPIO document is raw upstream JSON with nested external
                     # prose; fence the whole blob as one opaque untrusted_text object
@@ -152,7 +159,7 @@ def register_actionability_tools(
         name="search_actionability",
         title="Search Clinical Actionability",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=_LIST_SCHEMA,
+        output_schema=None,
         tags={"actionability"},
     )
     async def search_actionability(
@@ -169,8 +176,14 @@ def register_actionability_tools(
             Field(description="Seed the citation with this assertion context."),
         ] = None,
         assertion: Annotated[
-            str | None,
-            Field(description="Filter by assertion outcome text (post-filter)."),
+            _ACTIONABILITY_STATUS | None,
+            Field(
+                description=(
+                    "Curation status of the adult OR pediatric assertion to filter by "
+                    "(e.g. 'Released'). A value outside the enum is rejected by validation."
+                ),
+                examples=["Released"],
+            ),
         ] = None,
         page: Annotated[int, Field(ge=1, le=1000, description="1-based page number.")] = 1,
         size: Annotated[int, Field(ge=1, le=100, description="Page size (max 100).")] = 25,
@@ -178,22 +191,22 @@ def register_actionability_tools(
             _RESPONSE_MODE,
             Field(description="compact (default) trims SEPIO IRIs; full keeps everything."),
         ] = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         """Use this to search ClinGen clinical actionability by disease text or gene. Paginated; a `truncated` block appears when more matches exist. Each record carries the actionability permalink + recommended_citation. Returns ~2-8kB."""
 
         async def call() -> dict[str, Any]:
             services = service_factory()
-            resolved_gene = services.gene.resolve(gene_symbol) if gene_symbol else None
+            resolved_gene = ensure_gene(services.store, gene_symbol)
+            ensure_identifier(services.store, _DISEASE, disease)
+            # `assertion` is a schema enum now, so validation rejects out-of-vocabulary values
+            # before this body runs — no runtime ensure_vocabulary needed.
             models, total = await services.actionability.search(
-                text=disease, gene=resolved_gene or gene_symbol, page=page, size=size
+                text=disease,
+                gene=resolved_gene,
+                status=assertion,
+                page=page,
+                size=size,
             )
-            if assertion:
-                models = [
-                    m
-                    for m in models
-                    if assertion.lower()
-                    in f"{m.adult_status or ''} {m.pediatric_status or ''}".lower()
-                ]
             records = shape_records(models, domain="actionability", response_mode=response_mode)
             shown = len(records)
             dropped = max(0, total - (page - 1) * size - shown)
@@ -233,6 +246,7 @@ def register_actionability_tools(
                     data_version=data_version_for(services.meta(), "actionability"),
                     next_commands=next_commands,
                     record_count=shown,
+                    pagination_block=pagination(total=total, page=page, size=size, shown=shown),
                     truncated=trunc,
                 ),
             }

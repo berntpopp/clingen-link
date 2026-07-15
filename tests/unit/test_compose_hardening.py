@@ -10,6 +10,7 @@ data identity has exactly one source of truth.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -120,6 +121,30 @@ def test_application_waits_for_the_init_sidecar() -> None:
 
 
 # --- one source of truth for the reviewed data identity --------------------------------
+
+
+def test_every_compose_schema_pin_matches_the_data_contract() -> None:
+    """Every deploy declares the schema version the ETL actually stamps — no exceptions.
+
+    The v4 dosage fix (issue #46) bumped the snapshot schema to 2. Missing even ONE pin here
+    is a CRITICAL: a deploy declaring the old schema either serves the prose-in-score bundle
+    (silent-empty codes 30/40 again) or fails materialization on a v2 bundle. The value is
+    DERIVED from `data_contract.SNAPSHOT_SCHEMA_SEMVER`, not hardcoded, and the file list is a
+    GLOB — a new compose overlay is covered the day it lands, not when someone remembers to add
+    it here. Prove this guard by breaking it: change the contract and watch every pin fail.
+    """
+    from clingen_link.data_contract import SNAPSHOT_SCHEMA_SEMVER
+
+    pin = re.compile(r"CLINGEN_LINK_DATA_SCHEMA_(?:VERSION|MINIMUM|MAXIMUM):-([0-9][^}\"]*)")
+    found = 0
+    for path in sorted(DOCKER.glob("docker-compose*.yml")):
+        for declared in pin.findall(path.read_text(encoding="utf-8")):
+            found += 1
+            assert declared == SNAPSHOT_SCHEMA_SEMVER, (
+                f"{path.name} pins schema {declared!r}, but the ETL stamps "
+                f"{SNAPSHOT_SCHEMA_SEMVER!r} (clingen_link.data_contract)"
+            )
+    assert found >= 6, f"expected the base + npm schema pins, found {found}"
 
 
 def test_compose_data_digest_matches_the_declared_data_release() -> None:

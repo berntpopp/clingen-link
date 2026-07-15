@@ -207,8 +207,11 @@ async def test_arg_validation_hostile_field_name_redacted(mcp: FastMCP) -> None:
     )
     for payload in (structured, mirror):
         assert payload["success"] is False
-        assert payload["error_code"] == "validation_failed"
-        assert payload["message"] == "Invalid MCP arguments."
+        assert payload["error_code"] == "invalid_input"
+        # The message now names the tool's OWN declared parameters, so the model can
+        # self-correct (issue #46) — those names come from our schema, never from the caller.
+        assert "Accepted parameters:" in payload["message"]
+        assert "gene_symbol" in payload["message"]
         for field_error in payload["field_errors"]:
             assert field_error["field"] == "unknown"  # caller-supplied name redacted
         blob = json.dumps(payload, ensure_ascii=False)
@@ -223,7 +226,7 @@ async def test_arg_validation_declared_field_reason_is_fixed(mcp: FastMCP) -> No
         mcp, "get_gene_validity", {"gene_symbol": "inject_delete_everything!!‮\x00"}
     )
     for payload in (structured, mirror):
-        assert payload["error_code"] == "validation_failed"
+        assert payload["error_code"] == "invalid_input"
         assert payload["field_errors"][0]["field"] == "gene_symbol"
         blob = json.dumps(payload, ensure_ascii=False)
         # The offending input VALUE (pydantic msg prose) is never surfaced.

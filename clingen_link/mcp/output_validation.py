@@ -42,7 +42,9 @@ def actionable_output_validation_error(
     )
     payload: dict[str, Any] = {
         "success": False,
-        "error_code": "output_validation_failed",
+        # `internal`, not the non-canon `output_validation_failed`: schema drift is a
+        # server-side fault (Response-Envelope v1 closed enum).
+        "error_code": "internal",
         "message": "The tool response did not match its declared MCP output schema.",
         "error_field": error_field,
         "suggested_action": suggested_action,
@@ -58,11 +60,11 @@ def actionable_output_validation_error(
     # message so no free text enters the cross-session ring.
     record_mcp_error(
         tool_name=tool_name,
-        error_code="output_validation_failed",
+        error_code="internal",
         exc_type="OutputValidationError",
     )
     # Also surface the event on the dedicated schema-drift ring so an LLM hitting
-    # the output_validation_failed envelope can call get_diagnostics and
+    # the schema-drift envelope can call get_diagnostics and
     # inspect which fields/tools are drifting. Only the parsed error_field is
     # persisted to the caller-visible ring. The raw SDK message can embed
     # response/query free text (and control code points), so it is NOT logged at
@@ -109,6 +111,11 @@ def install_output_validation_error_handler(mcp_server: Any) -> None:
                         text=json.dumps(payload, separators=(",", ":"), sort_keys=True),
                     )
                 ],
+                # Populate BOTH mirrors: a client reading structuredContent (the machine-readable
+                # path) otherwise saw null and lost the envelope entirely, keeping only the JSON
+                # text (finding 5). This is the protocol-handler layer, so the CallToolResult is
+                # built directly rather than via ToolResult; both must carry the same envelope.
+                structuredContent=payload,
                 isError=True,
             )
         )

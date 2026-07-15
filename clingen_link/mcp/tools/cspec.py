@@ -23,13 +23,13 @@ from typing import Annotated, Any, Literal
 from fastmcp import FastMCP
 from pydantic import Field
 
-from clingen_link.exceptions import DataNotFoundError
+from clingen_link.exceptions import AmbiguousQueryError, DataNotFoundError
 from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
-from clingen_link.mcp.envelope import build_meta, data_version_for
-from clingen_link.mcp.errors import McpErrorContext, run_mcp_tool
+from clingen_link.mcp.envelope import build_meta, data_version_for, pagination
+from clingen_link.mcp.errors import McpErrorContext, ToolReturn, run_mcp_tool
+from clingen_link.mcp.filters import Identifier, ensure_gene, ensure_identifier
 from clingen_link.mcp.next_commands import cmd
-from clingen_link.mcp.patterns import GENE_SYMBOL_PATTERN, GN_ID_PATTERN
-from clingen_link.mcp.schema_relax import relax_output_schema
+from clingen_link.mcp.patterns import ACMG_CODE_PATTERN, GENE_SYMBOL_PATTERN, GN_ID_PATTERN
 from clingen_link.mcp.service_adapters import ClingenServices, get_services
 from clingen_link.mcp.shaping import (
     collect_fenced_objects,
@@ -38,28 +38,22 @@ from clingen_link.mcp.shaping import (
     truncated_block,
 )
 from clingen_link.mcp.untrusted_content import enforce_untrusted_text_limits
-from clingen_link.mcp.untrusted_schema import CSPEC_RECORD_SCHEMA
 
 _RESPONSE_MODE = Literal["minimal", "compact", "standard", "full"]
 
+# CSpec lifecycle status is a closed vocabulary (`cspecStatus`), declared as a schema enum so an
+# out-of-vocabulary value is rejected by validation rather than only at runtime (finding 4). The
+# snapshot carries only "Released"; test_closed_enums_are_supersets_of_data proves the enum stays
+# a superset of the data on every rebuild, so a new upstream status surfaces as a failing test.
+_CSPEC_STATUS = Literal["Released"]
+
+# TOOL-SURFACE-BUDGET v1 (B1/B2): outputSchema is suppressed on every tool. It was 60% of
+# this server's 14,519-token surface — a per-request tax on a field the MCP spec makes
+# OPTIONAL and no model reads. `structuredContent` is unaffected: FastMCP still emits it for
+# any dict return, and every tool here returns the dict envelope.
+
 # Intentionally a permissive SUPERSET schema shared by all four cspec tools: record | records |
-# total | page | size never all coexist in one response, and relax_output_schema keeps it additive.
 # criteria[*].description and criteria[*].strengths[*].description are fenced untrusted_text (v1.1).
-_DETAIL_SCHEMA = relax_output_schema(
-    {
-        "type": "object",
-        "properties": {
-            "headline": {"type": "string"},
-            "record": CSPEC_RECORD_SCHEMA,
-            "records": {"type": "array", "items": CSPEC_RECORD_SCHEMA},
-            "total": {"type": "integer"},
-            "page": {"type": "integer"},
-            "size": {"type": "integer"},
-            "recommended_citation": {"type": ["string", "null"]},
-            "_meta": {"type": "object"},
-        },
-    }
-)
 
 
 def register_cspec_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenServices]) -> None:
@@ -69,7 +63,7 @@ def register_cspec_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
         name="list_cspecs",
         title="List ClinGen Criteria Specifications",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=_DETAIL_SCHEMA,
+        output_schema=None,
         tags={"cspec"},
     )
     async def list_cspecs(
@@ -89,9 +83,10 @@ def register_cspec_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
             ),
         ] = None,
         status: Annotated[
-            str | None,
+            _CSPEC_STATUS | None,
             Field(
-                description="CSpec lifecycle status filter (cspecStatus).",
+                description="CSpec lifecycle status filter (cspecStatus). A value outside the "
+                "enum is rejected by validation.",
                 examples=["Released"],
             ),
         ] = None,
@@ -101,7 +96,7 @@ def register_cspec_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
             _RESPONSE_MODE,
             Field(description="compact (default) drops nulls + verbose header fields."),
         ] = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         """Use this to browse ClinGen criteria-specification (CSpec) headers, filtered by gene, curating affiliation (VCEP), or lifecycle status. Each row carries the GN id, affiliation, label, version, and status. Drill into one with get_cspec. Paginated; returns ~1-8kB."""
         return await _list_cspecs_impl(
             gene=gene_symbol,
@@ -117,43 +112,29 @@ def register_cspec_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
         name="get_cspec",
         title="Get ClinGen Criteria Specification Detail",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=_DETAIL_SCHEMA,
+        output_schema=None,
         tags={"cspec"},
     )
     async def get_cspec(
         gn_id: Annotated[
-            str | None,
+            str,
             Field(
-                description="CSpec GN identifier.",
+                description=(
+                    "CSpec GN identifier. Resolve one from a gene, an affiliation (VCEP) or a "
+                    "status with list_cspecs, whose rows carry the gn_id."
+                ),
                 pattern=GN_ID_PATTERN,
                 examples=["GN092"],
             ),
-        ] = None,
-        affiliation: Annotated[
-            str | None,
-            Field(
-                description="ClinGen affiliation id (resolves the VCEP's spec(s)).",
-                examples=["50087"],
-            ),
-        ] = None,
-        gene_symbol: Annotated[
-            str | None,
-            Field(
-                description="Gene symbol (narrows an affiliation, or finds spec(s) covering it).",
-                pattern=GENE_SYMBOL_PATTERN,
-                examples=["BRCA1"],
-            ),
-        ] = None,
+        ],
         response_mode: Annotated[
             _RESPONSE_MODE,
             Field(description="compact (default) trims verbose header fields; full keeps them."),
         ] = "compact",
-    ) -> dict[str, Any]:
-        """Use this for one criteria specification in full: its genes/diseases, every ACMG/AMP criterion with strength rules, and the attached guidance files. Supply gn_id, or an affiliation (optionally narrowed by gene), or a gene. Returns ~3-30kB depending on the spec."""
+    ) -> ToolReturn:
+        """Use this for one criteria specification in full: its genes/diseases, every ACMG/AMP criterion with strength rules, and the attached guidance files. Resolve a gn_id first with list_cspecs (by gene, affiliation, or status). Returns ~3-30kB depending on the spec."""
         return await _get_cspec_impl(
             gn_id=gn_id,
-            affiliation=affiliation,
-            gene=gene_symbol,
             response_mode=response_mode,
             service_factory=service_factory,
         )
@@ -162,36 +143,33 @@ def register_cspec_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
         name="get_cspec_criterion",
         title="Get One CSpec Criterion",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=_DETAIL_SCHEMA,
+        output_schema=None,
         tags={"cspec"},
     )
     async def get_cspec_criterion(
-        criteria_id: Annotated[
-            str | None,
-            Field(
-                description="Direct criterion id (from a get_cspec / search_cspec hit).",
-                examples=["55"],
-            ),
-        ] = None,
         gn_id: Annotated[
-            str | None,
+            str,
             Field(
-                description="CSpec GN id (required with code when criteria_id is absent).",
+                description="CSpec GN id (from list_cspecs / get_cspec / search_cspec).",
                 pattern=GN_ID_PATTERN,
                 examples=["GN092"],
             ),
-        ] = None,
+        ],
         code: Annotated[
-            str | None,
+            str,
             Field(
-                description="ACMG/AMP code (with gn_id) to resolve the criterion.",
-                examples=["PVS1"],
+                description="ACMG/AMP code within that specification.",
+                pattern=ACMG_CODE_PATTERN,
+                examples=["PVS1", "PM2"],
             ),
-        ] = None,
+        ],
         rule_set_id: Annotated[
             str | None,
             Field(
-                description="Disambiguate a code shared across multiple rule sets.",
+                description=(
+                    "Only needed for the few codes a spec defines in more than one rule set; "
+                    "the ambiguous_query error names it and lists the rule sets."
+                ),
                 examples=["9"],
             ),
         ] = None,
@@ -199,10 +177,9 @@ def register_cspec_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
             _RESPONSE_MODE,
             Field(description="compact (default) trims nulls; full keeps every field."),
         ] = "compact",
-    ) -> dict[str, Any]:
-        """Use this for a single CSpec criterion's specification: its ACMG/AMP code, description, the VCEP's strength rules, and any attached evidence files. Supply criteria_id directly, or gn_id + code (add rule_set_id when a code spans multiple rule sets). Returns ~1-4kB."""
+    ) -> ToolReturn:
+        """Use this for a single CSpec criterion's specification: its ACMG/AMP code, description, the VCEP's strength rules, and any attached evidence files. Addressed by its natural key — the specification (gn_id) plus the ACMG/AMP code — with rule_set_id only for a code a spec defines twice. Returns ~1-4kB."""
         return await _get_criterion_impl(
-            criteria_id=criteria_id,
             gn_id=gn_id,
             code=code,
             rule_set_id=rule_set_id,
@@ -214,7 +191,7 @@ def register_cspec_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
         name="search_cspec",
         title="Search ClinGen Criteria Specifications",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=_DETAIL_SCHEMA,
+        output_schema=None,
         tags={"cspec"},
     )
     async def search_cspec(
@@ -229,11 +206,20 @@ def register_cspec_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
         ],
         page: Annotated[int, Field(ge=1, le=1000, description="1-based page number.")] = 1,
         size: Annotated[int, Field(ge=1, le=100, description="Page size (max 100).")] = 25,
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         """Use this to full-text search the CSpec catalog (spec labels, criteria descriptions, attachment filenames). Each hit names its entity_type + ids so you can chain into get_cspec or get_cspec_criterion. Paginated; returns ~1-6kB."""
         return await _search_cspec_impl(
             query=query, page=page, size=size, service_factory=service_factory
         )
+
+
+# Identifier + vocabulary filters for list_cspecs, validated before the query runs.
+_AFFILIATION = Identifier(
+    param="affiliation",
+    table="cspec",
+    column="affiliation_id",
+    resolver="list_expert_panels",
+)
 
 
 async def _list_cspecs_impl(
@@ -245,13 +231,17 @@ async def _list_cspecs_impl(
     size: int,
     response_mode: _RESPONSE_MODE,
     service_factory: Callable[[], ClingenServices] = get_services,
-) -> dict[str, Any]:
+) -> ToolReturn:
     """List CSpec headers (wrapped envelope)."""
 
     async def call() -> dict[str, Any]:
         services = service_factory()
+        resolved_gene = ensure_gene(services.store, gene, param="gene_symbol")
+        ensure_identifier(services.store, _AFFILIATION, affiliation)
+        # `status` is a schema enum now (finding 4) — an out-of-vocabulary value is rejected by
+        # validation before this runs, so no runtime ensure_vocabulary is needed.
         models, total = await services.cspec.list_specs(
-            gene=gene, affiliation=affiliation, status=status, page=page, size=size
+            gene=resolved_gene, affiliation=affiliation, status=status, page=page, size=size
         )
         records = shape_records(models, domain="cspec", response_mode=response_mode)
         shown = len(records)
@@ -292,6 +282,7 @@ async def _list_cspecs_impl(
                 data_version=data_version_for(services.meta(), "cspec"),
                 next_commands=next_commands,
                 record_count=shown,
+                pagination_block=pagination(total=total, page=page, size=size, shown=shown),
                 truncated=trunc,
             ),
         }
@@ -303,57 +294,40 @@ async def _list_cspecs_impl(
     )
 
 
-async def _resolve_gn_ids(
-    services: ClingenServices,
-    *,
-    gn_id: str | None,
-    affiliation: str | None,
-    gene: str | None,
-) -> list[str]:
-    """Resolve the GN id(s) a get_cspec call addresses (gn_id → affiliation → gene)."""
-    if gn_id:
-        return [gn_id]
-    if affiliation:
-        return await services.cspec.resolve_for_erepo(affiliation_id=affiliation, gene=gene)
-    if gene:
-        models, _ = await services.cspec.list_specs(gene=gene, page=1, size=100)
-        return [m.gn_id for m in models]
-    raise DataNotFoundError("Supply one of gn_id, affiliation, or gene.")
-
-
 async def _get_cspec_impl(
     *,
-    gn_id: str | None,
-    affiliation: str | None,
-    gene: str | None,
+    gn_id: str,
     response_mode: _RESPONSE_MODE,
     service_factory: Callable[[], ClingenServices] = get_services,
-) -> dict[str, Any]:
-    """Return one (or several) full CSpec detail(s) (wrapped envelope)."""
+) -> ToolReturn:
+    """Return one full CSpec detail (wrapped envelope).
+
+    Takes the id and nothing else. It used to accept gn_id OR affiliation OR gene — all
+    optional — so the schema advertised a no-argument call that the body always refused
+    with `not_found` and a message naming a parameter (`gene`) that did not exist
+    (issue #46, audit defect 4). Resolving an affiliation/gene to a spec is list_cspecs' job,
+    and its rows already carry the gn_id.
+    """
 
     async def call() -> dict[str, Any]:
         services = service_factory()
-        gn_ids = await _resolve_gn_ids(services, gn_id=gn_id, affiliation=affiliation, gene=gene)
-        details = []
-        for gid in gn_ids:
-            detail = await services.cspec.get_detail(gn_id=gid)
-            if detail is not None:
-                details.append(detail)
-        if not details:
+        detail = await services.cspec.get_detail(gn_id=gn_id)
+        if detail is None:
             raise DataNotFoundError(
-                f"No criteria specification for {gn_id or affiliation or gene}."
+                f"No criteria specification {gn_id} in the ClinGen snapshot. "
+                "List the published specs with list_cspecs."
             )
-        first = details[0]
-        first_criterion = first.criteria[0].criteria_id if first.criteria else None
+        first = detail
+        first_code = first.criteria[0].code if first.criteria else None
         next_commands = (
-            [cmd("get_cspec_criterion", criteria_id=first_criterion)]
-            if first_criterion
+            [cmd("get_cspec_criterion", gn_id=first.gn_id, code=first_code)]
+            if first_code
             else [cmd("list_cspecs", page=1, size=25)]
         )
         meta = build_meta(
             data_version=data_version_for(services.meta(), "cspec"),
             next_commands=next_commands,
-            record_count=len(details),
+            record_count=1,
         )
         out: dict[str, Any] = {
             "headline": (
@@ -364,54 +338,48 @@ async def _get_cspec_impl(
             "recommended_citation": first.recommended_citation,
             "_meta": meta,
         }
-        if len(details) == 1:
-            out["record"] = shape_record(first, domain="cspec", response_mode=response_mode)
-        else:
-            out["records"] = shape_records(details, domain="cspec", response_mode=response_mode)
-            out["total"] = len(details)
+        out["record"] = shape_record(first, domain="cspec", response_mode=response_mode)
         # A spec's criteria list is not paginated and could in principle be dozens; v1.1
         # limit backstop over every fenced description (criterion + nested strengths).
-        enforce_untrusted_text_limits(
-            collect_fenced_objects(out.get("record"), out.get("records")), max_objects=10000
-        )
+        enforce_untrusted_text_limits(collect_fenced_objects(out.get("record")), max_objects=10000)
         return out
 
     return await run_mcp_tool(
         "get_cspec",
         call,
-        context=McpErrorContext(tool_name="get_cspec", gene=gene),
+        context=McpErrorContext(tool_name="get_cspec", extra={"gn_id": gn_id}),
     )
 
 
 async def _get_criterion_impl(
     *,
-    criteria_id: str | None,
-    gn_id: str | None,
-    code: str | None,
-    rule_set_id: str | None,
+    gn_id: str,
+    code: str,
+    rule_set_id: str | None = None,
     response_mode: _RESPONSE_MODE,
     service_factory: Callable[[], ClingenServices] = get_services,
-) -> dict[str, Any]:
+) -> ToolReturn:
     """Return one CSpec criterion (wrapped envelope)."""
 
     async def call() -> dict[str, Any]:
         services = service_factory()
-        resolved_id = criteria_id
-        if resolved_id is None:
-            if not (gn_id and code):
-                raise DataNotFoundError("Supply criteria_id, or both gn_id and code.")
-            ids = await services.cspec.resolve_criterion_ids(
-                gn_id=gn_id, code=code, rule_set_id=rule_set_id
+        ids = await services.cspec.resolve_criterion_ids(
+            gn_id=gn_id, code=code, rule_set_id=rule_set_id
+        )
+        if len(ids) > 1:
+            raise AmbiguousQueryError(
+                f"{len(ids)} criteria in {gn_id} carry the code {code} (it is defined in more "
+                "than one rule set). Re-call with rule_set_id to choose one; get_cspec lists "
+                "each criterion with its rule_set_id."
             )
-            if len(ids) != 1:
-                raise DataNotFoundError(
-                    f"{len(ids)} criteria match (gn_id={gn_id}, code={code}); "
-                    "supply criteria_id or rule_set_id to disambiguate."
-                )
-            resolved_id = ids[0]
-        criterion = await services.cspec.get_criterion(criteria_id=resolved_id)
+        if not ids:
+            raise DataNotFoundError(
+                f"No {code} criterion in criteria specification {gn_id}. get_cspec lists every "
+                "code that specification defines."
+            )
+        criterion = await services.cspec.get_criterion(criteria_id=ids[0])
         if criterion is None:
-            raise DataNotFoundError(f"No criterion {resolved_id}.")
+            raise DataNotFoundError(f"No {code} criterion in criteria specification {gn_id}.")
         meta = build_meta(
             data_version=data_version_for(services.meta(), "cspec"),
             next_commands=[cmd("get_cspec", gn_id=criterion.gn_id)],
@@ -439,7 +407,7 @@ async def _search_cspec_impl(
     page: int,
     size: int,
     service_factory: Callable[[], ClingenServices] = get_services,
-) -> dict[str, Any]:
+) -> ToolReturn:
     """Full-text search the CSpec catalog (wrapped envelope)."""
 
     async def call() -> dict[str, Any]:
@@ -470,6 +438,7 @@ async def _search_cspec_impl(
                 data_version=data_version_for(services.meta(), "cspec"),
                 next_commands=next_commands,
                 record_count=shown,
+                pagination_block=pagination(total=total, page=page, size=size, shown=shown),
                 truncated=trunc,
             ),
         }
@@ -482,12 +451,21 @@ async def _search_cspec_impl(
 
 
 def _search_next_commands(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Chain into the first hit: a criterion hit → get_cspec_criterion, else → get_cspec."""
+    """Chain into the first hit with a call the caller can actually make.
+
+    A criterion hit addresses ``get_cspec_criterion`` by its natural key ``(gn_id, code)`` —
+    plus ``rule_set_id`` when the hit carries one, so a code a spec defines twice resolves
+    unambiguously. A criterion hit missing its ``code`` (or any non-criterion hit) falls back to
+    ``get_cspec(gn_id)``, which lists every criterion of the spec with its code and rule_set_id.
+    """
     for hit in hits:
-        criteria_id = hit.get("criteria_id")
-        if criteria_id:
-            return [cmd("get_cspec_criterion", criteria_id=str(criteria_id))]
         gn_id = hit.get("gn_id")
+        code = hit.get("code")
+        if gn_id and code:
+            args: dict[str, Any] = {"gn_id": str(gn_id), "code": str(code)}
+            if hit.get("rule_set_id"):
+                args["rule_set_id"] = str(hit["rule_set_id"])
+            return [cmd("get_cspec_criterion", **args)]
         if gn_id:
             return [cmd("get_cspec", gn_id=str(gn_id))]
     return [cmd("list_cspecs", page=1, size=25)]

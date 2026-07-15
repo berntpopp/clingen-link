@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 
 import pytest
+from fastmcp.tools.base import ToolResult
 
 from clingen_link.etl import build, cspec_parse, schema
 from clingen_link.mcp.service_adapters import ClingenServices, reset_services, set_services
@@ -220,9 +221,7 @@ async def test_list_cspecs_returns_catalog() -> None:
 
 @pytest.mark.asyncio
 async def test_get_cspec_returns_detail() -> None:
-    out = await cspec_tools._get_cspec_impl(
-        gn_id="GN092", affiliation=None, gene=None, response_mode="compact"
-    )
+    out = await cspec_tools._get_cspec_impl(gn_id="GN092", response_mode="compact")
     assert out["success"] is True
     assert out["record"]["criteria"][0]["code"] == "PVS1"
     assert out["_meta"]["unsafe_for_clinical_use"] is True
@@ -233,12 +232,14 @@ async def test_get_cspec_returns_detail() -> None:
 @pytest.mark.asyncio
 async def test_get_cspec_criterion_by_code() -> None:
     out = await cspec_tools._get_criterion_impl(
-        criteria_id=None,
         gn_id="GN092",
         code="PVS1",
         rule_set_id=None,
         response_mode="compact",
     )
+    if isinstance(out, ToolResult):
+        assert out.is_error is True
+        out = out.structured_content or {}
     assert out["success"] is True
     assert out["record"]["code"] == "PVS1"
     nxt = out["_meta"]["next_commands"][0]
@@ -247,9 +248,9 @@ async def test_get_cspec_criterion_by_code() -> None:
 
 @pytest.mark.asyncio
 async def test_get_cspec_not_found() -> None:
-    out = await cspec_tools._get_cspec_impl(
-        gn_id="GN999", affiliation=None, gene=None, response_mode="compact"
-    )
+    out = await cspec_tools._get_cspec_impl(gn_id="GN999", response_mode="compact")
+    assert isinstance(out, ToolResult) and out.is_error is True
+    out = out.structured_content or {}
     assert out["success"] is False
     assert out["error_code"] == "not_found"
 
@@ -263,41 +264,46 @@ async def test_search_cspec() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_cspec_multiple_matches_returns_records(_multi_services) -> None:
-    """An affiliation covering >1 spec returns the multi-record shape, not a single record."""
-    out = await cspec_tools._get_cspec_impl(
-        gn_id=None, affiliation="50087", gene=None, response_mode="compact"
+async def test_an_affiliation_covering_several_specs_is_resolved_by_list_cspecs(
+    _multi_services,
+) -> None:
+    """get_cspec addresses ONE spec by id; list_cspecs is what maps an affiliation to ids.
+
+    get_cspec used to accept an affiliation and return every matching spec IN FULL — a
+    3-30kB detail document per spec, from a call whose schema said no argument was needed
+    (issue #46). Detail tools take the id the resolver hands them.
+    """
+    listed = await cspec_tools._list_cspecs_impl(
+        gene=None, affiliation="50087", status=None, page=1, size=10, response_mode="compact"
     )
+    assert listed["success"] is True
+    assert {r["gn_id"] for r in listed["records"]} >= {"GN092", "GN093"}
+
+    out = await cspec_tools._get_cspec_impl(gn_id="GN093", response_mode="compact")
     assert out["success"] is True
-    # Multi-record branch: ``records`` + ``total`` instead of a single ``record``.
-    assert "records" in out
-    assert "record" not in out
-    assert out["total"] >= 2
-    gn_ids = {r["gn_id"] for r in out["records"]}
-    assert {"GN092", "GN093"} <= gn_ids
+    assert out["record"]["gn_id"] == "GN093"
 
 
 @pytest.mark.asyncio
 async def test_get_cspec_criterion_ambiguous_returns_error(_multi_services) -> None:
     """A code shared across rule sets resolves to >1 id -> not_found with a disambiguation hint."""
     out = await cspec_tools._get_criterion_impl(
-        criteria_id=None,
         gn_id="GN200",
         code="PM2",
         rule_set_id=None,
         response_mode="compact",
     )
+    assert isinstance(out, ToolResult) and out.is_error is True
+    out = out.structured_content or {}
     assert out["success"] is False
-    # Same error envelope shape as test_get_cspec_not_found: error_code + message.
-    assert out["error_code"] == "not_found"
+    # "Several records match" has its own code in the closed enum — it is not a not_found
+    # ("the thing does not exist"), which would tell the model to stop looking (issue #46).
+    assert out["error_code"] == "ambiguous_query"
     message = out["message"]
     assert "rule_set_id" in message
-    assert "criteria_id" in message
-    assert "disambiguate" in message
 
     # Supplying one rule_set_id collapses the ambiguity to exactly one criterion.
     resolved = await cspec_tools._get_criterion_impl(
-        criteria_id=None,
         gn_id="GN200",
         code="PM2",
         rule_set_id="20",
@@ -329,16 +335,12 @@ async def test_get_cspec_compact_trims_verbose_fields(_multi_services) -> None:
     Note: ``standard`` ALSO drops these verbose fields (shape_record removes the verbose set in
     both compact and standard); only ``full`` returns them, so ``full`` is asserted here.
     """
-    compact = await cspec_tools._get_cspec_impl(
-        gn_id="GN092", affiliation=None, gene=None, response_mode="compact"
-    )
+    compact = await cspec_tools._get_cspec_impl(gn_id="GN092", response_mode="compact")
     record_compact = compact["record"]
     assert "current_status" not in record_compact
     assert "affiliation_id" not in record_compact
 
-    full = await cspec_tools._get_cspec_impl(
-        gn_id="GN092", affiliation=None, gene=None, response_mode="full"
-    )
+    full = await cspec_tools._get_cspec_impl(gn_id="GN092", response_mode="full")
     record_full = full["record"]
     assert "current_status" in record_full
     assert "affiliation_id" in record_full

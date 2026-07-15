@@ -15,17 +15,21 @@ from pydantic import Field
 
 from clingen_link.exceptions import DataNotFoundError
 from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
-from clingen_link.mcp.envelope import build_meta, data_version_for
-from clingen_link.mcp.errors import McpErrorContext, run_mcp_tool
+from clingen_link.mcp.envelope import build_meta, data_version_for, pagination
+from clingen_link.mcp.errors import McpErrorContext, ToolReturn, run_mcp_tool
+from clingen_link.mcp.filters import Identifier, ensure_gene, ensure_identifier
 from clingen_link.mcp.next_commands import cmd
 from clingen_link.mcp.patterns import GENE_SYMBOL_PATTERN, MONDO_PATTERN
-from clingen_link.mcp.schema_relax import relax_output_schema
 from clingen_link.mcp.service_adapters import ClingenServices
 from clingen_link.mcp.shaping import collect_fenced_objects, shape_records, truncated_block
 from clingen_link.mcp.untrusted_content import enforce_untrusted_text_limits
-from clingen_link.mcp.untrusted_schema import record_items
 
 _RESPONSE_MODE = Literal["minimal", "compact", "standard", "full"]
+
+# TOOL-SURFACE-BUDGET v1 (B1/B2): outputSchema is suppressed on every tool. It was 60% of
+# this server's 14,519-token surface — a per-request tax on a field the MCP spec makes
+# OPTIONAL and no model reads. `structuredContent` is unaffected: FastMCP still emits it for
+# any dict return, and every tool here returns the dict envelope.
 _CLASSIFICATION = Literal[
     "Definitive",
     "Strong",
@@ -34,23 +38,36 @@ _CLASSIFICATION = Literal[
     "Disputed",
     "Refuted",
     "No Known Disease Relationship",
+    # ClinGen marks a re-review-pending "No Known Disease Relationship" curation with a trailing
+    # asterisk (9 rows in the snapshot). The ETL preserves it verbatim, so a record can RETURN
+    # this value — the enum must include it, or that classification cannot round-trip as a filter
+    # and filtering by the unstarred value silently drops those rows (issue #46). An enum must be
+    # a SUPERSET of the runtime data, never a subset.
+    "No Known Disease Relationship*",
 ]
-_MOI = Literal["AD", "AR", "XL", "MT", "SD", "Undetermined"]
+# The ClinGen validity feed's MOI codes, verbatim. "Undetermined" was advertised here and
+# stored NOWHERE: the feed writes "UD", so the documented value matched zero rows forever —
+# a silently-empty filter with a DECLARED enum (issue #46). An enum must name the values the
+# runtime can actually match.
+_MOI = Literal["AD", "AR", "XL", "MT", "SD", "UD"]
 
-_LIST_SCHEMA = relax_output_schema(
-    {
-        "type": "object",
-        "properties": {
-            "headline": {"type": "string"},
-            # Each record's `disease_name` is a fenced untrusted_text object (v1.1).
-            "records": {"type": "array", "items": record_items("disease_name")},
-            "total": {"type": "integer"},
-            "page": {"type": "integer"},
-            "size": {"type": "integer"},
-            "recommended_citation": {"type": ["string", "null"]},
-            "_meta": {"type": "object"},
-        },
-    }
+# Identifier filters, validated against the snapshot's index before the search runs.
+_DISEASE = Identifier(
+    param="disease",
+    table="validity_fts",
+    column="disease_name",
+    match="fts",
+    resolver="search_validity (query the disease with a broader term)",
+)
+_MONDO = Identifier(
+    param="mondo", table="validity", column="mondo", resolver="search_validity (disease=...)"
+)
+_PANEL = Identifier(
+    param="expert_panel",
+    table="validity",
+    column="expert_panel",
+    match="like",
+    resolver="list_expert_panels",
 )
 
 
@@ -63,7 +80,7 @@ def register_validity_tools(
         name="get_gene_validity",
         title="Get Gene-Disease Validity",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=_LIST_SCHEMA,
+        output_schema=None,
         tags={"validity"},
     )
     async def get_gene_validity(
@@ -92,7 +109,7 @@ def register_validity_tools(
             _RESPONSE_MODE,
             Field(description="compact (default) trims verbose fields; full keeps everything."),
         ] = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         """Use this to list ClinGen gene-disease validity assertions (Definitive…Refuted) for one gene, optionally filtered by classification or mode of inheritance. Each record carries a CGGV permalink + recommended_citation. Returns ~1-6kB."""
 
         async def call() -> dict[str, Any]:
@@ -140,7 +157,7 @@ def register_validity_tools(
         name="search_validity",
         title="Search Gene-Disease Validity",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=_LIST_SCHEMA,
+        output_schema=None,
         tags={"validity"},
     )
     async def search_validity(
@@ -172,16 +189,24 @@ def register_validity_tools(
             _RESPONSE_MODE,
             Field(description="compact (default) trims verbose fields; full keeps everything."),
         ] = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         """Use this to search ClinGen gene-disease validity by disease text/MONDO, expert panel, classification, MOI, or gene. Paginated; a `truncated` block appears when more matches exist. Each record carries a recommended_citation. Returns ~2-10kB."""
 
         async def call() -> dict[str, Any]:
             services = service_factory()
-            resolved_gene = services.gene.resolve(gene_symbol) if gene_symbol else None
+            # Reject a filter value the snapshot cannot match, instead of returning zero rows
+            # that read as "ClinGen has no such assertion" (issue #46).
+            resolved_gene = ensure_gene(services.store, gene_symbol)
+            for spec, value in (
+                (_DISEASE, disease),
+                (_MONDO, mondo),
+                (_PANEL, expert_panel),
+            ):
+                ensure_identifier(services.store, spec, value)
             models, total = await services.validity.search(
                 text=disease,
                 mondo=mondo,
-                gene=resolved_gene or gene_symbol,
+                gene=resolved_gene,
                 expert_panel=expert_panel,
                 classification=classification,
                 moi=moi,
@@ -229,6 +254,7 @@ def register_validity_tools(
                     data_version=data_version_for(services.meta(), "validity"),
                     next_commands=next_commands,
                     record_count=shown,
+                    pagination_block=pagination(total=total, page=page, size=size, shown=shown),
                     truncated=trunc,
                 ),
             }

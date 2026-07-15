@@ -29,7 +29,7 @@ class TestGetVariantInterpretations:
         # next_command drills into the single interpretation.
         nxt = payload["_meta"]["next_commands"][0]
         assert nxt["tool"] == "get_variant_interpretation"
-        assert nxt["arguments"] == {"caid": "CA281951"}
+        assert nxt["arguments"] == {"variant_id": "CA281951"}
 
     async def test_classification_filter(self, tool_mcp: FastMCP) -> None:
         payload = await _call(
@@ -60,8 +60,21 @@ class TestGetVariantInterpretations:
         assert trunc["dropped"] >= 1
         assert trunc["filter"]["expert_panel"] == "Phenylketonuria"
 
-    async def test_empty_result_has_next(self, tool_mcp: FastMCP) -> None:
+    async def test_an_unknown_gene_is_rejected_not_answered_with_zero_rows(
+        self, tool_mcp: FastMCP
+    ) -> None:
+        # This used to be success + total:0 — indistinguishable from "ClinGen has no
+        # interpretations for this gene", for a gene that does not exist (issue #46).
         payload = await _call(tool_mcp, "get_variant_interpretations", {"gene_symbol": "ZZZNOPE"})
+        assert payload["success"] is False
+        assert payload["error_code"] == "not_found"
+        assert "gene_symbol" in payload["message"]
+
+    async def test_a_known_gene_with_no_interpretations_is_success_zero(
+        self, tool_mcp: FastMCP
+    ) -> None:
+        """A real gene the ERepo has not curated IS a legitimate empty result."""
+        payload = await _call(tool_mcp, "get_variant_interpretations", {"gene_symbol": "AARS1"})
         assert payload["success"] is True
         assert payload["total"] == 0
         for c in payload["_meta"]["next_commands"]:
@@ -70,7 +83,7 @@ class TestGetVariantInterpretations:
 
 class TestGetVariantInterpretation:
     async def test_by_caid_snapshot(self, tool_mcp: FastMCP) -> None:
-        payload = await _call(tool_mcp, "get_variant_interpretation", {"caid": "CA281951"})
+        payload = await _call(tool_mcp, "get_variant_interpretation", {"variant_id": "CA281951"})
         assert payload["success"] is True
         assert payload["source"] == "snapshot"
         assert payload["interpretation"]["gene"] == "BRAF"
@@ -78,15 +91,13 @@ class TestGetVariantInterpretation:
 
     async def test_by_hgvs_snapshot(self, tool_mcp: FastMCP) -> None:
         payload = await _call(
-            tool_mcp, "get_variant_interpretation", {"hgvs": "NM_004333.4:c.740T>C"}
+            tool_mcp, "get_variant_interpretation", {"variant_id": "NM_004333.4:c.740T>C"}
         )
         assert payload["success"] is True
         assert payload["interpretation"]["caid"] == "CA281951"
 
     async def test_by_clinvar_id_snapshot(self, tool_mcp: FastMCP) -> None:
-        payload = await _call(
-            tool_mcp, "get_variant_interpretation", {"clinvar_variation_id": "17000"}
-        )
+        payload = await _call(tool_mcp, "get_variant_interpretation", {"variant_id": "17000"})
         assert payload["success"] is True
         assert payload["interpretation"]["gene"] == "GJB2"
 
@@ -94,7 +105,7 @@ class TestGetVariantInterpretation:
         payload = await _call(
             tool_mcp,
             "get_variant_interpretation",
-            {"caid": "CA281951", "response_mode": "full"},
+            {"variant_id": "CA281951", "response_mode": "full"},
         )
         interp = payload["interpretation"]
         assert "evidence_codes_met" in interp
@@ -103,7 +114,7 @@ class TestGetVariantInterpretation:
         payload = await _call(
             tool_mcp,
             "get_variant_interpretation",
-            {"caid": "CA281951", "hgvs": "NM_004333.4:c.740T>C"},
+            {"variant_id": "CA281951", "hgvs": "NM_004333.4:c.740T>C"},
         )
         assert payload["success"] is False
         assert payload["error_code"] == "invalid_input"
@@ -119,7 +130,7 @@ class TestGetVariantInterpretation:
             )
         )
         payload = await _call(
-            tool_mcp, "get_variant_interpretation", {"caid": "CA281951", "refresh": True}
+            tool_mcp, "get_variant_interpretation", {"variant_id": "CA281951", "refresh": True}
         )
         assert payload["success"] is True
         assert payload["source"] == "live"
@@ -148,7 +159,7 @@ class TestGetVariantInterpretation:
             )
         )
         payload = await _call(
-            tool_mcp, "get_variant_interpretation", {"caid": "CA281951", "refresh": True}
+            tool_mcp, "get_variant_interpretation", {"variant_id": "CA281951", "refresh": True}
         )
         assert payload["success"] is True
         assert payload.get("error_code") != "validation_failed"
@@ -165,7 +176,7 @@ class TestGetVariantInterpretation:
         )
         respx.get(f"{EREPO_TEST_BASE}/api/classifications").mock(return_value=httpx.Response(400))
         payload = await _call(
-            tool_mcp, "get_variant_interpretation", {"caid": "CA281951", "refresh": True}
+            tool_mcp, "get_variant_interpretation", {"variant_id": "CA281951", "refresh": True}
         )
         assert payload["success"] is True
         assert payload.get("error_code") != "validation_failed"

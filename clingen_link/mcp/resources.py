@@ -19,6 +19,8 @@ from typing import Any, cast
 
 from mcp.types import LATEST_PROTOCOL_VERSION
 
+from clingen_link.mcp.errors import ERROR_CODES
+
 # Re-exported for the diagnostics tool and capabilities document.
 MCP_PROTOCOL_VERSION: str = LATEST_PROTOCOL_VERSION
 
@@ -66,16 +68,9 @@ _RESOURCES: dict[str, str] = {
     ),
 }
 
-_ERROR_CODES = [
-    "not_found",
-    "invalid_input",
-    "rate_limited",
-    "validation_failed",
-    "upstream_unavailable",
-    "snapshot_unavailable",
-    "output_validation_failed",
-    "internal_error",
-]
+# Response-Envelope Standard v1 §2 — the closed enum, and nothing else. Advertising a code
+# the server never emits (or emitting one it never advertises) is the same contract lie.
+_ERROR_CODES = sorted(ERROR_CODES)
 
 _DATASET_LABELS: dict[str, dict[str, str]] = {
     "validity": {
@@ -203,13 +198,15 @@ def get_reference_resource() -> dict[str, Any]:
     return {
         "error_codes": {
             "not_found": "Well-formed identifier absent from the snapshot; reformulate or resolve.",
-            "invalid_input": "Malformed identifier/query; retrying unchanged cannot succeed.",
+            "invalid_input": (
+                "Arguments are wrong (unknown/missing parameter, out-of-enum value, malformed "
+                "identifier, or a response too large to return); check field_errors and "
+                "reformulate. Retrying unchanged cannot succeed."
+            ),
+            "ambiguous_query": "The query matched several records; narrow it with the id it names.",
             "rate_limited": "Upstream 429 or local concurrency saturation; retry with backoff.",
-            "validation_failed": "Arguments failed schema validation; check field_errors.",
             "upstream_unavailable": "A live ClinGen endpoint failed transiently; retry with backoff.",
-            "snapshot_unavailable": "Bundled snapshot missing/unreadable; operator runs refresh.",
-            "output_validation_failed": "Tool output did not match its declared schema.",
-            "internal_error": "Unexpected failure; call get_diagnostics.",
+            "internal": "A server-side fault (incl. an unreadable snapshot); call get_diagnostics.",
         },
         "recovery_actions": ["retry_backoff", "reformulate_input", "switch_tool"],
         "truncation_contract": {
@@ -224,8 +221,12 @@ def get_reference_resource() -> dict[str, Any]:
         },
         "field_glossary": {
             "classification": "Validity: Definitive..Refuted; ERepo: Pathogenic..Benign (ACMG).",
-            "moi": "Mode of inheritance (AD, AR, XL, MT, SD, Undetermined).",
-            "haplo_score / triplo_score": "Dosage evidence scale 0-3 (+ special codes 30/40).",
+            "moi": "Mode of inheritance code (AD, AR, XL, MT, SD, UD).",
+            "haplo_score / triplo_score": (
+                "Dosage score CODE (not its prose): 0-3 evidence scale, plus 30 (gene "
+                "associated with an autosomal-recessive phenotype) and 40 (dosage sensitivity "
+                "unlikely). The plain-English reading is in haplo_interpretation."
+            ),
             "perm_id": "CGGV validity permalink token.",
             "caid": "ClinGen Allele Registry id (e.g. CA003783).",
             "evidence_codes_met / not_met": "ACMG criteria the VCEP applied / did not apply.",

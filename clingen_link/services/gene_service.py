@@ -36,10 +36,16 @@ class GeneService:
         """Resolve free-text gene input to a canonical symbol (or ``None``)."""
         return self._store.resolve_gene(query)
 
-    def search(self, query: str, *, limit: int = 25) -> list[dict[str, Any]]:
-        """Return candidate gene index rows whose symbol/alias prefix-matches."""
+    def search(self, query: str, *, limit: int = 25) -> tuple[list[dict[str, Any]], int]:
+        """Return ``(candidates, total)`` — the capped candidate rows and the full match count.
+
+        The count is what lets ``search_genes`` say whether more candidates exist; a capped
+        list with no total reads as "this is all of them".
+        """
         with self._store.connection() as conn:
-            return queries.search_genes(conn, query, limit=limit)
+            rows = queries.search_genes(conn, query, limit=limit)
+            total = queries.count_genes(conn, query)
+        return rows, total
 
     def expert_panels(self, *, query: str | None = None, limit: int = 100) -> list[ExpertPanel]:
         """Return GCEP/VCEP expert panels, optionally filtered by label text."""

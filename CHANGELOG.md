@@ -2,6 +2,76 @@
 
 All notable changes to clingen-link are documented here.
 
+## [4.0.0] - 2026-07-15
+
+MCP contract-hardening (issue #46). Several changes alter the wire contract, hence the major
+bump; the migration notes below say exactly what a caller must change.
+
+### Fixed
+
+- **`search_dosage(haplo_score="30")` and `="40"` now return their genes** (603 and 393
+  respectively) instead of zero rows with `success: true`. The ETL was expanding the ClinGen
+  score codes `30`/`40` into their description text *before storing them*, so the snapshot's
+  score columns held prose and the documented codes matched nothing. The score is a code
+  (`0`-`3`, `30`, `40`, or null) again, with the prose kept in its own description field.
+  An unrecognised score code is now a schema-`enum` rejection (`invalid_input`), never a
+  silent empty result.
+- **`get_gene_dosage(CFTR).haplo_score` is `"30"`, not the sentence "Gene associated with
+  autosomal recessive phenotype".** The prose moved to `haplo_interpretation` /
+  `haplo_description`; the score field is numeric-code-or-null. **(BREAKING — wire contract.)**
+- **Ten filters that silently returned zero rows for an unrecognised value now reject it.**
+  Closed vocabularies (dosage codes, `classification`, `moi`, actionability `assertion`, CSpec
+  `status`) are declared as `enum`s; identifiers (gene, ISCA region, cytoband, MONDO, expert
+  panel, disease, affiliation) are validated against the snapshot and rejected with `not_found`
+  naming the parameter. `moi` no longer advertises `"Undetermined"` (the feed stores `"UD"`),
+  and validity `classification` now includes the re-review-pending `"No Known Disease
+  Relationship*"` so it round-trips as a filter. Every closed enum is proven a superset of the
+  snapshot data by a data-derived test. **(BREAKING for callers relying on an out-of-vocabulary
+  value returning an empty list.)**
+- **`response_mode="minimal"` now returns the records (identifiers only)** instead of an empty
+  list with a forged `truncated: {kind: "pagination", to_restore: "page=2"}` block that sent
+  agents into an unresolvable retry loop.
+- **Every error envelope now carries the MCP protocol flag `isError: true`.** A client
+  branching on `isError` previously saw every structured failure as a successful call.
+- **`error_code` is the closed enum** (`invalid_input · not_found · ambiguous_query ·
+  upstream_unavailable · rate_limited · internal`). `validation_failed`, `internal_error`,
+  `snapshot_unavailable` and `output_validation_failed` are mapped onto the canon.
+  **(BREAKING — wire contract.)** A missing/unknown argument is `invalid_input` naming the
+  tool's accepted parameters, never `not_found`.
+
+### Changed
+
+- **`get_variant_interpretation` takes one required `variant_id`** (a CAID, a ClinVar
+  VariationID, or an HGVS expression — detected from the value) in place of the three optional
+  `caid` / `hgvs` / `clinvar_variation_id` parameters. **(BREAKING.)**
+- **`get_cspec` takes one required `gn_id`**; resolving a spec from a gene, affiliation, or
+  status is `list_cspecs`' job. **(BREAKING — `affiliation`/`gene_symbol` no longer accepted.)**
+- **`get_cspec_criterion` takes its natural key `(gn_id, code)`** (with `rule_set_id` to
+  disambiguate a code a spec defines twice; that case is now `ambiguous_query`, not
+  `not_found`). The internal `criteria_id` is no longer an input. **(BREAKING.)**
+- **`outputSchema` is suppressed on all 17 tools and `dereference_schemas=False`**, cutting the
+  advertised tool surface from **14,536 to 5,704 tokens** (60% was `outputSchema`).
+  `structuredContent` is unaffected. (TOOL-SURFACE-BUDGET Standard v1.)
+- **Every paginated response carries `_meta.pagination` with `has_more`**, and `search_genes`
+  reports the true candidate count so a capped list is never read as the whole set.
+- The snapshot schema version is **bumped to 2** and propagated to every deploy pin (both
+  compose files, the data-release manifest, derived from `data_contract`): a bundle built under
+  the old (prose-in-score) contract is refused at materialization rather than served, and a
+  test proves no schema pin can drift from the contract.
+- **`_meta.next_commands` affordances are all callable** — the required-selector migration is
+  now carried through every chaining site (search hits, the ERepo→CSpec cross-link, the shared
+  builders), guarded by a test that validates each against the live tool schema.
+- **Output-schema-validation errors carry the envelope in `structuredContent`**, not only the
+  text mirror.
+
+### Migration
+
+- Read a dosage score from `haplo_score` / `triplo_score` as a code; read the human-readable
+  text from `haplo_interpretation` / `haplo_description`.
+- Call `get_variant_interpretation(variant_id=...)`; `get_cspec(gn_id=...)`;
+  `get_cspec_criterion(gn_id=..., code=...)`. Resolve a `gn_id` with `list_cspecs`.
+- Branch on the closed `error_code` enum and on the MCP `isError` flag.
+
 ## [3.0.6] - 2026-07-14
 
 ### Fixed

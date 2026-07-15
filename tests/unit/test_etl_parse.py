@@ -82,9 +82,12 @@ def test_parse_dosage_skips_comment_lines(dosage_rows: list[dict[str, Any]]) -> 
     assert all(not (r.get("symbol") or "").startswith("#") for r in dosage_rows)
 
 
-def test_parse_dosage_decodes_score_code_30(dosage_rows: list[dict[str, Any]]) -> None:
+def test_parse_dosage_keeps_score_code_30(dosage_rows: list[dict[str, Any]]) -> None:
+    # The score column holds the CODE; its prose lives in the description column beside it.
+    # This test previously pinned the inverse (issue #46, D1/D2).
     row = _by_symbol(dosage_rows, "A4GALT")
-    assert row["haplo_score"] == "Gene associated with autosomal recessive phenotype"
+    assert row["haplo_score"] == "30"
+    assert row["haplo_description"] == "Gene associated with autosomal recessive phenotype"
     assert row["record_type"] == "gene"
     assert row["cytoband"] == "22q13.2"
     assert row["grch38"] == "chr22:42692121-42721301"

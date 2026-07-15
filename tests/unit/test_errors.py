@@ -6,6 +6,7 @@ import json
 
 import pytest
 from fastmcp import FastMCP
+from fastmcp.tools.base import ToolResult
 
 from clingen_link.exceptions import (
     ClingenApiError,
@@ -24,6 +25,19 @@ from clingen_link.mcp.errors import (
 )
 from clingen_link.mcp.output_validation import actionable_output_validation_error
 from clingen_link.mcp.untrusted_content import UntrustedTextLimitError
+
+
+def envelope(result: object) -> dict:
+    """The flat envelope, from either return shape.
+
+    The failure path returns ``ToolResult(structured_content=..., is_error=True)`` so the
+    call carries the protocol's ``isError`` flag as well as the machine-readable envelope
+    (Response-Envelope v1); the success path stays a plain dict.
+    """
+    if isinstance(result, ToolResult):
+        assert result.is_error is True
+        return dict(result.structured_content or {})
+    return dict(result)  # type: ignore[call-overload]
 
 
 @pytest.fixture(autouse=True)
@@ -54,16 +68,18 @@ async def test_success_preserves_existing_meta() -> None:
 @pytest.mark.parametrize(
     ("exc", "expected_code", "expected_retryable"),
     [
+        # Response-Envelope v1 §2: the codes are a CLOSED enum. `snapshot_unavailable`,
+        # `response_too_large`, `validation_failed` and `internal_error` were all outside it
+        # and are mapped onto the canon (issue #46); `recovery`/`recovery_action` keep the
+        # precise guidance each case needs.
         (DataNotFoundError("no rows"), "not_found", False),
-        (SnapshotUnavailableError("missing"), "snapshot_unavailable", False),
+        (SnapshotUnavailableError("missing"), "internal", False),
         (UpstreamInputError("bad shape"), "invalid_input", False),
         (RateLimitedError("429"), "rate_limited", True),
         (ClingenApiError("502"), "upstream_unavailable", True),
-        # UntrustedTextLimitError subclasses ValueError but MUST map to its own distinct,
-        # typed limit code — never the generic validation_failed/internal_error.
-        (UntrustedTextLimitError("too big"), "response_too_large", False),
-        (ValueError("bad"), "validation_failed", False),
-        (RuntimeError("boom"), "internal_error", False),
+        (UntrustedTextLimitError("too big"), "invalid_input", False),
+        (ValueError("bad"), "invalid_input", False),
+        (RuntimeError("boom"), "internal", False),
     ],
 )
 async def test_error_classification(
@@ -75,10 +91,12 @@ async def test_error_classification(
     result = await run_mcp_tool(
         "get_gene_validity", call, context=McpErrorContext(tool_name="get_gene_validity")
     )
-    assert result["success"] is False
-    assert result["error_code"] == expected_code
-    assert result["retryable"] is expected_retryable
-    assert result["_meta"]["next_commands"][-1]["tool"] == "get_diagnostics"
+
+    env = envelope(result)
+    assert env["success"] is False
+    assert env["error_code"] == expected_code
+    assert env["retryable"] is expected_retryable
+    assert env["_meta"]["next_commands"][-1]["tool"] == "get_diagnostics"
 
 
 async def test_untrusted_text_limit_error_is_typed_and_reformulates() -> None:
@@ -90,10 +108,13 @@ async def test_untrusted_text_limit_error_is_typed_and_reformulates() -> None:
     result = await run_mcp_tool(
         "get_gene_validity", call, context=McpErrorContext(tool_name="get_gene_validity")
     )
-    assert result["success"] is False
-    assert result["error_code"] == "response_too_large"
-    assert result["retryable"] is False
-    assert result["recovery_action"] == "reformulate_input"
+
+    env = envelope(result)
+    assert env["success"] is False
+    # the closed enum has no size-specific code: it is the caller's input to fix.
+    assert env["error_code"] == "invalid_input"
+    assert env["retryable"] is False
+    assert env["recovery_action"] == "reformulate_input"
 
 
 async def test_not_found_fallback_uses_gene_context() -> None:
@@ -105,8 +126,9 @@ async def test_not_found_fallback_uses_gene_context() -> None:
         call,
         context=McpErrorContext(tool_name="get_gene_validity", gene="BRCA1"),
     )
-    assert result["fallback_tool"] == "search_genes"
-    assert result["fallback_args"] == {"query": "BRCA1"}
+    env = envelope(result)
+    assert env["fallback_tool"] == "search_genes"
+    assert env["fallback_args"] == {"query": "BRCA1"}
 
 
 async def test_not_found_fallback_avoids_circular_recall() -> None:
@@ -120,8 +142,9 @@ async def test_not_found_fallback_avoids_circular_recall() -> None:
         call,
         context=McpErrorContext(tool_name="search_genes", gene="NOPE", query="NOPE"),
     )
-    assert result["fallback_tool"] == "get_server_capabilities"
-    first = result["_meta"]["next_commands"][0]
+    env = envelope(result)
+    assert env["fallback_tool"] == "get_server_capabilities"
+    first = env["_meta"]["next_commands"][0]
     assert not (first["tool"] == "search_genes" and first["arguments"].get("query") == "NOPE")
 
 
@@ -130,8 +153,10 @@ async def test_tool_input_error_message_surfaced() -> None:
         raise ToolInputError("gene parameter is required")
 
     result = await run_mcp_tool("get_gene_validity", call)
-    assert result["error_code"] == "validation_failed"
-    assert result["message"] == "gene parameter is required"
+
+    env = envelope(result)
+    assert env["error_code"] == "invalid_input"
+    assert env["message"] == "gene parameter is required"
 
 
 async def test_errors_recorded_in_ring() -> None:

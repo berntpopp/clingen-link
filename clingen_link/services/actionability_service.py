@@ -42,13 +42,14 @@ class ActionabilityService:
         *,
         text: str | None = None,
         gene: str | None = None,
+        status: str | None = None,
         page: int = 1,
         size: int = 25,
     ) -> tuple[list[ActionabilityCuration], int]:
-        """Search actionability by disease/gene; returns ``(models, total)``."""
+        """Search actionability by disease/gene + curation status; returns ``(models, total)``."""
         with self._store.connection() as conn:
             rows, total = queries.search_actionability(
-                conn, text=text, gene=gene, page=page, size=size
+                conn, text=text, gene=gene, status=status, page=page, size=size
             )
         return [ActionabilityCuration.from_row(r) for r in rows], total
 

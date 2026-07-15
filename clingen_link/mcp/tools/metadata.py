@@ -9,7 +9,7 @@ from fastmcp import FastMCP
 from mcp.types import Annotations
 
 from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
-from clingen_link.mcp.errors import run_mcp_tool
+from clingen_link.mcp.errors import ToolReturn, run_mcp_tool
 from clingen_link.mcp.resources import (
     get_capabilities_resource,
     get_citations_resource,
@@ -19,31 +19,9 @@ from clingen_link.mcp.resources import (
     get_research_use_resource,
     get_usage_resource,
 )
-from clingen_link.mcp.schema_relax import relax_output_schema
 from clingen_link.mcp.service_adapters import ClingenServices
 
 _RESOURCE_ANNOTATIONS = Annotations(audience=["assistant"], priority=1.0)
-
-_CAPABILITIES_OUTPUT_SCHEMA = relax_output_schema(
-    {
-        "type": "object",
-        "properties": {
-            "server": {"type": "string"},
-            "server_version": {"type": "string"},
-            "mcp_protocol_version": {"type": "string"},
-            "research_use_only": {"type": "boolean"},
-            "datasets": {"type": "object"},
-            "tools": {"type": "array", "items": {"type": "string"}},
-            "token_cost_hints": {"type": "object"},
-            "resources": {"type": "object"},
-            "error_codes": {"type": "array", "items": {"type": "string"}},
-            "parameter_conventions": {"type": "object"},
-            "capabilities_version": {"type": "string"},
-            "research_use_notice": {"type": "string"},
-            "_meta": {"type": "object"},
-        },
-    }
-)
 
 
 def _safe_meta(service_factory: Callable[[], ClingenServices]) -> dict[str, Any] | None:
@@ -65,10 +43,10 @@ def register_metadata_tools(
         name="get_server_capabilities",
         title="Get clingen-link Capabilities",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=_CAPABILITIES_OUTPUT_SCHEMA,
+        output_schema=None,
         tags={"metadata"},
     )
-    async def get_server_capabilities() -> dict[str, Any]:
+    async def get_server_capabilities() -> ToolReturn:
         """Use this when a client needs the supported tools, ClinGen datasets + per-domain snapshot freshness, recommended workflows, token-cost hints, error taxonomy, parameter conventions, or the capabilities_version content hash. Returns ~4kB."""
 
         async def call() -> dict[str, Any]:

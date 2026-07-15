@@ -210,10 +210,17 @@ def search_actionability(
     *,
     text: str | None = None,
     gene: str | None = None,
+    status: str | None = None,
     page: int = 1,
     size: int = 25,
 ) -> tuple[list[dict[str, Any]], int]:
-    """Search actionability by disease/gene text (FTS); paginated."""
+    """Search actionability by disease/gene text (FTS) + curation status; paginated.
+
+    ``status`` is matched in SQL, so ``total`` counts the rows the caller actually asked
+    for. It used to be applied as a post-filter over the already-paginated page, which
+    dropped records from the page while ``total`` still reported the unfiltered count — a
+    total that lies (issue #46).
+    """
     where: list[str] = []
     params: list[Any] = []
     fts_query = text or (f'gene:"{gene}"' if gene else None)
@@ -223,6 +230,9 @@ def search_actionability(
             return [], 0
         where.append(f"rowid IN ({','.join('?' * len(ids))})")
         params.extend(ids)
+    if status:
+        where.append("(adult_status = ? OR pediatric_status = ?)")
+        params.extend([status, status])
     clause = f" WHERE {' AND '.join(where)}" if where else ""
     return _paged(
         conn,
@@ -391,6 +401,31 @@ def search_genes(conn: sqlite3.Connection, query: str, *, limit: int = 25) -> li
     return [dict(r) for r in rows]
 
 
+def count_genes(conn: sqlite3.Connection, query: str) -> int:
+    """How many genes ``query`` matches in total — the count behind search_genes' has_more.
+
+    ``search_genes`` caps its candidate list, and a capped list with no count cannot tell the
+    caller whether more exist: the model concludes it has seen everything (Response-Envelope
+    v1: "Always populate _meta.pagination: total_count, has_more"). The predicate mirrors
+    ``search_genes`` exactly, so the count and the rows can never disagree.
+    """
+    if _HGNC_ID_RE.match(query.strip()):
+        hgnc = query.strip()
+        sql = (
+            "SELECT COUNT(*) FROM (SELECT g.symbol FROM gene g WHERE g.hgnc_id = ? COLLATE NOCASE "
+            "UNION SELECT g.symbol FROM gene g JOIN gene_alias a ON a.symbol = g.symbol "
+            "WHERE a.alias = ? COLLATE NOCASE)"
+        )
+        return int(conn.execute(sql, (hgnc, hgnc)).fetchone()[0])
+    like = f"{query}%"
+    sql = (
+        "SELECT COUNT(*) FROM (SELECT g.symbol FROM gene g WHERE g.symbol LIKE ? COLLATE NOCASE "
+        "UNION SELECT g.symbol FROM gene g JOIN gene_alias a ON a.symbol = g.symbol "
+        "WHERE a.alias LIKE ? COLLATE NOCASE)"
+    )
+    return int(conn.execute(sql, (like, like)).fetchone()[0])
+
+
 def expert_panels(
     conn: sqlite3.Connection, *, query: str | None = None, limit: int = 100
 ) -> list[dict[str, Any]]:
@@ -421,6 +456,48 @@ def expert_panels(
 def _count(conn: sqlite3.Connection, sql: str, *params: Any) -> int:
     row = conn.execute(sql, params).fetchone()
     return int(row[0]) if row else 0
+
+
+def value_exists(
+    conn: sqlite3.Connection,
+    table: str,
+    column: str,
+    value: str,
+    *,
+    match: str = "exact",
+) -> bool:
+    """True when any row carries ``value`` — the membership test behind filter rejection.
+
+    ``match`` mirrors how the search filter itself matches, so "this value is known" and
+    "this value can match a row" cannot disagree: ``exact`` (=), ``like`` (%v%), ``prefix``
+    (v%), or ``fts`` (the domain's FTS index). ``table``/``column``/``match`` are internal
+    constants supplied by the tool layer — never caller input — and the VALUE is always
+    bound as a parameter.
+    """
+    if match == "fts":
+        return bool(_fts_rowids(conn, table, value))
+    if match == "like":
+        clause, param = f"{column} LIKE ?", f"%{value}%"
+    elif match == "prefix":
+        clause, param = f"{column} LIKE ?", f"{value}%"
+    else:
+        clause, param = f"{column} = ?", value
+    sql = f"SELECT 1 FROM {table} WHERE {clause} LIMIT 1"  # noqa: S608 - internal identifiers
+    return conn.execute(sql, (param,)).fetchone() is not None
+
+
+def distinct_values(conn: sqlite3.Connection, table: str, columns: tuple[str, ...]) -> set[str]:
+    """The distinct non-null values across ``columns`` — a vocabulary read from the data.
+
+    Used to reject an out-of-vocabulary filter value AND to tell the caller what the valid
+    values are, without hardcoding (and therefore without ever advertising a value this
+    snapshot cannot match).
+    """
+    found: set[str] = set()
+    for column in columns:
+        sql = f"SELECT DISTINCT {column} FROM {table} WHERE {column} IS NOT NULL"  # noqa: S608
+        found.update(str(row[0]) for row in conn.execute(sql).fetchall() if str(row[0]))
+    return found
 
 
 def _fts_rowids(conn: sqlite3.Connection, table: str, text: str) -> list[int]:

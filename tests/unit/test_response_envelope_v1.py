@@ -25,8 +25,22 @@ test should assert accordingly rather than assume ``tool`` is present on success
 
 from __future__ import annotations
 
+from fastmcp.tools.base import ToolResult
+
 from clingen_link.exceptions import DataNotFoundError
 from clingen_link.mcp.errors import McpErrorContext, run_mcp_tool
+
+
+def envelope(result: object) -> dict:
+    """The flat envelope from either return shape.
+
+    The failure path returns ``ToolResult(structured_content=..., is_error=True)``: the
+    protocol flag AND the machine-readable envelope (Response-Envelope v1 §2, issue #46).
+    """
+    if isinstance(result, ToolResult):
+        assert result.is_error is True
+        return dict(result.structured_content or {})
+    return dict(result)  # type: ignore[call-overload]
 
 
 async def test_success_envelope_matches_response_envelope_standard_v1() -> None:
@@ -76,6 +90,12 @@ async def test_error_envelope_is_flat_not_a_bare_exception() -> None:
         call,
         context=McpErrorContext(tool_name="get_gene_validity", gene="BRCA1"),
     )
+
+    # v1 REQUIRES the protocol flag too: "isError: true is REQUIRED so clients surface the
+    # error to the model for self-correction." A returned dict never sets it (issue #46).
+    assert isinstance(result, ToolResult)
+    assert result.is_error is True
+    result = envelope(result)  # type: ignore[assignment]
 
     assert result["success"] is False
     assert isinstance(result["error_code"], str) and result["error_code"]

@@ -29,12 +29,13 @@ def test_actionable_envelope_shape_and_recording() -> None:
         message="Output validation error: 'classification' is a required property",
     )
     assert payload["success"] is False
-    assert payload["error_code"] == "output_validation_failed"
+    # schema drift is a server-side fault: `internal` in the closed enum (issue #46).
+    assert payload["error_code"] == "internal"
     assert payload["error_field"] == "classification"
     assert payload["_meta"]["unsafe_for_clinical_use"] is True
 
     # Recorded on both the general error ring and the schema-drift ring.
-    assert get_recent_errors()[-1]["error_code"] == "output_validation_failed"
+    assert get_recent_errors()[-1]["error_code"] == "internal"
     assert get_recent_schema_drift()[-1]["error_field"] == "classification"
 
 
@@ -78,5 +79,11 @@ async def test_install_handler_wraps_output_validation_error() -> None:
     )
     wrapped = server._mcp_server.request_handlers[mcp.types.CallToolRequest]
     result = await wrapped(request)
-    payload = result.root.content[0].text
-    assert "output_validation_failed" in payload
+    call_result = result.root
+    assert call_result.isError is True
+    # Both mirrors must carry the envelope: the text one AND structuredContent (finding 5) —
+    # a client reading the machine-readable path must not get null.
+    assert "internal" in call_result.content[0].text
+    assert call_result.structuredContent is not None
+    assert call_result.structuredContent["error_code"] == "internal"
+    assert call_result.structuredContent["success"] is False
