@@ -2,6 +2,14 @@
 
 All notable changes to clingen-link are documented here.
 
+## [Unreleased]
+
+### Changed
+
+- Re-vendored the behaviour conformance gate from genefoundry-router `ba09fdc`
+  (`docs/conformance/behaviour.py` blob `30d639242b`) and live-validated this
+  backend against the current behaviour gate.
+
 ## [4.0.0] - 2026-07-15
 
 MCP contract-hardening (issue #46). Several changes alter the wire contract, hence the major
