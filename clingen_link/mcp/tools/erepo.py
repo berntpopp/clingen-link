@@ -90,9 +90,11 @@ def cspec_next_command(
 ) -> dict[str, Any] | None:
     """Build the ERepo->CSpec next_commands entry from a record's guideline_cspec + gene.
 
-    Emits a precise ``{gn_id}`` when ``(affiliation, gene)`` resolves to exactly one
-    published spec; otherwise ``{affiliation, gene}`` so the consumer sees candidates.
-    Returns None when there is no affiliation to key on.
+    Emits a precise ``get_cspec(gn_id)`` when ``(affiliation, gene)`` resolves to exactly one
+    published spec; otherwise ``list_cspecs(affiliation, gene_symbol)`` so the consumer browses
+    the candidates. get_cspec takes ONLY gn_id now (issue #46), so the ambiguous case must chain
+    to the resolver, not re-invoke get_cspec with parameters it no longer accepts. Returns None
+    when there is no affiliation to key on.
     """
     if not guideline_cspec:
         return None
@@ -105,8 +107,8 @@ def cspec_next_command(
         return cmd("get_cspec", gn_id=gn_ids[0])
     args: dict[str, Any] = {"affiliation": affiliation}
     if gene:
-        args["gene"] = gene
-    return cmd("get_cspec", **args)
+        args["gene_symbol"] = gene
+    return cmd("list_cspecs", **args)
 
 
 def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenServices]) -> None:

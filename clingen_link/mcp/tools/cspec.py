@@ -27,13 +27,7 @@ from clingen_link.exceptions import AmbiguousQueryError, DataNotFoundError
 from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
 from clingen_link.mcp.envelope import build_meta, data_version_for, pagination
 from clingen_link.mcp.errors import McpErrorContext, ToolReturn, run_mcp_tool
-from clingen_link.mcp.filters import (
-    Identifier,
-    Vocabulary,
-    ensure_gene,
-    ensure_identifier,
-    ensure_vocabulary,
-)
+from clingen_link.mcp.filters import Identifier, ensure_gene, ensure_identifier
 from clingen_link.mcp.next_commands import cmd
 from clingen_link.mcp.patterns import ACMG_CODE_PATTERN, GENE_SYMBOL_PATTERN, GN_ID_PATTERN
 from clingen_link.mcp.service_adapters import ClingenServices, get_services
@@ -46,6 +40,12 @@ from clingen_link.mcp.shaping import (
 from clingen_link.mcp.untrusted_content import enforce_untrusted_text_limits
 
 _RESPONSE_MODE = Literal["minimal", "compact", "standard", "full"]
+
+# CSpec lifecycle status is a closed vocabulary (`cspecStatus`), declared as a schema enum so an
+# out-of-vocabulary value is rejected by validation rather than only at runtime (finding 4). The
+# snapshot carries only "Released"; test_closed_enums_are_supersets_of_data proves the enum stays
+# a superset of the data on every rebuild, so a new upstream status surfaces as a failing test.
+_CSPEC_STATUS = Literal["Released"]
 
 # TOOL-SURFACE-BUDGET v1 (B1/B2): outputSchema is suppressed on every tool. It was 60% of
 # this server's 14,519-token surface — a per-request tax on a field the MCP spec makes
@@ -83,9 +83,10 @@ def register_cspec_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
             ),
         ] = None,
         status: Annotated[
-            str | None,
+            _CSPEC_STATUS | None,
             Field(
-                description="CSpec lifecycle status filter (cspecStatus).",
+                description="CSpec lifecycle status filter (cspecStatus). A value outside the "
+                "enum is rejected by validation.",
                 examples=["Released"],
             ),
         ] = None,
@@ -219,9 +220,6 @@ _AFFILIATION = Identifier(
     column="affiliation_id",
     resolver="list_expert_panels",
 )
-# The CSpec status vocabulary is upstream's (`cspecStatus`); it is read from the snapshot
-# rather than guessed, so the schema can never advertise a status the data cannot match.
-_STATUS = Vocabulary(param="status", table="cspec", columns=("cspec_status",))
 
 
 async def _list_cspecs_impl(
@@ -240,7 +238,8 @@ async def _list_cspecs_impl(
         services = service_factory()
         resolved_gene = ensure_gene(services.store, gene, param="gene_symbol")
         ensure_identifier(services.store, _AFFILIATION, affiliation)
-        ensure_vocabulary(services.store, _STATUS, status)
+        # `status` is a schema enum now (finding 4) — an out-of-vocabulary value is rejected by
+        # validation before this runs, so no runtime ensure_vocabulary is needed.
         models, total = await services.cspec.list_specs(
             gene=resolved_gene, affiliation=affiliation, status=status, page=page, size=size
         )
@@ -452,12 +451,21 @@ async def _search_cspec_impl(
 
 
 def _search_next_commands(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Chain into the first hit: a criterion hit → get_cspec_criterion, else → get_cspec."""
+    """Chain into the first hit with a call the caller can actually make.
+
+    A criterion hit addresses ``get_cspec_criterion`` by its natural key ``(gn_id, code)`` —
+    plus ``rule_set_id`` when the hit carries one, so a code a spec defines twice resolves
+    unambiguously. A criterion hit missing its ``code`` (or any non-criterion hit) falls back to
+    ``get_cspec(gn_id)``, which lists every criterion of the spec with its code and rule_set_id.
+    """
     for hit in hits:
-        criteria_id = hit.get("criteria_id")
-        if criteria_id:
-            return [cmd("get_cspec_criterion", criteria_id=str(criteria_id))]
         gn_id = hit.get("gn_id")
+        code = hit.get("code")
+        if gn_id and code:
+            args: dict[str, Any] = {"gn_id": str(gn_id), "code": str(code)}
+            if hit.get("rule_set_id"):
+                args["rule_set_id"] = str(hit["rule_set_id"])
+            return [cmd("get_cspec_criterion", **args)]
         if gn_id:
             return [cmd("get_cspec", gn_id=str(gn_id))]
     return [cmd("list_cspecs", page=1, size=25)]

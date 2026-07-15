@@ -31,8 +31,12 @@ def for_disease(mondo: str) -> list[dict[str, Any]]:
     ]
 
 
-def for_variant(caid: str) -> list[dict[str, Any]]:
-    """Standard follow-up for a resolved variant: full ERepo interpretation."""
+def for_variant(variant_id: str) -> list[dict[str, Any]]:
+    """Standard follow-up for a resolved variant: full ERepo interpretation.
+
+    ``get_variant_interpretation`` takes one ``variant_id`` (a CAID, ClinVar VariationID, or
+    HGVS) now, not a ``caid`` selector (issue #46).
+    """
     return [
-        cmd("get_variant_interpretation", caid=caid),
+        cmd("get_variant_interpretation", variant_id=variant_id),
     ]
