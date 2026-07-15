@@ -21,14 +21,18 @@ services:
     image: clingen-link:local
     # Explicit, shell-free argv: this sidecar runs exactly one bounded data process.
     command: ["clingen-link", "materialize-data"]
+    # Schema 2.0.0 is the v4 dosage score-code contract (issue #46). The SHA defaults below still
+    # name the v1 (prose-in-score) bundle: with schema pinned to 2.0.0 that bundle now FAILS
+    # materialization CLOSED (schema mismatch) instead of silently serving the bug v4 fixes.
+    # Publishing the v2 data release updates these SHAs alongside container-release.json `data`.
     environment:
       CLINGEN_LINK_DATA_ROOT: /data
       CLINGEN_LINK_DATA_BUNDLE_PATH: /seed/clingen.sqlite.zst
       CLINGEN_LINK_DATA_BUNDLE_SHA256: "${CLINGEN_LINK_DATA_BUNDLE_SHA256:-e0204a40541e82fb86cf4725a2b5fa9edc5e0eec838ada9564fa8de973c51626}"
       CLINGEN_LINK_DATA_EXPANDED_SHA256: "${CLINGEN_LINK_DATA_EXPANDED_SHA256:-0dc602639984bae39c5dd7d0989d886ae003d2b48babbe7ece71812924ff56d3}"
-      CLINGEN_LINK_DATA_SCHEMA_VERSION: "${CLINGEN_LINK_DATA_SCHEMA_VERSION:-1.0.0}"
-      CLINGEN_LINK_DATA_SCHEMA_MINIMUM: "${CLINGEN_LINK_DATA_SCHEMA_MINIMUM:-1.0.0}"
-      CLINGEN_LINK_DATA_SCHEMA_MAXIMUM: "${CLINGEN_LINK_DATA_SCHEMA_MAXIMUM:-1.0.0}"
+      CLINGEN_LINK_DATA_SCHEMA_VERSION: "${CLINGEN_LINK_DATA_SCHEMA_VERSION:-2.0.0}"
+      CLINGEN_LINK_DATA_SCHEMA_MINIMUM: "${CLINGEN_LINK_DATA_SCHEMA_MINIMUM:-2.0.0}"
+      CLINGEN_LINK_DATA_SCHEMA_MAXIMUM: "${CLINGEN_LINK_DATA_SCHEMA_MAXIMUM:-2.0.0}"
     volumes:
       # A reviewed, pre-seeded artifact directory: read-only, never a system path.
       - type: bind
@@ -95,9 +99,9 @@ services:
       CLINGEN_LINK_DATA_BUNDLE_PATH: /seed/clingen.sqlite.zst
       CLINGEN_LINK_DATA_BUNDLE_SHA256: "${CLINGEN_LINK_DATA_BUNDLE_SHA256:-e0204a40541e82fb86cf4725a2b5fa9edc5e0eec838ada9564fa8de973c51626}"
       CLINGEN_LINK_DATA_EXPANDED_SHA256: "${CLINGEN_LINK_DATA_EXPANDED_SHA256:-0dc602639984bae39c5dd7d0989d886ae003d2b48babbe7ece71812924ff56d3}"
-      CLINGEN_LINK_DATA_SCHEMA_VERSION: "${CLINGEN_LINK_DATA_SCHEMA_VERSION:-1.0.0}"
-      CLINGEN_LINK_DATA_SCHEMA_MINIMUM: "${CLINGEN_LINK_DATA_SCHEMA_MINIMUM:-1.0.0}"
-      CLINGEN_LINK_DATA_SCHEMA_MAXIMUM: "${CLINGEN_LINK_DATA_SCHEMA_MAXIMUM:-1.0.0}"
+      CLINGEN_LINK_DATA_SCHEMA_VERSION: "${CLINGEN_LINK_DATA_SCHEMA_VERSION:-2.0.0}"
+      CLINGEN_LINK_DATA_SCHEMA_MINIMUM: "${CLINGEN_LINK_DATA_SCHEMA_MINIMUM:-2.0.0}"
+      CLINGEN_LINK_DATA_SCHEMA_MAXIMUM: "${CLINGEN_LINK_DATA_SCHEMA_MAXIMUM:-2.0.0}"
     # --- Container & Deployment Hardening Standard v1 ---
     read_only: true
     volumes:
