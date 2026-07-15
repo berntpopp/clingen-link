@@ -6,8 +6,8 @@ All notable changes to clingen-link are documented here.
 
 ### Changed
 
-- Re-vendored the behaviour conformance gate from genefoundry-router `ba09fdc`
-  (`docs/conformance/behaviour.py` blob `30d639242b`) and live-validated this
+- Re-vendored the behaviour conformance gate from genefoundry-router `56db958`
+  (`docs/conformance/behaviour.py` blob `c69801687`) and live-validated this
   backend against the current behaviour gate.
 
 ## [4.0.0] - 2026-07-15
