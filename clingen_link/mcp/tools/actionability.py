@@ -18,13 +18,7 @@ from clingen_link.exceptions import DataNotFoundError
 from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
 from clingen_link.mcp.envelope import build_meta, data_version_for, pagination
 from clingen_link.mcp.errors import McpErrorContext, ToolReturn, run_mcp_tool
-from clingen_link.mcp.filters import (
-    Identifier,
-    Vocabulary,
-    ensure_gene,
-    ensure_identifier,
-    ensure_vocabulary,
-)
+from clingen_link.mcp.filters import Identifier, ensure_gene, ensure_identifier
 from clingen_link.mcp.next_commands import cmd
 from clingen_link.mcp.patterns import GENE_SYMBOL_PATTERN
 from clingen_link.mcp.service_adapters import ClingenServices
@@ -52,14 +46,18 @@ _DISEASE = Identifier(
     match="fts",
     resolver="search_actionability (a broader disease term)",
 )
-# `assertion` filters the curation STATUS of the adult/pediatric assertion. The vocabulary is
-# upstream's and is read from the data — never guessed — so the server cannot advertise a
-# value it would then fail to match (issue #46).
-_ASSERTION = Vocabulary(
-    param="assertion",
-    table="actionability",
-    columns=("adult_status", "pediatric_status"),
-)
+# `assertion` filters the curation STATUS of the adult/pediatric assertion. It is a CLOSED
+# vocabulary, so it is declared as a schema enum (finding 4) — an arbitrary string is now
+# rejected by validation before the tool body runs, not merely at runtime. The value set is the
+# union of the two status columns in the snapshot; test_closed_enums_are_supersets_of_data proves
+# the enum stays a superset of the data on every rebuild (issue #46).
+_ACTIONABILITY_STATUS = Literal[
+    "Entered",
+    "In Preparation",
+    "Released",
+    "Released - Under Revision",
+    "Retracted",
+]
 
 
 def register_actionability_tools(
@@ -178,12 +176,11 @@ def register_actionability_tools(
             Field(description="Seed the citation with this assertion context."),
         ] = None,
         assertion: Annotated[
-            str | None,
+            _ACTIONABILITY_STATUS | None,
             Field(
                 description=(
-                    "Curation status of the adult/pediatric assertion, e.g. 'Released'. "
-                    "An unrecognised value is rejected with the list this snapshot carries "
-                    "(it is upstream's vocabulary, not ours)."
+                    "Curation status of the adult OR pediatric assertion to filter by "
+                    "(e.g. 'Released'). A value outside the enum is rejected by validation."
                 ),
                 examples=["Released"],
             ),
@@ -201,7 +198,8 @@ def register_actionability_tools(
             services = service_factory()
             resolved_gene = ensure_gene(services.store, gene_symbol)
             ensure_identifier(services.store, _DISEASE, disease)
-            ensure_vocabulary(services.store, _ASSERTION, assertion)
+            # `assertion` is a schema enum now, so validation rejects out-of-vocabulary values
+            # before this body runs — no runtime ensure_vocabulary needed.
             models, total = await services.actionability.search(
                 text=disease,
                 gene=resolved_gene,

@@ -38,6 +38,12 @@ _CLASSIFICATION = Literal[
     "Disputed",
     "Refuted",
     "No Known Disease Relationship",
+    # ClinGen marks a re-review-pending "No Known Disease Relationship" curation with a trailing
+    # asterisk (9 rows in the snapshot). The ETL preserves it verbatim, so a record can RETURN
+    # this value — the enum must include it, or that classification cannot round-trip as a filter
+    # and filtering by the unstarred value silently drops those rows (issue #46). An enum must be
+    # a SUPERSET of the runtime data, never a subset.
+    "No Known Disease Relationship*",
 ]
 # The ClinGen validity feed's MOI codes, verbatim. "Undetermined" was advertised here and
 # stored NOWHERE: the feed writes "UD", so the documented value matched zero rows forever —

@@ -6,23 +6,19 @@ wrong vocabulary, or a stale identifier from "the data genuinely has none" — s
 confidently reports "there are no such genes" (issue #46; Response-Envelope v1.1: *silent
 omission is not compliant*).
 
-Two kinds of filter, two rejections:
+This module handles the OPEN-ended filters — identifiers with too many values to enumerate:
 
-* :class:`Vocabulary` — a small set of values the snapshot itself carries (a curation
-  status). Rejected as ``invalid_input``, and the message LISTS the valid values, so the
-  model can retry correctly on its next turn. These vocabularies are upstream's, not ours:
-  they are read from the data rather than hardcoded, because guessing an enum (and
-  advertising a value the runtime never matches) is the very bug this module exists to kill.
-  A vocabulary that is genuinely fixed and published — the dosage score codes — is instead
-  declared as a schema ``enum`` (see :mod:`clingen_link.vocab`), which rejects the value
-  before the tool body even runs.
 * :class:`Identifier` — a gene, an ISCA region, a cytoband, a MONDO id, an expert panel, a
-  disease name. Too many to enumerate, so membership is checked against the snapshot's own
-  index and a miss is ``not_found``, naming the parameter and the tool that resolves it.
+  disease name. Membership is checked against the snapshot's own index and a miss is
+  ``not_found``, naming the parameter and the tool that resolves it.
 
-Neither message ever echoes the caller's value: a filter value is attacker-controlled text,
-and sanitisation strips code points, not prose. The parameter NAME and the server's own
-vocabulary are safe; the value is not.
+CLOSED vocabularies (dosage score codes, validity classification/MOI, curation statuses) are
+instead declared as schema ``enum``s in their tool signatures, so an out-of-vocabulary value is
+rejected by validation before the tool body runs; ``test_closed_enums_are_supersets_of_data``
+proves every such enum stays a superset of the snapshot data on each rebuild.
+
+The message never echoes the caller's value: a filter value is attacker-controlled text, and
+sanitisation strips code points, not prose. The parameter NAME and the resolver are safe.
 """
 
 from __future__ import annotations
@@ -31,7 +27,6 @@ from dataclasses import dataclass
 from typing import Literal
 
 from clingen_link.exceptions import DataNotFoundError
-from clingen_link.mcp.errors import ToolInputError
 from clingen_link.store import queries
 from clingen_link.store.db import Store
 
@@ -47,15 +42,6 @@ class Identifier:
     column: str
     match: MatchMode = "exact"
     resolver: str = "get_server_capabilities"
-
-
-@dataclass(frozen=True)
-class Vocabulary:
-    """A filter whose values are the distinct values the snapshot carries."""
-
-    param: str
-    table: str
-    columns: tuple[str, ...]
 
 
 def ensure_identifier(store: Store, spec: Identifier, value: str | None) -> None:
@@ -75,18 +61,6 @@ def ensure_identifier(store: Store, spec: Identifier, value: str | None) -> None
         f"match it. Do not retry unchanged: resolve it with {spec.resolver} first, or drop "
         f"the {spec.param} filter."
     )
-
-
-def ensure_vocabulary(store: Store, spec: Vocabulary, value: str | None) -> None:
-    """Raise ``invalid_input`` (listing the valid values) for an out-of-vocabulary value."""
-    if not value:
-        return
-    with store.connection() as conn:
-        allowed = queries.distinct_values(conn, spec.table, spec.columns)
-    if value in allowed:
-        return
-    valid = ", ".join(repr(v) for v in sorted(allowed)) or "(none in this snapshot)"
-    raise ToolInputError(f"{spec.param} must be one of: {valid}.")
 
 
 def ensure_gene(store: Store, symbol: str | None, *, param: str = "gene_symbol") -> str | None:
