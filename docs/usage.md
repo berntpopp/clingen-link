@@ -33,11 +33,11 @@ get_gene_summary(gene)         # one-call cross-domain overview
         └─▶ get_variant_interpretations(gene) # ERepo variant list
                     │
                     ▼
-            get_variant_interpretation(caid|hgvs)  # full ACMG evidence for one variant
+            get_variant_interpretation(variant_id)  # full ACMG evidence for one variant
                     │
                     ▼
-            get_cspec(...)                 # the VCEP's ACMG/AMP criteria spec (cross-linked
-                                           # from the interpretation via affiliation + gene)
+            get_cspec(gn_id)               # the VCEP's ACMG/AMP criteria spec (its gn_id is
+                                           # cross-linked from the interpretation)
 ```
 
 Every response carries `_meta.next_commands` — a ready-to-call list of
@@ -55,14 +55,14 @@ tool (`get_diagnostics`) is appended last.
 - **"Is gene-condition X actionable?"** → `get_gene_actionability(X)`; add
   `include_detail=true` for the live SEPIO assertion document.
 - **"What does the expert panel say about variant V?"** →
-  `get_variant_interpretation(caid="CA…")` or `get_variant_interpretation(hgvs="…")`;
-  add `refresh=true` for the live evidence-code SEPIO. To browse a gene's
+  `get_variant_interpretation(variant_id="CA…")` — variant_id takes a CAID, a
+  ClinVar VariationID, or an HGVS expression; add `refresh=true` for the live
+  evidence-code SEPIO. To browse a gene's
   variants first, `get_variant_interpretations(gene_symbol="X")`.
 - **"Which expert panels curate this area?"** → `list_expert_panels(query=…)`.
 - **"What ACMG/AMP criteria does the VCEP apply for gene X?"** →
-  `get_cspec(gene_symbol="X")` (or `get_cspec(gn_id="GN…")`); browse spec headers
-  with `list_cspecs(gene_symbol="X")` / `list_cspecs(affiliation="…")`. For one
-  rule, e.g.
+  first `list_cspecs(gene_symbol="X")` to find the spec's `gn_id`, then
+  `get_cspec(gn_id="GN…")`. For one rule,
   `get_cspec_criterion(gn_id="GN…", code="PVS1")`; full-text search with
   `search_cspec(query="…")`.
 
@@ -75,8 +75,8 @@ An ERepo variant interpretation cross-links to its spec via `_meta.next_commands
 (resolved from the curating affiliation + gene).
 
 - `get_cspec` — one criteria specification in full (criteria with strengths and
-  applicability, genes/diseases, file catalog). Select by `gn_id`, by
-  `affiliation` (optionally narrowed by `gene_symbol`), or by `gene_symbol`.
+  applicability, genes/diseases, file catalog). Select by `gn_id` (resolve one
+  from a gene, affiliation, or status with `list_cspecs`).
   Example: `get_cspec(gn_id="GN092")` → the ENIGMA BRCA1/2 spec. The top-level
   `files` array is the spec's full catalog; a file is nested under a criterion
   only when its own label names that single code, so spec-wide reference docs
@@ -85,7 +85,7 @@ An ERepo variant interpretation cross-links to its spec via `_meta.next_commands
   status); filter by `gene_symbol`, `affiliation`, or `status`; paginated.
   Example: `list_cspecs(gene_symbol="BRCA1")` or `list_cspecs(affiliation="50087")`.
 - `get_cspec_criterion` — one ACMG/AMP criterion's spec (its strength rules and
-  attached guidance files). Select by `criteria_id`, or by `gn_id` + `code`
+  attached guidance files). Select by its natural key `gn_id` + `code`
   (add `rule_set_id` when a code repeats across rule sets).
   Example: `get_cspec_criterion(gn_id="GN092", code="PVS1")`.
 - `search_cspec` — FTS across spec labels, criteria, and filenames; each hit

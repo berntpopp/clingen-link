@@ -79,5 +79,11 @@ async def test_install_handler_wraps_output_validation_error() -> None:
     )
     wrapped = server._mcp_server.request_handlers[mcp.types.CallToolRequest]
     result = await wrapped(request)
-    payload = result.root.content[0].text
-    assert "internal" in payload
+    call_result = result.root
+    assert call_result.isError is True
+    # Both mirrors must carry the envelope: the text one AND structuredContent (finding 5) —
+    # a client reading the machine-readable path must not get null.
+    assert "internal" in call_result.content[0].text
+    assert call_result.structuredContent is not None
+    assert call_result.structuredContent["error_code"] == "internal"
+    assert call_result.structuredContent["success"] is False

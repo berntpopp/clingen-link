@@ -111,6 +111,11 @@ def install_output_validation_error_handler(mcp_server: Any) -> None:
                         text=json.dumps(payload, separators=(",", ":"), sort_keys=True),
                     )
                 ],
+                # Populate BOTH mirrors: a client reading structuredContent (the machine-readable
+                # path) otherwise saw null and lost the envelope entirely, keeping only the JSON
+                # text (finding 5). This is the protocol-handler layer, so the CallToolResult is
+                # built directly rather than via ToolResult; both must carry the same envelope.
+                structuredContent=payload,
                 isError=True,
             )
         )

@@ -221,8 +221,12 @@ def get_reference_resource() -> dict[str, Any]:
         },
         "field_glossary": {
             "classification": "Validity: Definitive..Refuted; ERepo: Pathogenic..Benign (ACMG).",
-            "moi": "Mode of inheritance (AD, AR, XL, MT, SD, Undetermined).",
-            "haplo_score / triplo_score": "Dosage evidence scale 0-3 (+ special codes 30/40).",
+            "moi": "Mode of inheritance code (AD, AR, XL, MT, SD, UD).",
+            "haplo_score / triplo_score": (
+                "Dosage score CODE (not its prose): 0-3 evidence scale, plus 30 (gene "
+                "associated with an autosomal-recessive phenotype) and 40 (dosage sensitivity "
+                "unlikely). The plain-English reading is in haplo_interpretation."
+            ),
             "perm_id": "CGGV validity permalink token.",
             "caid": "ClinGen Allele Registry id (e.g. CA003783).",
             "evidence_codes_met / not_met": "ACMG criteria the VCEP applied / did not apply.",
