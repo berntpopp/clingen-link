@@ -20,11 +20,14 @@ bump; the migration notes below say exactly what a caller must change.
   autosomal recessive phenotype".** The prose moved to `haplo_interpretation` /
   `haplo_description`; the score field is numeric-code-or-null. **(BREAKING — wire contract.)**
 - **Ten filters that silently returned zero rows for an unrecognised value now reject it.**
-  Closed vocabularies (dosage codes, `moi`, curation status) are declared as `enum`s;
-  identifiers (gene, ISCA region, cytoband, MONDO, expert panel, disease, affiliation) are
-  validated against the snapshot and rejected with `not_found` naming the parameter. `moi`
-  no longer advertises `"Undetermined"` (the feed stores `"UD"`). **(BREAKING for callers
-  relying on an out-of-vocabulary value returning an empty list.)**
+  Closed vocabularies (dosage codes, `classification`, `moi`, actionability `assertion`, CSpec
+  `status`) are declared as `enum`s; identifiers (gene, ISCA region, cytoband, MONDO, expert
+  panel, disease, affiliation) are validated against the snapshot and rejected with `not_found`
+  naming the parameter. `moi` no longer advertises `"Undetermined"` (the feed stores `"UD"`),
+  and validity `classification` now includes the re-review-pending `"No Known Disease
+  Relationship*"` so it round-trips as a filter. Every closed enum is proven a superset of the
+  snapshot data by a data-derived test. **(BREAKING for callers relying on an out-of-vocabulary
+  value returning an empty list.)**
 - **`response_mode="minimal"` now returns the records (identifiers only)** instead of an empty
   list with a forged `truncated: {kind: "pagination", to_restore: "page=2"}` block that sent
   agents into an unresolvable retry loop.
@@ -51,8 +54,15 @@ bump; the migration notes below say exactly what a caller must change.
   `structuredContent` is unaffected. (TOOL-SURFACE-BUDGET Standard v1.)
 - **Every paginated response carries `_meta.pagination` with `has_more`**, and `search_genes`
   reports the true candidate count so a capped list is never read as the whole set.
-- The snapshot schema version is **bumped to 2**: a bundle built under the old (prose-in-score)
-  contract is refused at materialization rather than served.
+- The snapshot schema version is **bumped to 2** and propagated to every deploy pin (both
+  compose files, the data-release manifest, derived from `data_contract`): a bundle built under
+  the old (prose-in-score) contract is refused at materialization rather than served, and a
+  test proves no schema pin can drift from the contract.
+- **`_meta.next_commands` affordances are all callable** — the required-selector migration is
+  now carried through every chaining site (search hits, the ERepo→CSpec cross-link, the shared
+  builders), guarded by a test that validates each against the live tool schema.
+- **Output-schema-validation errors carry the envelope in `structuredContent`**, not only the
+  text mirror.
 
 ### Migration
 
