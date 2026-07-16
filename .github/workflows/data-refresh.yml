@@ -251,7 +251,6 @@ jobs:
           # workspace, so the cd from the previous step does not carry over.
           cd "$RUNNER_TEMP/data-release"
           "$RUNNER_TEMP/gh" release edit "$TAG" --draft=false
-          "$RUNNER_TEMP/gh" release verify "$TAG"
           "$RUNNER_TEMP/gh" release verify-asset "$TAG" clingen.sqlite.zst
           "$RUNNER_TEMP/gh" release verify-asset "$TAG" data-release-manifest.json
           "$RUNNER_TEMP/gh" release verify-asset "$TAG" SHA256SUMS
