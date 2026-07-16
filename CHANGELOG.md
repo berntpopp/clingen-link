@@ -4,18 +4,23 @@ All notable changes to clingen-link are documented here.
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-07-15
+
+MCP contract-hardening (issue #46). Several changes alter the wire contract, hence the major
+bump; the migration notes below say exactly what a caller must change.
+
 ### Changed
 
 - Re-vendored the behaviour conformance gate from genefoundry-router `56db958`
   (`docs/conformance/behaviour.py` blob `c69801687`) and live-validated this
   backend against the current behaviour gate.
 
-## [4.0.0] - 2026-07-15
-
-MCP contract-hardening (issue #46). Several changes alter the wire contract, hence the major
-bump; the migration notes below say exactly what a caller must change.
-
 ### Fixed
+
+- **Data releases now refuse a stale rollback target (issue #45).** The privileged publisher
+  compares the sealed build manifest's `previous_known_good_digest` with the SHA-256 of the
+  most recent immutable data release before it can create a draft. The credential-free build
+  remains unchanged, and the pin now names the current public snapshot.
 
 - **`search_dosage(haplo_score="30")` and `="40"` now return their genes** (603 and 393
   respectively) instead of zero rows with `success: true`. The ETL was expanding the ClinGen

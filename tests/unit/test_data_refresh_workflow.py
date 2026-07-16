@@ -59,6 +59,24 @@ def test_publication_requires_affirmative_redistribution_review() -> None:
     assert "data-clingen-" in text
 
 
+def test_publisher_verifies_the_rollback_target_against_the_latest_release() -> None:
+    """A build stays credential-free, while publication refuses a stale rollback pin."""
+    steps = _steps("publish")
+    names = [step["name"] for step in steps]
+    check = steps[names.index("Verify previous known-good rollback target")]
+    script = check["run"]
+
+    assert names.index(check["name"]) < names.index("Verify handoff and create matching draft")
+    assert "release list" in script
+    assert "release download" in script
+    assert "data-release-manifest.json" in script
+    assert "previous_known_good_digest" in script
+    assert ".artifact.sha256" in script
+    assert '--arg current "$TAG"' in script
+    assert "publish" in _workflow()["jobs"]
+    assert "release list" not in "\n".join(step.get("run", "") for step in _steps("build"))
+
+
 def test_publish_steps_naming_handoff_files_run_from_the_handoff_dir() -> None:
     """Every publish step that names a handoff file by bare name must cd to it first.
 

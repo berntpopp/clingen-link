@@ -105,7 +105,7 @@ jobs:
                   "redistribution_allowed": os.environ["REDISTRIBUTION_ALLOWED"] == "true",
                   "reviewed_at": datetime.now(UTC).isoformat(),
                   "reviewer": os.environ["REDISTRIBUTION_REVIEW"] or "publication-not-authorized"},
-              "previous_known_good_digest": "sha256:b389b1dbea7921d414c647fdc88ce19ff81bcf27acae39a7ce8b150ee0a2fc17",
+              "previous_known_good_digest": "sha256:e0204a40541e82fb86cf4725a2b5fa9edc5e0eec838ada9564fa8de973c51626",
               # The schema-2 snapshot (score CODES, not prose) is only readable by v4+; a 3.x build
               # would misread the score columns. Minimum is derived from this build's own version so
               # the floor rises with each contract bump; the maximum caps the current major so a
@@ -179,6 +179,37 @@ jobs:
           echo "$gh_sha256  $RUNNER_TEMP/gh.tar.gz" | sha256sum -c -
           tar -xzf "$RUNNER_TEMP/gh.tar.gz" -C "$RUNNER_TEMP"
           install -m 0755 "$RUNNER_TEMP/gh_${gh_version}_linux_amd64/bin/gh" "$RUNNER_TEMP/gh"
+      - name: Verify previous known-good rollback target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/data-release"
+          gh="$RUNNER_TEMP/gh"
+          previous_tag="$("$gh" release list --limit 1000 --json tagName,isDraft,publishedAt | jq -r --arg current "$TAG" '
+            [ .[]
+              | select(.tagName | startswith("data-clingen-"))
+              | select(.tagName != $current)
+              | select(.isDraft == false)
+            ]
+            | sort_by(.publishedAt)
+            | last
+            | .tagName // empty
+          ')"
+          if [ -n "$previous_tag" ]; then
+            previous_dir="$RUNNER_TEMP/previous-known-good"
+            mkdir -p "$previous_dir"
+            "$gh" release download "$previous_tag" --pattern data-release-manifest.json --dir "$previous_dir"
+            previous_sha="$(jq -er '.artifact.sha256' "$previous_dir/data-release-manifest.json")"
+            pinned_digest="$(jq -er '.previous_known_good_digest' "$RUNNER_TEMP/data-release/data-release-manifest.json")"
+            expected_digest="sha256:$previous_sha"
+            if [ "$pinned_digest" != "$expected_digest" ]; then
+              printf 'previous_known_good_digest is stale: got %s; update it to %s from %s\n' \
+                "$pinned_digest" "$expected_digest" "$previous_tag" >&2
+              exit 1
+            fi
+          fi
       - name: Verify handoff and create matching draft
         env:
           GH_TOKEN: ${{ github.token }}
