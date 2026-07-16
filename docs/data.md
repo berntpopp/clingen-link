@@ -21,7 +21,7 @@ is never done in the request path. For the pipeline internals see
 
 The application ships **code-only**. The authoritative snapshot is not baked into the image
 and not committed to git: it ships as an immutable, attested GitHub data release built by
-this repository's own ETL (e.g. `data-clingen-2026-07-13`, pinned by digest in
+this repository's own ETL (e.g. `data-clingen-2026-07-16`, pinned by digest in
 [`container-release.json`](../container-release.json)).
 
 A no-egress init service (`clingen-data-init`, `network_mode: none`) verifies the reviewed

@@ -30,8 +30,8 @@
   },
   "data": {
     "mode": "external-reference",
-    "release_tag": "data-clingen-2026-07-13",
-    "digest": "sha256:e0204a40541e82fb86cf4725a2b5fa9edc5e0eec838ada9564fa8de973c51626",
+    "release_tag": "data-clingen-2026-07-16",
+    "digest": "sha256:8ef351827e0ac86741891af4e53d91c1793f6c6cfc278754bff107774f9dd53c",
     "image_allowlist": [
       "opt/venv/lib/python3.14/site-packages/clingen_link/data/svi_guidance.json"
     ]

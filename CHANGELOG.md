@@ -4,6 +4,15 @@ All notable changes to clingen-link are documented here.
 
 ## [Unreleased]
 
+## [4.0.1] - 2026-07-16
+
+### Fixed
+
+- Pin the v4 application release contract to the published schema-2 ClinGen
+  snapshot (`data-clingen-2026-07-16`). This keeps the immutable application
+  manifest, compose defaults, and production data-init sidecar on one verified
+  data identity.
+
 ## [4.0.0] - 2026-07-15
 
 MCP contract-hardening (issue #46). Several changes alter the wire contract, hence the major
