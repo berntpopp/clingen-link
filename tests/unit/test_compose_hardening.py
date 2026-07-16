@@ -163,6 +163,22 @@ def test_compose_data_digest_matches_the_declared_data_release() -> None:
     assert f"CLINGEN_LINK_DATA_BUNDLE_SHA256={declared}" in env_example
 
 
+def test_declared_data_release_is_compatible_with_the_application_schema() -> None:
+    """A schema-2 application must not publish a schema-1 data requirement."""
+    from clingen_link.data_contract import SNAPSHOT_SCHEMA_SEMVER
+
+    declared = _release_config()["data"]
+    assert declared["release_tag"] == "data-clingen-2026-07-16"
+    assert declared["digest"] == (
+        "sha256:8ef351827e0ac86741891af4e53d91c1793f6c6cfc278754bff107774f9dd53c"
+    )
+    # The reusable router release schema intentionally accepts only its documented
+    # external-reference fields. This mapping test is where the application/data
+    # schema relationship is made explicit.
+    assert SNAPSHOT_SCHEMA_SEMVER == "2.0.0"
+    assert "schema_compatibility" not in declared
+
+
 def test_smoke_preparation_hook_verifies_the_committed_digest() -> None:
     config = _release_config()
     assert config["preparation"] == "docker/ci-prepare-smoke.sh"
