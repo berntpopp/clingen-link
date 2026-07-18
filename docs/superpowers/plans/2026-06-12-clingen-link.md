@@ -1,5 +1,7 @@
 # clingen-link Implementation Plan
 
+> Historical record
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build `clingen-link`, an MCP server grounding gene/disease/variant questions in ClinGen's four curated datasets (gene-disease validity, gene dosage, clinical actionability, variant pathogenicity/ERepo), via a self-contained SQLite snapshot + live drill-down.

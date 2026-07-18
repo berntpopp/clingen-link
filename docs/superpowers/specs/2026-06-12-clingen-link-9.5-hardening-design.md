@@ -1,5 +1,7 @@
 # clingen-link 9.5/10 Hardening — Design Spec
 
+> Historical record
+
 **Date:** 2026-06-12
 **Author:** MCP engineering (autonomous, superpowers workflow)
 **Driver:** `docs/mcp-assessment-2026-06-12.md` (black-box LLM-consumer assessment, scored **8/10**)

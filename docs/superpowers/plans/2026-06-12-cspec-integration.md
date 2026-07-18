@@ -1,5 +1,7 @@
 # CSpec Integration (Phase 1) Implementation Plan
 
+> Historical record
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a fifth `cspec` domain to clingen-link that serves ClinGen Criteria Specification Registry data — per-VCEP ACMG/AMP criteria codes, strengths/applicability, gene/disease, and a supplementary-file catalog — FTS5-searchable and cross-linked to ERepo.

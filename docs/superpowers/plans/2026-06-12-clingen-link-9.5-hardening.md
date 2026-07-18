@@ -1,5 +1,7 @@
 # clingen-link 9.5/10 Hardening Implementation Plan
 
+> Historical record
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Resolve all 13 findings (H1–H3, M1–M5, L1–L5) from the 2026-06-12 black-box MCP
