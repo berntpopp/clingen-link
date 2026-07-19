@@ -24,6 +24,10 @@ RUNTIME_CAPABLE_RELEASE_BUILDER = (
     "berntpopp/genefoundry-router/.github/workflows/_container-release.yml"
     "@2f62be1d72fe81b5cad491aa9bd7c856813e696b"
 )
+RUNTIME_CAPABLE_CI_BUILDER = (
+    "berntpopp/genefoundry-router/.github/workflows/_container-ci.yml"
+    "@2f62be1d72fe81b5cad491aa9bd7c856813e696b"
+)
 
 
 class _ComposeLoader(yaml.SafeLoader):
@@ -239,6 +243,16 @@ def test_runtime_v1_release_pins_the_reviewed_runtime_capable_builder() -> None:
         "id-token": "write",
         "packages": "write",
     }
+
+
+def test_runtime_v1_ci_pins_the_reviewed_runtime_capable_builder() -> None:
+    """PR validation must understand the same runtime-v1 release configuration."""
+    workflow = yaml.safe_load(
+        (ROOT / ".github" / "workflows" / "container-ci.yml").read_text(encoding="utf-8")
+    )
+
+    assert _release_config()["data_identity_contract"] == "runtime-v1"
+    assert workflow["jobs"]["container-ci"]["uses"] == RUNTIME_CAPABLE_CI_BUILDER
 
 
 # --- the self-contained npm overlay ----------------------------------------------------
