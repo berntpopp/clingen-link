@@ -1,5 +1,7 @@
 # ClinGen Guidance Manifest (`clingen://guidance`) Implementation Plan
 
+> Historical record
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a read-only `clingen://guidance` MCP resource that serves a curated, provenance-verified manifest of ClinGen/SVI variant-classification recommendations (codes affected + PMID/PMCID + OA license + fulltext-access map) — pointers only, no paper fulltext.

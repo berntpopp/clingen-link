@@ -1,5 +1,7 @@
 # clingen-link — Design Spec
 
+> Historical record
+
 **Date:** 2026-06-12
 **Author:** bernt.popp@charite.de (autonomous build)
 **Status:** Approved-for-build (autonomous goal; decisions documented for review)

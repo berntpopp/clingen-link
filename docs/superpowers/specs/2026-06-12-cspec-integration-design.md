@@ -1,5 +1,7 @@
 # CSpec Integration — Design Spec (Phase 1)
 
+> Historical record
+
 **Date:** 2026-06-12
 **Author:** MCP engineering (superpowers brainstorming workflow)
 **Goal:** Add ClinGen Criteria Specification Registry (CSpec) data to clingen-link as a
