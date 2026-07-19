@@ -8,6 +8,7 @@ selection passed around the server manager and CLI.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -21,6 +22,13 @@ from .data_contract import SNAPSHOT_SCHEMA_SEMVER
 # path in the container hardening policy. `current` is the atomically selected version.
 _DEFAULT_DATA_ROOT = "/data"
 _DEFAULT_SNAPSHOT_PATH = f"{_DEFAULT_DATA_ROOT}/current/clingen.sqlite"
+_DEFAULT_DATA_RELEASE_TAG = "data-clingen-2026-07-16"
+_DEFAULT_DATA_IDENTITY_DIGEST = (
+    "sha256:9b8ef2094b31dade597b59cd2f58c3ccbba80f45e8b00d34ec6519291d2e6cbe"
+)
+_RELEASE_TAG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_MUTABLE_RELEASE_TAGS = frozenset({"latest", "main", "master", "head", "stable", "current"})
+_SHA256_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 class DataRequirement(BaseModel):
@@ -29,6 +37,7 @@ class DataRequirement(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     bundle_path: Path
+    release_tag: str
     compressed_sha256: str
     expanded_tree_sha256: str
     schema_version: str
@@ -36,6 +45,13 @@ class DataRequirement(BaseModel):
     schema_maximum: str
     max_compressed_bytes: int
     max_expanded_bytes: int
+
+    @field_validator("release_tag")
+    @classmethod
+    def _validate_release_tag(cls, value: str) -> str:
+        if not _RELEASE_TAG.fullmatch(value) or value.lower() in _MUTABLE_RELEASE_TAGS:
+            raise ValueError("release tag must be an immutable release identifier")
+        return value
 
     @field_validator("compressed_sha256", "expanded_tree_sha256")
     @classmethod
@@ -129,6 +145,8 @@ class Settings(BaseSettings):
     data_max_compressed_bytes: int = 64 * 1024 * 1024
     data_max_expanded_bytes: int = 256 * 1024 * 1024
     data_root: str = _DEFAULT_DATA_ROOT
+    data_release_tag: str = _DEFAULT_DATA_RELEASE_TAG
+    data_identity_digest: str = _DEFAULT_DATA_IDENTITY_DIGEST
 
     # ---- Live client resilience ----
     # Max concurrent in-flight upstream requests; bounds burst pressure.
@@ -183,6 +201,20 @@ class Settings(BaseSettings):
         """Ensure the MCP path starts with a slash."""
         return v if v.startswith("/") else f"/{v}"
 
+    @field_validator("data_release_tag")
+    @classmethod
+    def _validate_data_release_tag(cls, value: str) -> str:
+        if not _RELEASE_TAG.fullmatch(value) or value.lower() in _MUTABLE_RELEASE_TAGS:
+            raise ValueError("data release tag must be an immutable release identifier")
+        return value
+
+    @field_validator("data_identity_digest")
+    @classmethod
+    def _validate_data_identity_digest(cls, value: str) -> str:
+        if not _SHA256_DIGEST.fullmatch(value):
+            raise ValueError("data identity digest must be sha256 plus 64 lowercase hex characters")
+        return value
+
     @field_validator("ALLOWED_HOSTS", "ALLOWED_ORIGINS", mode="before")
     @classmethod
     def _parse_string_list(cls, v: object) -> list[str]:
@@ -217,6 +249,7 @@ class Settings(BaseSettings):
             raise ValueError("CLINGEN_LINK_DATA_BUNDLE_PATH is required")
         return DataRequirement(
             bundle_path=Path(self.data_bundle_path),
+            release_tag=self.data_release_tag,
             compressed_sha256=self.data_bundle_sha256,
             expanded_tree_sha256=self.data_expanded_sha256,
             schema_version=self.data_schema_version,

@@ -36,6 +36,17 @@ from typing import Any
 
 from ..config import DataRequirement
 from ..exceptions import SnapshotUnavailableError
+from ..runtime_data_identity import (
+    build_identity_manifest,
+    canonical_json_bytes,
+    verify_runtime_identity,
+)
+from .materialization_scratch import (
+    cleanup_stale_materialization_scratch,
+    create_staging_scratch,
+    create_verified_bundle_scratch,
+    remove_materialization_scratch,
+)
 
 # How many idle read connections to keep warm. Reads are short; a handful covers
 # the bounded concurrency of the live layer without unbounded fd growth.
@@ -151,135 +162,194 @@ def _fsync_directory(path: Path) -> None:
         os.close(fd)
 
 
+def _fsync_regular_file_no_follow(path: Path) -> None:
+    flags = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(path, flags)
+    try:
+        file_stat = os.fstat(fd)
+        if not stat.S_ISREG(file_stat.st_mode) or file_stat.st_nlink != 1:
+            raise SnapshotUnavailableError(f"materialized identity is not a private file: {path}")
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _write_runtime_identity_manifest(root: Path, release_tag: str, files: list[Path]) -> None:
+    manifest = build_identity_manifest(root, release_tag, files)
+    destination = root / "data-identity-manifest.json"
+    temporary = root / "data-identity-manifest.json.tmp"
+    payload = canonical_json_bytes(manifest) + b"\n"
+    temporary.unlink(missing_ok=True)
+    try:
+        with temporary.open("xb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fchmod(stream.fileno(), 0o444)
+            os.fsync(stream.fileno())
+        os.replace(temporary, destination)
+        _fsync_directory(root)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+    verify_runtime_identity(root)
+
+
+def _materialized_version_key(requirement: DataRequirement) -> str:
+    key_material = (
+        f"runtime-v1\0{requirement.compressed_sha256}\0{requirement.release_tag}".encode()
+    )
+    identity_hash = hashlib.sha256(key_material).hexdigest()
+    return f"{requirement.compressed_sha256[:16]}-{identity_hash}"
+
+
 def materialize_bundle(requirement: DataRequirement, root: Path) -> Path:
     """Verify and atomically select an immutable external ClinGen snapshot."""
     bundle = requirement.bundle_path
     root.mkdir(parents=True, exist_ok=True)
-    verified_bundle = root / f".verified-bundle-{os.getpid()}"
-    compressed_size = 0
-    digest = hashlib.sha256()
+    if root.is_symlink():
+        raise SnapshotUnavailableError(f"ClinGen data root must not be a symlink: {root}")
+    root = root.resolve(strict=True)
+    if not root.is_dir():
+        raise SnapshotUnavailableError(f"ClinGen data root is not a directory: {root}")
     try:
-        flags = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
-        fd = os.open(bundle, flags)
-        try:
-            source_stat = os.fstat(fd)
-            if not stat.S_ISREG(source_stat.st_mode) or source_stat.st_nlink != 1:
-                raise SnapshotUnavailableError(
-                    f"ClinGen bundle is not a private regular file: {bundle}"
-                )
-            with os.fdopen(fd, "rb", closefd=False) as src, verified_bundle.open("xb") as dst:
-                for chunk in iter(lambda: src.read(_STREAM_CHUNK), b""):
-                    compressed_size += len(chunk)
-                    if compressed_size > requirement.max_compressed_bytes:
-                        raise SnapshotUnavailableError(
-                            "ClinGen bundle exceeds the compressed size ceiling"
-                        )
-                    digest.update(chunk)
-                    dst.write(chunk)
-                dst.flush()
-                os.fsync(dst.fileno())
-        finally:
-            os.close(fd)
-        if digest.hexdigest() != requirement.compressed_sha256:
-            raise SnapshotUnavailableError(
-                "ClinGen snapshot bundle failed its compressed SHA-256 integrity check"
-            )
-
         lock_path = root / ".materialize.lock"
         with lock_path.open("a+b") as lock:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-            version_dir = root / requirement.compressed_sha256[:16]
-            selected = version_dir / "clingen.sqlite"
-            identity_path = version_dir / "identity.json"
-            if not selected.exists():
-                staging = root / f".{requirement.compressed_sha256[:16]}.staging-{os.getpid()}"
-                staging.mkdir(mode=0o700)
-                staged = staging / "clingen.sqlite"
-                try:
-                    _decompress_capped(
-                        verified_bundle, staged, max_bytes=requirement.max_expanded_bytes
+            cleanup_stale_materialization_scratch(root)
+            verified_fd, verified_bundle = create_verified_bundle_scratch(root)
+            compressed_size = 0
+            digest = hashlib.sha256()
+            try:
+                with os.fdopen(verified_fd, "wb") as dst:
+                    flags = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+                    source_fd = os.open(bundle, flags)
+                    try:
+                        source_stat = os.fstat(source_fd)
+                        if not stat.S_ISREG(source_stat.st_mode) or source_stat.st_nlink != 1:
+                            raise SnapshotUnavailableError(
+                                f"ClinGen bundle is not a private regular file: {bundle}"
+                            )
+                        with os.fdopen(source_fd, "rb", closefd=False) as src:
+                            for chunk in iter(lambda: src.read(_STREAM_CHUNK), b""):
+                                compressed_size += len(chunk)
+                                if compressed_size > requirement.max_compressed_bytes:
+                                    raise SnapshotUnavailableError(
+                                        "ClinGen bundle exceeds the compressed size ceiling"
+                                    )
+                                digest.update(chunk)
+                                dst.write(chunk)
+                            dst.flush()
+                            os.fsync(dst.fileno())
+                    finally:
+                        os.close(source_fd)
+                if digest.hexdigest() != requirement.compressed_sha256:
+                    raise SnapshotUnavailableError(
+                        "ClinGen snapshot bundle failed its compressed SHA-256 integrity check"
                     )
-                    expanded_digest = canonical_expanded_digest(
-                        staged, member_name="clingen.sqlite"
-                    )
-                    if expanded_digest != requirement.expanded_tree_sha256:
-                        raise SnapshotUnavailableError(
-                            "ClinGen snapshot expanded-tree SHA-256 does not match deployment pin"
+
+                version_key = _materialized_version_key(requirement)
+                version_dir = root / version_key
+                selected = version_dir / "clingen.sqlite"
+                identity_path = version_dir / "identity.json"
+                if not selected.exists():
+                    staging = create_staging_scratch(root, version_key)
+                    staged = staging / "clingen.sqlite"
+                    try:
+                        _decompress_capped(
+                            verified_bundle, staged, max_bytes=requirement.max_expanded_bytes
                         )
-                    _verify_schema(staged, requirement.schema_version)
-                    staged.chmod(0o444)
-                    identity = {
-                        "mode": "external-reference",
+                        expanded_digest = canonical_expanded_digest(
+                            staged, member_name="clingen.sqlite"
+                        )
+                        if expanded_digest != requirement.expanded_tree_sha256:
+                            raise SnapshotUnavailableError(
+                                "ClinGen snapshot expanded-tree SHA-256 does not match deployment pin"
+                            )
+                        _verify_schema(staged, requirement.schema_version)
+                        staged.chmod(0o444)
+                        identity = {
+                            "mode": "external-reference",
+                            "compressed_sha256": requirement.compressed_sha256,
+                            "expanded_tree_sha256": expanded_digest,
+                            "schema_version": requirement.schema_version,
+                            "schema_minimum": requirement.schema_minimum,
+                            "schema_maximum": requirement.schema_maximum,
+                            "compressed_bytes": compressed_size,
+                            "expanded_bytes": staged.stat().st_size,
+                        }
+                        identity_tmp = staging / "identity.json.tmp"
+                        identity_tmp.write_text(
+                            json.dumps(identity, sort_keys=True, separators=(",", ":")) + "\n",
+                            encoding="utf-8",
+                        )
+                        identity_tmp.chmod(0o444)
+                        materialized_identity = staging / "identity.json"
+                        os.replace(identity_tmp, materialized_identity)
+                        _fsync_regular_file_no_follow(materialized_identity)
+                        _write_runtime_identity_manifest(
+                            staging,
+                            requirement.release_tag,
+                            [staged, materialized_identity],
+                        )
+                        with staged.open("rb") as handle:
+                            os.fsync(handle.fileno())
+                        _fsync_directory(staging)
+                        os.replace(staging, version_dir)
+                        _fsync_directory(root)
+                    finally:
+                        remove_materialization_scratch(root, staging)
+                else:
+                    identity = json.loads(identity_path.read_text(encoding="utf-8"))
+                    expected_identity = {
                         "compressed_sha256": requirement.compressed_sha256,
-                        "expanded_tree_sha256": expanded_digest,
+                        "expanded_tree_sha256": requirement.expanded_tree_sha256,
                         "schema_version": requirement.schema_version,
                         "schema_minimum": requirement.schema_minimum,
                         "schema_maximum": requirement.schema_maximum,
-                        "compressed_bytes": compressed_size,
-                        "expanded_bytes": staged.stat().st_size,
                     }
-                    identity_tmp = staging / "identity.json.tmp"
-                    identity_tmp.write_text(
-                        json.dumps(identity, sort_keys=True, separators=(",", ":")) + "\n",
-                        encoding="utf-8",
+                    if any(identity.get(key) != value for key, value in expected_identity.items()):
+                        raise SnapshotUnavailableError(
+                            "existing ClinGen materialization identity mismatch"
+                        )
+                    if (
+                        canonical_expanded_digest(selected, member_name="clingen.sqlite")
+                        != requirement.expanded_tree_sha256
+                    ):
+                        raise SnapshotUnavailableError(
+                            "existing ClinGen materialization expanded-tree digest mismatch"
+                        )
+                    _verify_schema(selected, requirement.schema_version)
+                    _write_runtime_identity_manifest(
+                        version_dir,
+                        requirement.release_tag,
+                        [selected, identity_path],
                     )
-                    identity_tmp.chmod(0o444)
-                    os.replace(identity_tmp, staging / "identity.json")
-                    with staged.open("rb") as handle:
-                        os.fsync(handle.fileno())
-                    _fsync_directory(staging)
-                    os.replace(staging, version_dir)
-                    _fsync_directory(root)
-                except BaseException:
-                    for child in staging.iterdir() if staging.exists() else ():
-                        child.unlink(missing_ok=True)
-                    staging.rmdir() if staging.exists() else None
-                    raise
-            else:
-                identity = json.loads(identity_path.read_text(encoding="utf-8"))
-                expected_identity = {
-                    "compressed_sha256": requirement.compressed_sha256,
-                    "expanded_tree_sha256": requirement.expanded_tree_sha256,
-                    "schema_version": requirement.schema_version,
-                    "schema_minimum": requirement.schema_minimum,
-                    "schema_maximum": requirement.schema_maximum,
-                }
-                if any(identity.get(key) != value for key, value in expected_identity.items()):
-                    raise SnapshotUnavailableError(
-                        "existing ClinGen materialization identity mismatch"
-                    )
-                if (
-                    canonical_expanded_digest(selected, member_name="clingen.sqlite")
-                    != requirement.expanded_tree_sha256
-                ):
-                    raise SnapshotUnavailableError(
-                        "existing ClinGen materialization expanded-tree digest mismatch"
-                    )
-                _verify_schema(selected, requirement.schema_version)
 
-            current_tmp = root / ".current.tmp"
-            current_tmp.unlink(missing_ok=True)
-            current_tmp.symlink_to(version_dir.name, target_is_directory=True)
-            os.replace(current_tmp, root / "current")
-            _fsync_directory(root)
-            return selected
+                current_tmp = root / ".current.tmp"
+                current_tmp.unlink(missing_ok=True)
+                current_tmp.symlink_to(version_dir.name, target_is_directory=True)
+                os.replace(current_tmp, root / "current")
+                _fsync_directory(root)
+                return selected
+            finally:
+                remove_materialization_scratch(root, verified_bundle)
     except OSError as exc:
         raise SnapshotUnavailableError(f"could not read ClinGen bundle safely: {exc}") from exc
-    finally:
-        verified_bundle.unlink(missing_ok=True)
 
 
 class Store:
     """Read-only accessor for a selected external ClinGen SQLite snapshot."""
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, *, data_root: str | Path | None = None) -> None:
         """Open a materialized SQLite ``path`` read-only and immutable.
 
         Raises:
             SnapshotUnavailableError: the snapshot file is absent or unreadable.
         """
         source = Path(path)
-        self._db_path = self._resolve_db_path(source)
+        resolved_data_root = self._resolve_data_root(Path(data_root)) if data_root else None
+        self._db_path = self._resolve_db_path(source, resolved_data_root)
+        self._materialized_root = self._db_path.parent
         self._lock = threading.Lock()
         self._pool: deque[sqlite3.Connection] = deque()
         self._closed = False
@@ -306,6 +376,11 @@ class Store:
             raise SnapshotUnavailableError("selected ClinGen expanded-tree identity is invalid")
         return identity
 
+    @property
+    def materialized_root(self) -> Path:
+        """Return the immutable version directory bound when this store opened."""
+        return self._materialized_root
+
     def _schema_version(self) -> str:
         with self.connection() as conn:
             rows = conn.execute("SELECT DISTINCT snapshot_version FROM meta").fetchall()
@@ -315,18 +390,59 @@ class Store:
     # ------------------------------------------------------------------
     # Snapshot resolution
     # ------------------------------------------------------------------
-    def _resolve_db_path(self, source: Path) -> Path:
-        """Return a selected ``.sqlite`` path and reject compressed inputs."""
+    @staticmethod
+    def _resolve_data_root(root: Path) -> Path:
+        try:
+            resolved = root.resolve(strict=True)
+        except OSError as exc:
+            raise SnapshotUnavailableError(
+                f"configured ClinGen data root is unavailable at {root}: {exc}"
+            ) from exc
+        if not resolved.is_dir():
+            raise SnapshotUnavailableError(
+                f"configured ClinGen data root is not a directory: {resolved}"
+            )
+        return resolved
+
+    def _resolve_db_path(self, source: Path, data_root: Path | None) -> Path:
+        """Bind one selected regular ``.sqlite`` file and reject mutable aliases."""
         if source.suffix == ".zst":
             raise SnapshotUnavailableError(
                 "Compressed ClinGen bundles must be materialized by `clingen-link "
                 "materialize-data`; the application only opens a selected read-only SQLite file."
             )
+        if source.is_symlink():
+            raise SnapshotUnavailableError(
+                f"ClinGen snapshot must not be a direct symlink: {source}. {_REFRESH_HINT}"
+            )
         if not source.exists():
             raise SnapshotUnavailableError(
                 f"ClinGen snapshot not found at {source}. {_REFRESH_HINT}"
             )
-        return source
+        try:
+            selected = source.resolve(strict=True)
+        except OSError as exc:
+            raise SnapshotUnavailableError(
+                f"ClinGen snapshot selection failed at {source}: {exc}. {_REFRESH_HINT}"
+            ) from exc
+        if not selected.is_file():
+            raise SnapshotUnavailableError(
+                f"ClinGen snapshot is not a regular file at {selected}. {_REFRESH_HINT}"
+            )
+        if data_root is not None:
+            try:
+                selected.relative_to(data_root)
+            except ValueError as exc:
+                raise SnapshotUnavailableError(
+                    f"selected ClinGen snapshot is outside configured data root {data_root}: "
+                    f"{selected}"
+                ) from exc
+            if selected.parent == data_root:
+                raise SnapshotUnavailableError(
+                    "selected ClinGen snapshot must be inside a version directory beneath "
+                    f"configured data root {data_root}"
+                )
+        return selected
 
     def _open(self) -> sqlite3.Connection:
         """Open a fresh read-only connection with row access by column name.
@@ -336,7 +452,7 @@ class Store:
         connection concurrently. ``immutable=1`` is safe because the ETL is the
         only writer and never touches a live snapshot in place.
         """
-        uri = f"file:{self._db_path.resolve()}?mode=ro&immutable=1"
+        uri = f"file:{self._db_path}?mode=ro&immutable=1"
         conn = sqlite3.connect(uri, uri=True, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         return conn

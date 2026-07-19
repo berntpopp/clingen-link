@@ -44,7 +44,11 @@ class ClingenServices:
 
     @classmethod
     def from_snapshot(
-        cls, path: str | Path | None = None, *, client: ClingenClient | None = None
+        cls,
+        path: str | Path | None = None,
+        *,
+        client: ClingenClient | None = None,
+        data_root: str | Path | None = None,
     ) -> ClingenServices:
         """Build the full service container from a snapshot path.
 
@@ -53,7 +57,10 @@ class ClingenServices:
         envelope as ``snapshot_unavailable``).
         """
         snapshot = Path(path) if path is not None else Path(settings.snapshot_path)
-        store = Store(snapshot)
+        selector_root = Path(data_root) if data_root is not None else None
+        if path is None and data_root is None:
+            selector_root = Path(settings.data_root)
+        store = Store(snapshot, data_root=selector_root)
         if path is None:
             # A deployment that cannot state its exact expected data identity, or whose
             # selected snapshot does not match it, is not ready. Raise the typed

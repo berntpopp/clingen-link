@@ -30,6 +30,7 @@ from clingen_link.exceptions import (
 from clingen_link.logging_config import configure_logging, get_server_logger
 from clingen_link.mcp.facade import create_clingen_mcp
 from clingen_link.mcp.service_adapters import ClingenServices, get_services
+from clingen_link.runtime_data_identity import RuntimeDataIdentityError, verify_runtime_identity
 
 if hasattr(fastmcp.settings, "http_host_origin_protection"):
     fastmcp.settings.http_host_origin_protection = False
@@ -151,8 +152,27 @@ class UnifiedServerManager:
                 if reason:
                     result["reason"] = reason
                 return JSONResponse(result, status_code=503)
+            try:
+                actual = verify_runtime_identity(services.store.materialized_root)
+                expected = {
+                    "release_tag": settings.data_release_tag,
+                    "digest": settings.data_identity_digest,
+                }
+                if actual != expected:
+                    raise RuntimeDataIdentityError(
+                        "verified runtime data identity does not match configured release identity"
+                    )
+            except (OSError, RuntimeDataIdentityError) as exc:
+                result["status"] = "degraded"
+                result["data_available"] = False
+                result["reason"] = str(exc)
+                return JSONResponse(result, status_code=503)
             result["data_available"] = True
             result["data_identity"] = services.store.data_identity
+            result["release_identity"] = {
+                "schema_version": 1,
+                "data_identity": {"expected": expected, "actual": actual},
+            }
             return result
 
         return app

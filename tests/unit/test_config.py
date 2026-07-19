@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+import pytest
+from pydantic import ValidationError
+
 from clingen_link.config import ServerConfig, Settings, settings
+
+_DATA_RELEASE_TAG = "data-clingen-2026-07-16"
+_DATA_IDENTITY_DIGEST = "sha256:9b8ef2094b31dade597b59cd2f58c3ccbba80f45e8b00d34ec6519291d2e6cbe"
 
 
 def test_defaults_present() -> None:
@@ -14,6 +20,8 @@ def test_defaults_present() -> None:
     assert s.erepo_api_base.startswith("https://")
     assert s.snapshot_path == "/data/current/clingen.sqlite"
     assert s.data_root == "/data"
+    assert s.data_release_tag == _DATA_RELEASE_TAG
+    assert s.data_identity_digest == _DATA_IDENTITY_DIGEST
     assert s.max_concurrency == 5
     assert s.request_timeout_s == 30
     assert s.cache_size == 512
@@ -29,6 +37,20 @@ def test_external_data_contract_requires_exact_identity(tmp_path) -> None:
         assert "SHA-256" in str(exc)
     else:  # pragma: no cover - assertion aid
         raise AssertionError("missing bundle digests must fail closed")
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("data_release_tag", "latest"),
+        ("data_release_tag", "bad tag"),
+        ("data_identity_digest", "9b8ef209"),
+        ("data_identity_digest", "sha256:" + "A" * 64),
+    ],
+)
+def test_runtime_data_identity_settings_are_strict(field: str, value: str) -> None:
+    with pytest.raises(ValidationError):
+        Settings(**{field: value})
 
 
 def test_env_prefix_override(monkeypatch) -> None:

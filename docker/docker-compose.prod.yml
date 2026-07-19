@@ -11,6 +11,9 @@ services:
     build: !reset null
     image: "${CLINGEN_LINK_IMAGE:?set an attested image@sha256 digest}"
     pull_policy: missing
+    environment:
+      CLINGEN_LINK_DATA_RELEASE_TAG: "${CLINGEN_LINK_DATA_RELEASE_TAG:-data-clingen-2026-07-16}"
+      CLINGEN_LINK_DATA_IDENTITY_DIGEST: "${CLINGEN_LINK_DATA_IDENTITY_DIGEST:-sha256:9b8ef2094b31dade597b59cd2f58c3ccbba80f45e8b00d34ec6519291d2e6cbe}"
 
   clingen-link:
     build: !reset null
@@ -18,6 +21,8 @@ services:
     pull_policy: missing
 
     environment:
+      CLINGEN_LINK_DATA_RELEASE_TAG: "${CLINGEN_LINK_DATA_RELEASE_TAG:-data-clingen-2026-07-16}"
+      CLINGEN_LINK_DATA_IDENTITY_DIGEST: "${CLINGEN_LINK_DATA_IDENTITY_DIGEST:-sha256:9b8ef2094b31dade597b59cd2f58c3ccbba80f45e8b00d34ec6519291d2e6cbe}"
       CLINGEN_LINK_LOG_LEVEL: INFO
       CLINGEN_LINK_CACHE_SIZE: 2000
       CLINGEN_LINK_CACHE_TTL_MINUTES: 120

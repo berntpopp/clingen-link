@@ -2,12 +2,35 @@
 
 from __future__ import annotations
 
+import os
+import shutil
+import sqlite3
 from pathlib import Path
 
 import pytest
 
 from clingen_link.exceptions import SnapshotUnavailableError
+from clingen_link.runtime_data_identity import build_identity_manifest, canonical_json_bytes
 from clingen_link.store.db import Store
+
+
+def _write_version(root: Path, name: str, source: Path, marker: str) -> Path:
+    version = root / name
+    version.mkdir()
+    snapshot = version / "clingen.sqlite"
+    shutil.copyfile(source, snapshot)
+    with sqlite3.connect(snapshot) as connection:
+        connection.execute("CREATE TABLE selected_version (marker TEXT NOT NULL)")
+        connection.execute("INSERT INTO selected_version VALUES (?)", (marker,))
+    manifest = build_identity_manifest(version, f"data-clingen-{name}", [snapshot])
+    (version / "data-identity-manifest.json").write_bytes(canonical_json_bytes(manifest) + b"\n")
+    return version
+
+
+def _select(root: Path, version: Path) -> None:
+    staged = root / ".current.tmp"
+    staged.symlink_to(version.name, target_is_directory=True)
+    os.replace(staged, root / "current")
 
 
 class TestMetaRecordCount:
@@ -105,6 +128,14 @@ class TestSnapshotResolution:
             with s.connection():
                 pass
 
+    def test_direct_snapshot_symlink_is_rejected(
+        self, test_snapshot_path: Path, tmp_path: Path
+    ) -> None:
+        alias = tmp_path / "alias.sqlite"
+        alias.symlink_to(test_snapshot_path)
+        with pytest.raises(SnapshotUnavailableError, match="symlink"):
+            Store(alias)
+
     def test_zst_bundle_must_be_materialized_by_init_service(
         self, test_snapshot_path: Path, tmp_path: Path
     ) -> None:
@@ -121,6 +152,34 @@ class TestSnapshotResolution:
         bundle.with_suffix(".sha256").write_text(f"{digest}  {bundle.name}\n")
         with pytest.raises(SnapshotUnavailableError, match="materialized"):
             Store(bundle)
+
+    def test_store_binds_one_selected_version_for_every_connection(
+        self, test_snapshot_path: Path, tmp_path: Path
+    ) -> None:
+        version_a = _write_version(tmp_path, "a", test_snapshot_path, "A")
+        version_b = _write_version(tmp_path, "b", test_snapshot_path, "B")
+        _select(tmp_path, version_a)
+        with Store(tmp_path / "current" / "clingen.sqlite", data_root=tmp_path) as store:
+            _select(tmp_path, version_b)
+            with store.connection() as first, store.connection() as second:
+                first_marker = first.execute("SELECT marker FROM selected_version").fetchone()[0]
+                second_marker = second.execute("SELECT marker FROM selected_version").fetchone()[0]
+
+            assert (first_marker, second_marker) == ("A", "A")
+            assert store.materialized_root == version_a.resolve()
+        with Store(tmp_path / "current" / "clingen.sqlite", data_root=tmp_path) as restarted:
+            assert restarted.materialized_root == version_b.resolve()
+
+    def test_selector_cannot_escape_the_configured_data_root(
+        self, test_snapshot_path: Path, tmp_path: Path
+    ) -> None:
+        data_root = tmp_path / "data"
+        data_root.mkdir()
+        external = _write_version(tmp_path, "external", test_snapshot_path, "outside")
+        (data_root / "current").symlink_to(external, target_is_directory=True)
+
+        with pytest.raises(SnapshotUnavailableError, match="outside configured data root"):
+            Store(data_root / "current" / "clingen.sqlite", data_root=data_root)
 
 
 class TestThreadSafety:
