@@ -22,13 +22,13 @@ repository="${GITHUB_REPOSITORY:-berntpopp/clingen-link}"
 config="$(dirname "$0")/../container-release.json"
 
 release_tag="$(jq -er '.data.release_tag' "$config")"
-digest="$(jq -er '.data.digest' "$config")"
-expected="${digest#sha256:}"
+identity_digest="$(jq -er '.data.digest' "$config")"
+bundle_assignment="$(jq -er '.smoke_environment[] | select(startswith("CLINGEN_LINK_DATA_BUNDLE_SHA256="))' "$config")"
+expected="${bundle_assignment#CLINGEN_LINK_DATA_BUNDLE_SHA256=}"
 [[ "$expected" =~ ^[0-9a-f]{64}$ ]] || {
-  echo "container-release.json data.digest is not a sha256 hex digest" >&2
+  echo "container-release.json smoke bundle digest is not a sha256 hex digest" >&2
   exit 1
 }
-
 seed_dir="$GF_SMOKE_FIXTURE_DIR/clingen-seed"
 mkdir -p "$seed_dir"
 bundle="$seed_dir/clingen.sqlite.zst"
@@ -57,6 +57,8 @@ schema_maximum="$(jq -er '.schema.maximum' "$manifest")"
 
 {
   echo "CLINGEN_LINK_DATA_SEED_DIR=${seed_dir}"
+  echo "CLINGEN_LINK_DATA_RELEASE_TAG=${release_tag}"
+  echo "CLINGEN_LINK_DATA_IDENTITY_DIGEST=${identity_digest}"
   echo "CLINGEN_LINK_DATA_BUNDLE_SHA256=${expected}"
   echo "CLINGEN_LINK_DATA_EXPANDED_SHA256=${expanded}"
   echo "CLINGEN_LINK_DATA_SCHEMA_VERSION=${schema_actual}"

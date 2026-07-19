@@ -36,6 +36,15 @@ then atomically selects the versioned snapshot into the reference volume. The se
 that volume read-only. A mismatch keeps the service **down on purpose** rather than serving
 unverified or stale bytes.
 
+The selected version also contains a canonical v1 `data-identity-manifest.json`. It records
+the immutable `CLINGEN_LINK_DATA_RELEASE_TAG` and a lexically sorted inventory of the exact
+materialized runtime files with byte lengths and SHA-256 hashes. Its canonical JSON SHA-256
+is `CLINGEN_LINK_DATA_IDENTITY_DIGEST` and the `data.digest` recorded in
+[`container-release.json`](../container-release.json); it is not the compressed archive
+digest. The manifest file is flushed and atomically replaced before its directory is synced.
+The version-directory key combines the bundle digest with a hash of the release tag, so a
+second tag using identical bundle bytes is isolated and cannot rewrite the first version.
+
 Materialize a bundle by hand with:
 
 ```bash
@@ -74,7 +83,7 @@ resource.
 assets as a **credential-free workflow artifact**. An explicitly authorized publisher then
 verifies the handoff, attests the exact bytes, and publishes a draft-first immutable
 `data-clingen-YYYY-MM-DD` release. Deploys pin both the compressed and the canonical
-expanded-tree digest.
+expanded-tree digest, plus the canonical runtime-manifest identity.
 
 Do **not** hand-edit a snapshot bundle or `tests/fixtures/`.
 
@@ -94,6 +103,12 @@ If the snapshot is missing or unreadable the store raises `SnapshotUnavailableEr
 to the `snapshot_unavailable` error code. The server still starts, and
 `get_server_capabilities` / `get_diagnostics` degrade gracefully and tell the operator what
 to do.
+
+Readiness binds the resolved version selected at process startup and recomputes its canonical
+runtime identity. A corrupt input, unexpected file, manifest error, or configured
+tag/digest mismatch returns HTTP 503 `degraded` without a `release_identity` fragment. An
+atomic `current` selector change does not mix database connections or change readiness for a
+running process; restart the process to adopt and attest the newly selected version.
 
 ## Licence & citation
 

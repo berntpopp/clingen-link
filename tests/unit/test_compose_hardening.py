@@ -18,6 +18,16 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCKER = ROOT / "docker"
+DATA_RELEASE_TAG = "data-clingen-2026-07-16"
+DATA_IDENTITY_DIGEST = "sha256:9b8ef2094b31dade597b59cd2f58c3ccbba80f45e8b00d34ec6519291d2e6cbe"
+RUNTIME_CAPABLE_RELEASE_BUILDER = (
+    "berntpopp/genefoundry-router/.github/workflows/_container-release.yml"
+    "@2f62be1d72fe81b5cad491aa9bd7c856813e696b"
+)
+RUNTIME_CAPABLE_CI_BUILDER = (
+    "berntpopp/genefoundry-router/.github/workflows/_container-ci.yml"
+    "@2f62be1d72fe81b5cad491aa9bd7c856813e696b"
+)
 
 
 class _ComposeLoader(yaml.SafeLoader):
@@ -147,20 +157,39 @@ def test_every_compose_schema_pin_matches_the_data_contract() -> None:
     assert found >= 6, f"expected the base + npm schema pins, found {found}"
 
 
-def test_compose_data_digest_matches_the_declared_data_release() -> None:
+def test_every_compose_profile_carries_the_declared_runtime_data_identity() -> None:
     """The compose default and container-release.json must name the SAME artifact.
 
     They are read by different actors (an operator running `docker compose up`, and the
     central release gate). If they drift, the stack silently verifies a bundle other than
     the one the release contract pins.
     """
-    declared = _release_config()["data"]["digest"].removeprefix("sha256:")
-    base = (DOCKER / "docker-compose.yml").read_text(encoding="utf-8")
-    assert f"CLINGEN_LINK_DATA_BUNDLE_SHA256:-{declared}" in base
-    npm = (DOCKER / "docker-compose.npm.yml").read_text(encoding="utf-8")
-    assert f"CLINGEN_LINK_DATA_BUNDLE_SHA256:-{declared}" in npm
+    declared = _release_config()["data"]
+    assert declared == {
+        "mode": "external-reference",
+        "release_tag": DATA_RELEASE_TAG,
+        "digest": DATA_IDENTITY_DIGEST,
+        "image_allowlist": [
+            "opt/venv/lib/python3.14/site-packages/clingen_link/data/svi_guidance.json"
+        ],
+    }
+    for compose_name in (
+        "docker-compose.yml",
+        "docker-compose.prod.yml",
+        "docker-compose.npm.yml",
+    ):
+        text = (DOCKER / compose_name).read_text(encoding="utf-8")
+        assert (
+            f'CLINGEN_LINK_DATA_RELEASE_TAG: "${{CLINGEN_LINK_DATA_RELEASE_TAG:-{DATA_RELEASE_TAG}}}"'
+            in text
+        )
+        assert (
+            f'CLINGEN_LINK_DATA_IDENTITY_DIGEST: "${{CLINGEN_LINK_DATA_IDENTITY_DIGEST:-{DATA_IDENTITY_DIGEST}}}"'
+            in text
+        )
     env_example = (ROOT / ".env.docker.example").read_text(encoding="utf-8")
-    assert f"CLINGEN_LINK_DATA_BUNDLE_SHA256={declared}" in env_example
+    assert f"CLINGEN_LINK_DATA_RELEASE_TAG={DATA_RELEASE_TAG}" in env_example
+    assert f"CLINGEN_LINK_DATA_IDENTITY_DIGEST={DATA_IDENTITY_DIGEST}" in env_example
 
 
 def test_declared_data_release_is_compatible_with_the_application_schema() -> None:
@@ -168,10 +197,8 @@ def test_declared_data_release_is_compatible_with_the_application_schema() -> No
     from clingen_link.data_contract import SNAPSHOT_SCHEMA_SEMVER
 
     declared = _release_config()["data"]
-    assert declared["release_tag"] == "data-clingen-2026-07-16"
-    assert declared["digest"] == (
-        "sha256:8ef351827e0ac86741891af4e53d91c1793f6c6cfc278754bff107774f9dd53c"
-    )
+    assert declared["release_tag"] == DATA_RELEASE_TAG
+    assert declared["digest"] == DATA_IDENTITY_DIGEST
     # The reusable router release schema intentionally accepts only its documented
     # external-reference fields. This mapping test is where the application/data
     # schema relationship is made explicit.
@@ -188,7 +215,44 @@ def test_smoke_preparation_hook_verifies_the_committed_digest() -> None:
     # must prove the bytes against the committed digest before the stack ever sees them.
     body = hook.read_text(encoding="utf-8")
     assert "sha256sum -c -" in body
-    assert ".data.digest" in body
+    assert "CLINGEN_LINK_DATA_BUNDLE_SHA256" in body
+    assert "CLINGEN_LINK_DATA_RELEASE_TAG" in body
+    assert "CLINGEN_LINK_DATA_IDENTITY_DIGEST" in body
+
+
+def test_container_release_opts_into_runtime_v1_with_schema_compatible_shape() -> None:
+    config = _release_config()
+    assert config["schema_version"] == 1
+    assert config["definitions"] == {"contract": "data-bound"}
+    assert config["data_identity_contract"] == "runtime-v1"
+    assert config["data"]["mode"] == "external-reference"
+    assert re.fullmatch(r"sha256:[0-9a-f]{64}", config["data"]["digest"])
+
+
+def test_runtime_v1_release_pins_the_reviewed_runtime_capable_builder() -> None:
+    """A runtime-v1 declaration is safe only with the reviewed runtime-aware builder."""
+    workflow = yaml.safe_load(
+        (ROOT / ".github" / "workflows" / "container-release.yml").read_text(encoding="utf-8")
+    )
+
+    assert _release_config()["data_identity_contract"] == "runtime-v1"
+    assert workflow["jobs"]["release"]["uses"] == RUNTIME_CAPABLE_RELEASE_BUILDER
+    assert workflow["permissions"] == {
+        "attestations": "write",
+        "contents": "write",
+        "id-token": "write",
+        "packages": "write",
+    }
+
+
+def test_runtime_v1_ci_pins_the_reviewed_runtime_capable_builder() -> None:
+    """PR validation must understand the same runtime-v1 release configuration."""
+    workflow = yaml.safe_load(
+        (ROOT / ".github" / "workflows" / "container-ci.yml").read_text(encoding="utf-8")
+    )
+
+    assert _release_config()["data_identity_contract"] == "runtime-v1"
+    assert workflow["jobs"]["container-ci"]["uses"] == RUNTIME_CAPABLE_CI_BUILDER
 
 
 # --- the self-contained npm overlay ----------------------------------------------------
