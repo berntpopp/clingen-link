@@ -47,7 +47,9 @@ def test_build_and_publish_jobs_are_separated() -> None:
 def test_publisher_is_draft_first_attested_and_never_clobbers() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "release create" in text and "--draft" in text
-    assert "actions/attest-build-provenance@" in text
+    assert (
+        "actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0"
+    ) in text
     assert 'release verify "$TAG"' not in text
     assert text.count("release verify-asset") == 3
     assert "attestation verify" not in text
