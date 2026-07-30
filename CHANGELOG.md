@@ -4,6 +4,29 @@ All notable changes to clingen-link are documented here.
 
 ## [Unreleased]
 
+## [4.0.3] - 2026-07-30
+
+### Changed
+
+- CI now tests the interpreter the container actually ships. The `quality` job
+  runs as a matrix over Python `3.12` and `3.14`. `3.12` is the declared
+  `requires-python` floor and stays tested so the floor is not a false claim;
+  `3.14` is what `docker/Dockerfile` ships. Previously the unit and integration
+  suites only ever ran on 3.12, so a 3.14-only stdlib or typing regression could
+  have reached the published image uncaught. The coverage gate still runs once,
+  on the 3.14 leg, so the matrix does not double CI time.
+
+- Removed the repo-root `.python-version` pin (`3.12`). uv resolves the project
+  interpreter from `.python-version` **in preference to** the one on `PATH`, so
+  with the file present both matrix legs would have silently run on 3.12 and the
+  matrix would have been decorative. Interpreter selection now comes from
+  `requires-python` plus whatever `actions/setup-python` puts on `PATH`, which is
+  how the rest of the fleet already works.
+
+- `requires-python`, ruff `target-version` and mypy `python_version` are
+  unchanged at `3.12`. Only the *tested* range widened; the supported floor did
+  not move. No runtime behaviour change.
+
 ## [4.0.2] - 2026-07-30
 
 ### Changed
