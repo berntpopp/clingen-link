@@ -4,6 +4,36 @@ All notable changes to clingen-link are documented here.
 
 ## [Unreleased]
 
+## [4.0.2] - 2026-07-30
+
+### Changed
+
+- Consolidated Dependabot sweep. Runtime and dev dependencies: `fastapi`
+  0.139.2 → 0.141.1, `prometheus-client` 0.25.0 → 0.26.0, `ruff` 0.15.22 →
+  0.16.0, `pre-commit` 4.6.0 → 4.6.1. GitHub Actions SHA pins:
+  `actions/checkout` v7.0.0 → v7.0.1, `actions/setup-python` v6 → v7.0.0,
+  `astral-sh/setup-uv` v8.3.2 → v9.0.0. Container base: `python:3.14-slim`
+  digest `d3400aa` → `cea0e60`.
+
+- Lint rule selection is now declared with `select` instead of `extend-select`.
+  ruff 0.16.0 grew its implicit default rule set from 59 rules to 413, and
+  `extend-select` extends that default — so the upgrade would have silently
+  enabled ~350 rules this repo never opted into (including ones that flag the
+  deliberate control characters in the error-leak-fencing test fixtures). The
+  selected rule set is unchanged from what clingen-link has always linted
+  against; it is simply now stated absolutely instead of relative to a moving
+  upstream default.
+
+### Fixed
+
+- **Two Action pin comments named a tag the pinned SHA is not.** In
+  `data-refresh.yml`, `actions/upload-artifact@043fb46d` was annotated `# v4.6.2`
+  (the SHA is v7.0.1) and `actions/download-artifact@3e5f45b2` was annotated
+  `# v4.3.0` (the SHA is v8.0.1). The pins themselves were already the intended
+  releases; only the human-readable tag comments were wrong, which defeats the
+  review signal a SHA pin exists to provide. Comments now name the tag each SHA
+  actually is.
+
 ## [4.0.1] - 2026-07-16
 
 ### Fixed
