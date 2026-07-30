@@ -24,7 +24,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "fastapi>=0.139.2,<1.0.0",
+    "fastapi>=0.140.0,<1.0.0",
     "uvicorn[standard]>=0.51.0,<1.0.0",
     "pydantic>=2.11.0,<3.0.0",
     "pydantic-settings>=2.14.2,<3.0.0",
@@ -39,7 +39,7 @@ dependencies = [
     "fastmcp>=3.4.4,<4.0.0",
     "gunicorn>=25.3.0,<27.0.0",
     "asgi-correlation-id>=5.0.1,<6.0.0",
-    "prometheus-client>=0.21.0,<1.0.0",
+    "prometheus-client>=0.26.0,<1.0.0",
 ]
 
 [dependency-groups]
@@ -50,9 +50,9 @@ dev = [
     "pytest-mock>=3.14.0,<4.0.0",
     "pytest-xdist>=3.6.0,<4.0.0",
     "respx>=0.22.0,<1.0.0",
-    "ruff>=0.15.22,<1.0.0",
+    "ruff>=0.16.0,<1.0.0",
     "mypy>=2.3.0,<3.0.0",
-    "pre-commit>=4.0.0,<5.0.0",
+    "pre-commit>=4.6.1,<5.0.0",
 ]
 
 [project.scripts]
@@ -71,7 +71,11 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-extend-select = [
+# `select`, not `extend-select`: ruff 0.16.0 grew its implicit default set from
+# 59 to 413 rules, so `extend-select` would silently enable ~350 rules this repo
+# never opted into. The list below is the rule set clingen-link has always
+# linted against (it already supersets the pre-0.16 default of E4/E7/E9 + F).
+select = [
     "E",
     "W",
     "F",
