@@ -4,6 +4,13 @@ All notable changes to clingen-link are documented here.
 
 ## [Unreleased]
 
+## [4.0.5] - 2026-08-10
+
+### Security
+
+- Redacted exception details from degraded `/health` responses while retaining
+  complete diagnostic context in server-only logs, closing CWE-209/CWE-497.
+
 ## [4.0.4] - 2026-08-10
 
 Consolidated Dependabot maintenance release. No API or MCP behaviour change.
