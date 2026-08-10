@@ -13,7 +13,7 @@ import pytest
 from fastmcp import FastMCP
 
 from clingen_link.config import ServerConfig, settings
-from clingen_link.exceptions import ConfigurationError
+from clingen_link.exceptions import ConfigurationError, SnapshotUnavailableError
 from clingen_link.mcp.service_adapters import ClingenServices, set_services
 from clingen_link.runtime_data_identity import (
     build_identity_manifest,
@@ -202,6 +202,60 @@ async def test_health_is_not_ready_without_a_snapshot(
     body = json.loads(bytes(response.body))
     assert body["status"] == "degraded"
     assert body["data_available"] is False
+
+
+async def test_health_redacts_startup_snapshot_exception(
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Startup exception details stay in logs and never enter public health JSON."""
+    sentinel = "/srv/private/sentinel.sqlite"
+    manager = _manager()
+
+    def fail_to_create_services() -> ClingenServices:
+        raise SnapshotUnavailableError(f"snapshot missing at {sentinel}")
+
+    monkeypatch.setattr(manager, "_create_services", fail_to_create_services)
+    app = await manager._create_fastapi_app(ServerConfig(transport="unified"))
+    health_route = next(r for r in app.routes if getattr(r, "path", None) == "/health")
+
+    with caplog.at_level(logging.ERROR, logger="test.clingen"):
+        async with app.router.lifespan_context(app):
+            response = await health_route.endpoint()
+
+    body = __import__("json").loads(bytes(response.body))
+    assert body["reason"] == "ClinGen reference data is unavailable."
+    assert sentinel not in response.body.decode()
+    assert sentinel in caplog.text
+
+
+async def test_health_redacts_runtime_identity_exception(
+    caplog: pytest.LogCaptureFixture,
+    injected_services: ClingenServices,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Runtime verifier details stay in logs and never enter public health JSON."""
+    import clingen_link.server_manager as server_manager_module
+
+    sentinel = "/srv/private/sentinel.sqlite"
+
+    def fail_identity_verification(_root: Path) -> dict[str, str]:
+        raise OSError(f"read failed at {sentinel}")
+
+    monkeypatch.setattr(
+        server_manager_module, "verify_runtime_identity", fail_identity_verification
+    )
+    manager = _manager()
+    app = await manager._create_fastapi_app(ServerConfig(transport="unified"))
+    health_route = next(r for r in app.routes if getattr(r, "path", None) == "/health")
+
+    with caplog.at_level(logging.ERROR, logger="test.clingen"):
+        async with app.router.lifespan_context(app):
+            response = await health_route.endpoint()
+
+    body = __import__("json").loads(bytes(response.body))
+    assert body["reason"] == "ClinGen reference data is unavailable."
+    assert sentinel not in response.body.decode()
+    assert sentinel in caplog.text
 
 
 async def test_health_reports_data_identity_when_ready(

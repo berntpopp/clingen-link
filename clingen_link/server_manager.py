@@ -32,6 +32,8 @@ from clingen_link.mcp.facade import create_clingen_mcp
 from clingen_link.mcp.service_adapters import ClingenServices, get_services
 from clingen_link.runtime_data_identity import RuntimeDataIdentityError, verify_runtime_identity
 
+PUBLIC_DATA_UNAVAILABLE_REASON = "ClinGen reference data is unavailable."
+
 if hasattr(fastmcp.settings, "http_host_origin_protection"):
     fastmcp.settings.http_host_origin_protection = False
 
@@ -96,9 +98,9 @@ class UnifiedServerManager:
             try:
                 app.state.clingen_services = self._create_services()
                 self.logger.info("Services ready")
-            except SnapshotUnavailableError as exc:
-                app.state.clingen_data_error = str(exc)
-                self.logger.error(f"ClinGen reference snapshot unavailable: {exc}")
+            except SnapshotUnavailableError:
+                app.state.clingen_data_error = PUBLIC_DATA_UNAVAILABLE_REASON
+                self.logger.exception("ClinGen reference snapshot unavailable")
             try:
                 yield
             finally:
@@ -162,10 +164,11 @@ class UnifiedServerManager:
                     raise RuntimeDataIdentityError(
                         "verified runtime data identity does not match configured release identity"
                     )
-            except (OSError, RuntimeDataIdentityError) as exc:
+            except (OSError, RuntimeDataIdentityError):
+                self.logger.exception("ClinGen runtime data identity verification failed")
                 result["status"] = "degraded"
                 result["data_available"] = False
-                result["reason"] = str(exc)
+                result["reason"] = PUBLIC_DATA_UNAVAILABLE_REASON
                 return JSONResponse(result, status_code=503)
             result["data_available"] = True
             result["data_identity"] = services.store.data_identity
