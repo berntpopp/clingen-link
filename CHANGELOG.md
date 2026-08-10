@@ -4,6 +4,22 @@ All notable changes to clingen-link are documented here.
 
 ## [Unreleased]
 
+## [4.0.4] - 2026-08-10
+
+Consolidated Dependabot maintenance release. No API or MCP behaviour change.
+
+### Security
+
+- Updated locked `cryptography` to 50.0.0, closing CVE-2026-69247 while
+  preserving the existing fail-closed container scan policy.
+
+### Changed
+
+- Updated Uvicorn to 0.52.1, Typer to 0.27.1, FastMCP to the current 3.4.x
+  release and Ruff to the current 0.16.x release.
+- Re-pinned release provenance attestation to
+  `actions/attest-build-provenance` v4.2.2 and updated its workflow contract.
+
 ## [4.0.3] - 2026-07-30
 
 ### Changed
