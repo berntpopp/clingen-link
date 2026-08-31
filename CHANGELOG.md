@@ -4,6 +4,10 @@ All notable changes to clingen-link are documented here.
 
 ## [Unreleased]
 
+## [4.0.6] - 2026-08-31
+
+- Re-pinned the Python base image and all CI workflow dependencies to reviewed immutable revisions.
+
 ## [4.0.5] - 2026-08-10
 
 ### Security

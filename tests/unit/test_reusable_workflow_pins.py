@@ -3,7 +3,7 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-ROUTER_WORKFLOW_SHA = "d3e029603806428dbd5ea6843383e85054a66e3b"
+ROUTER_WORKFLOW_SHA = "59050ea9d2851335286c73787f3b7769e1014062"
 
 
 def test_reusable_container_workflows_use_reviewed_router_revision() -> None:

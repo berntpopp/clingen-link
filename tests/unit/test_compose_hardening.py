@@ -22,11 +22,11 @@ DATA_RELEASE_TAG = "data-clingen-2026-07-16"
 DATA_IDENTITY_DIGEST = "sha256:9b8ef2094b31dade597b59cd2f58c3ccbba80f45e8b00d34ec6519291d2e6cbe"
 RUNTIME_CAPABLE_RELEASE_BUILDER = (
     "berntpopp/genefoundry-router/.github/workflows/_container-release.yml"
-    "@d3e029603806428dbd5ea6843383e85054a66e3b"
+    "@59050ea9d2851335286c73787f3b7769e1014062"
 )
 RUNTIME_CAPABLE_CI_BUILDER = (
     "berntpopp/genefoundry-router/.github/workflows/_container-ci.yml"
-    "@d3e029603806428dbd5ea6843383e85054a66e3b"
+    "@59050ea9d2851335286c73787f3b7769e1014062"
 )
 
 
