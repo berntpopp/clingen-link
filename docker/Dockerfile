@@ -55,7 +55,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     CLINGEN_LINK_MCP_PORT=8000 \
     TMPDIR=/tmp
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update \
+    && apt-get install -y --only-upgrade --no-install-recommends \
+    openssl \
+    libssl3t64 \
+    openssl-provider-legacy \
+    && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     && rm -rf /var/lib/apt/lists/* \
