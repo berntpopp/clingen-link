@@ -11,22 +11,28 @@ def _identity():
         {
             "schema_version": 1,
             "dataset": {
+                "name": "ClinGen curated evidence snapshot",
+                "release": "data-clingen-" + ("a" * 16),
                 "source": {
                     "identifier": "ClinGen",
                     "url": "https://clinicalgenome.org/",
                     "sha256": "a" * 64,
-                }
+                },
             },
-            "schema": {"actual": "2"},
+            "schema": {"minimum": "2.0.0", "maximum": "2.0.0", "actual": "2.0.0"},
             "record_counts": {"x": 1},
             "artifact": {
                 "filename": "clingen.sqlite.zst",
                 "sha256": "b" * 64,
                 "compressed_size": 1,
+                "max_compressed_size": 67108864,
                 "expanded_tree_sha256": "c" * 64,
                 "expanded_size": 1,
+                "max_expanded_size": 268435456,
                 "member_count": 1,
+                "max_members": 1,
             },
+            "previous_known_good_digest": "sha256:" + ("d" * 64),
         }
     )
 

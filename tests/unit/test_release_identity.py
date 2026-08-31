@@ -19,30 +19,39 @@ def _manifest() -> dict[str, object]:
     return {
         "schema_version": 1,
         "dataset": {
+            "name": "ClinGen curated evidence snapshot",
+            "release": "data-clingen-" + ("a" * 16),
             "source": {
                 "identifier": "ClinGen-2026.07",
                 "url": "https://clinicalgenome.org/",
                 "sha256": "a" * 64,
                 "retrieved_at": "volatile",
-            }
+            },
         },
-        "schema": {"actual": "2.0.0"},
+        "schema": {"minimum": "2.0.0", "maximum": "2.0.0", "actual": "2.0.0"},
         "record_counts": {"validity": 4, "dosage": 2},
         "artifact": {
             "filename": "clingen.sqlite.zst",
             "sha256": "b" * 64,
             "compressed_size": 12,
+            "max_compressed_size": 67108864,
             "expanded_tree_sha256": "c" * 64,
             "expanded_size": 22,
+            "max_expanded_size": 268435456,
             "member_count": 1,
+            "max_members": 1,
         },
+        "previous_known_good_digest": "sha256:" + ("d" * 64),
     }
 
 
 def test_identity_is_stable_and_excludes_capture_time() -> None:
     first = _manifest()
     second = _manifest()
-    second["dataset"] = {"source": {**first["dataset"]["source"], "retrieved_at": "later"}}  # type: ignore[index]
+    second["dataset"] = {
+        **first["dataset"],
+        "source": {**first["dataset"]["source"], "retrieved_at": "later"},
+    }  # type: ignore[index]
     assert sealed_identity(first) == sealed_identity(second)
     assert sealed_identity(first).tag == "data-clingen-" + ("a" * 16)
 
@@ -101,3 +110,19 @@ def test_identity_rejects_symlink_or_extra_remote_assets(tmp_path: Path) -> None
         assert_exact_assets(
             ["clingen.sqlite.zst", "data-release-manifest.json", "SHA256SUMS", "extra"]
         )
+
+
+@pytest.mark.parametrize(
+    "mutator",
+    [
+        lambda value: value.update(extra=True),
+        lambda value: value["dataset"].update(source_url="http://example.org"),
+        lambda value: value["artifact"].update(filename="other.sqlite.zst"),
+        lambda value: value["schema"].update(actual="not-a-schema"),
+    ],
+)
+def test_identity_rejects_noncanonical_shape_and_bounds(mutator) -> None:
+    manifest = _manifest()
+    mutator(manifest)
+    with pytest.raises(ReleaseIdentityError):
+        sealed_identity(manifest)

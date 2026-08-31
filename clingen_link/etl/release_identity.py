@@ -18,6 +18,29 @@ ReleaseState = Literal["create", "published_noop", "draft_publish_existing", "co
 _HEX = frozenset("0123456789abcdef")
 MAX_MANIFEST_BYTES = 1 << 20
 RELEASE_ASSETS = frozenset({"clingen.sqlite.zst", "data-release-manifest.json", "SHA256SUMS"})
+_ROOT_FIELDS = frozenset(
+    {
+        "schema_version",
+        "dataset",
+        "schema",
+        "record_counts",
+        "artifact",
+        "previous_known_good_digest",
+    }
+)
+_ARTIFACT_FIELDS = frozenset(
+    {
+        "filename",
+        "sha256",
+        "compressed_size",
+        "max_compressed_size",
+        "expanded_tree_sha256",
+        "expanded_size",
+        "max_expanded_size",
+        "member_count",
+        "max_members",
+    }
+)
 
 
 def _mapping(value: object, name: str) -> Mapping[str, object]:
@@ -66,12 +89,21 @@ class ReleaseIdentity:
 def sealed_identity(manifest: object) -> ReleaseIdentity:
     """Extract a typed identity from a decoded manifest, rejecting ambiguity."""
     root = _mapping(manifest, "manifest")
-    if root.get("schema_version") != 1:
+    if set(root) != _ROOT_FIELDS or root.get("schema_version") != 1:
         raise ReleaseIdentityError("schema_version must be integer 1")
     dataset = _mapping(root.get("dataset"), "dataset")
     source = _mapping(dataset.get("source"), "dataset.source")
     schema = _mapping(root.get("schema"), "schema")
     artifact = _mapping(root.get("artifact"), "artifact")
+    if set(dataset) != {"name", "release", "source"} or set(source) not in (
+        {"identifier", "url", "sha256"},
+        {"identifier", "url", "sha256", "retrieved_at"},
+    ):
+        raise ReleaseIdentityError("dataset/source shape is not exact")
+    if set(schema) != {"minimum", "maximum", "actual"}:
+        raise ReleaseIdentityError("schema shape is not exact")
+    if set(artifact) != _ARTIFACT_FIELDS or artifact.get("filename") != "clingen.sqlite.zst":
+        raise ReleaseIdentityError("artifact shape or filename is not exact")
     counts = _mapping(root.get("record_counts"), "record_counts")
     parsed_counts: list[tuple[str, int]] = []
     for name, count in counts.items():
@@ -81,12 +113,33 @@ def sealed_identity(manifest: object) -> ReleaseIdentity:
     if not parsed_counts:
         raise ReleaseIdentityError("record_counts must not be empty")
     source_sha = _sha(source.get("sha256"), "dataset.source.sha256")
+    if not _text(source.get("url"), "dataset.source.url").startswith("https://"):
+        raise ReleaseIdentityError("dataset.source.url must be HTTPS")
+    actual = _text(schema.get("actual"), "schema.actual")
+    if any(not value.isdigit() for value in actual.split(".")) or len(actual.split(".")) != 3:
+        raise ReleaseIdentityError("schema.actual must be a semantic version")
+    if any(
+        _text(schema.get(name), f"schema.{name}").split(".")[0] != actual.split(".")[0]
+        for name in ("minimum", "maximum")
+    ):
+        raise ReleaseIdentityError("schema bounds must share the actual major")
+    if (
+        _positive_int(artifact.get("compressed_size"), "artifact.compressed_size")
+        > _positive_int(artifact.get("max_compressed_size"), "artifact.max_compressed_size")
+        or _positive_int(artifact.get("expanded_size"), "artifact.expanded_size")
+        > _positive_int(artifact.get("max_expanded_size"), "artifact.max_expanded_size")
+        or _positive_int(artifact.get("member_count"), "artifact.member_count")
+        > _positive_int(artifact.get("max_members"), "artifact.max_members")
+    ):
+        raise ReleaseIdentityError("artifact exceeds declared bounds")
+    if _text(dataset.get("release"), "dataset.release") != f"data-clingen-{source_sha[:16]}":
+        raise ReleaseIdentityError("dataset.release does not match source identity")
     return ReleaseIdentity(
         tag=f"data-clingen-{source_sha[:16]}",
         source_identifier=_text(source.get("identifier"), "dataset.source.identifier"),
         source_url=_text(source.get("url"), "dataset.source.url"),
         source_sha256=source_sha,
-        snapshot_schema=_text(schema.get("actual"), "schema.actual"),
+        snapshot_schema=actual,
         record_counts=tuple(sorted(parsed_counts)),
         artifact_filename=_text(artifact.get("filename"), "artifact.filename"),
         artifact_sha256=_sha(artifact.get("sha256"), "artifact.sha256"),

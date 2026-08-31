@@ -140,9 +140,7 @@ def test_publisher_refetches_every_asset_and_attestation_before_the_only_promoti
     assert "clingen.sqlite.zst" in script
     assert ".digest" in script and ".size" in script
     assert 'gh attestation verify "$remote/clingen.sqlite.zst"' in script
-    assert (
-        publisher["steps"][recheck]["if"] == "steps.release_state.outputs.state != 'published_noop'"
-    )
+    assert publisher["steps"][recheck].get("if") is None
     assert "|| true" not in script and "grep -q '404'" not in script
 
 
@@ -151,3 +149,19 @@ def test_approval_binds_source_artifact_and_exact_handoff() -> None:
     for field in ("source_sha256", "artifact_sha256", "handoff_sha256", "artifact_id"):
         assert field in text
     assert "CLINGEN_RIGHTS_RECORD_JSON" in text
+    assert "steps.upload_handoff.outputs.artifact-id" in text
+    assert "steps.upload_handoff.outputs.artifact-digest" in text
+    assert "needs.build.outputs.artifact_id" in text
+    assert "needs.validate-publication.outputs.approval_digest" in text
+
+
+def test_published_release_is_rechecked_before_only_noop() -> None:
+    publisher = _workflow()["jobs"]["publish-release"]
+    recheck = next(
+        step
+        for step in publisher["steps"]
+        if step.get("name") == "Re-fetch exact draft identity immediately before promotion"
+    )
+    assert recheck.get("if") is None
+    assert "published" in recheck["run"]
+    assert "release_state" in recheck["run"]
