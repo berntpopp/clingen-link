@@ -6,19 +6,10 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish the verified build artifact as an immutable data release
+        description: Request protected release validation
         required: true
         default: false
         type: boolean
-      redistribution_allowed:
-        description: Confirm the dated ClinGen CC BY 4.0 redistribution review is affirmative
-        required: true
-        default: false
-        type: boolean
-      redistribution_review:
-        description: Reviewer and dated evidence reference
-        required: false
-        type: string
 
 concurrency:
   group: data-clingen-${{ github.run_id }}
@@ -29,112 +20,46 @@ permissions: {}
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    timeout-minutes: 55
+    permissions: {contents: read}
     outputs:
       tag: ${{ steps.bundle.outputs.tag }}
+      artifact_name: clingen-data-${{ github.run_id }}-${{ github.run_attempt }}
+      artifact_id: ${{ steps.upload_handoff.outputs.artifact-id }}
+      artifact_digest: ${{ steps.upload_handoff.outputs.artifact-digest }}
+      source_digest: ${{ github.sha }}
     steps:
-      - name: Checkout transformation source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.12"
-      - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          version: "0.8.7"
-          enable-cache: true
-      - name: Build snapshot and release evidence
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with: {python-version: "3.12"}
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with: {version: "0.8.7"}
+      - name: Build nonpublishing sealed snapshot
         id: bundle
-        env:
-          REDISTRIBUTION_ALLOWED: ${{ inputs.redistribution_allowed || false }}
-          REDISTRIBUTION_REVIEW: ${{ inputs.redistribution_review || '' }}
         run: |
           set -euo pipefail
           uv sync --group dev --frozen
-          mkdir -p "$RUNNER_TEMP/data-release"
-          uv run clingen-link refresh --out "$RUNNER_TEMP/data-release/clingen.sqlite"
-          uv run python - <<'PY'
-          import hashlib
-          import json
-          import os
-          import sqlite3
-          from datetime import UTC, datetime
+          out="$RUNNER_TEMP/data-release"; mkdir -p "$out"
+          uv run clingen-link refresh --out "$out/clingen.sqlite"
+          OUT="$out" uv run python - <<'PY'
+          import hashlib, json, os, sqlite3
           from pathlib import Path
           import zstandard
-
-          # Derive the labels from the code that built the DB, so a schema bump can never again
-          # ship a v2 DB labelled v1 (issue #46). SNAPSHOT_SCHEMA_SEMVER is the contract the ETL
-          # stamps into the snapshot; the app minimum is this build's own version (only a build
-          # that understands the contract may read a bundle stamped with it).
-          from clingen_link import __version__ as app_version
           from clingen_link.data_contract import SNAPSHOT_SCHEMA_SEMVER
-
-          out = Path(os.environ["RUNNER_TEMP"]) / "data-release"
-          raw = out / "clingen.sqlite"
-          bundle = out / "clingen.sqlite.zst"
-          with raw.open("rb") as src, bundle.open("wb") as dst:
-              zstandard.ZstdCompressor(level=19).copy_stream(src, dst)
-          file_sha = hashlib.sha256(raw.read_bytes()).hexdigest()
-          record = f"clingen.sqlite\0{0o444:o}\0{raw.stat().st_size}\0{file_sha}"
-          expanded = hashlib.sha256(record.encode()).hexdigest()
-          compressed = hashlib.sha256(bundle.read_bytes()).hexdigest()
+          from clingen_link.etl.release_identity import sealed_identity
+          out=Path(os.environ["OUT"]); raw=out/"clingen.sqlite"; bundle=out/"clingen.sqlite.zst"
+          with raw.open("rb") as src, bundle.open("wb") as dst: zstandard.ZstdCompressor(level=19).copy_stream(src,dst)
+          raw_sha=hashlib.sha256(raw.read_bytes()).hexdigest(); compressed=hashlib.sha256(bundle.read_bytes()).hexdigest()
           with sqlite3.connect(raw) as conn:
-              counts = dict(conn.execute("SELECT domain, record_count FROM meta"))
-              retrieved = min(row[0] for row in conn.execute("SELECT fetched_at FROM meta"))
-              source_sha = hashlib.sha256(
-                  "".join(sorted(row[0] for row in conn.execute("SELECT content_sha256 FROM meta"))).encode()
-              ).hexdigest()
-          tag = f"data-clingen-{datetime.now(UTC):%Y-%m-%d}"
-          manifest = {
-              "schema_version": 1,
-              "dataset": {"name": "ClinGen curated evidence snapshot", "release": tag,
-                  "source": {"identifier": tag, "url": "https://clinicalgenome.org/",
-                      "retrieved_at": retrieved, "sha256": source_sha}},
-              "transformation": {"repository": os.environ["GITHUB_REPOSITORY"],
-                  "revision": os.environ["GITHUB_SHA"]},
-              "schema": {"minimum": SNAPSHOT_SCHEMA_SEMVER, "maximum": SNAPSHOT_SCHEMA_SEMVER,
-                  "actual": SNAPSHOT_SCHEMA_SEMVER},
-              "record_counts": counts,
-              "artifact": {"filename": bundle.name, "sha256": compressed,
-                  "compressed_size": bundle.stat().st_size, "max_compressed_size": 67108864,
-                  "expanded_tree_sha256": expanded, "expanded_size": raw.stat().st_size,
-                  "max_expanded_size": 268435456, "member_count": 1, "max_members": 1},
-              "license": {"name": "CC BY 4.0", "url": "https://creativecommons.org/licenses/by/4.0/",
-                  "redistribution_allowed": os.environ["REDISTRIBUTION_ALLOWED"] == "true",
-                  "reviewed_at": datetime.now(UTC).isoformat(),
-                  "reviewer": os.environ["REDISTRIBUTION_REVIEW"] or "publication-not-authorized"},
-              "previous_known_good_digest": "sha256:e0204a40541e82fb86cf4725a2b5fa9edc5e0eec838ada9564fa8de973c51626",
-              # The schema-2 snapshot (score CODES, not prose) is only readable by v4+; a 3.x build
-              # would misread the score columns. Minimum is derived from this build's own version so
-              # the floor rises with each contract bump; the maximum caps the current major so a
-              # future schema-3 bundle is not claimed compatible with a v4 build.
-              "application_compatibility": {
-                  "minimum": app_version,
-                  "maximum": f"{app_version.split('.')[0]}.999.999",
-              },
-              "disclaimer": "Research use only; not clinical decision support. ClinGen data © ClinGen.",
-          }
-          (out / "data-release-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-          raw.unlink()
-          (out / "SHA256SUMS").write_text(
-              f"{compressed}  {bundle.name}\n{hashlib.sha256((out / 'data-release-manifest.json').read_bytes()).hexdigest()}  data-release-manifest.json\n"
-          )
-          Path(os.environ["GITHUB_OUTPUT"]).open("a").write(f"tag={tag}\n")
+              counts=dict(conn.execute("SELECT domain, record_count FROM meta")); source_sha=hashlib.sha256("".join(sorted(row[0] for row in conn.execute("SELECT content_sha256 FROM meta"))).encode()).hexdigest()
+          expanded=hashlib.sha256(f"clingen.sqlite\0{0o444:o}\0{raw.stat().st_size}\0{raw_sha}".encode()).hexdigest()
+          manifest={"schema_version":1,"dataset":{"name":"ClinGen curated evidence snapshot","release":f"data-clingen-{source_sha[:16]}","source":{"identifier":"clingen-content-sha256","url":"https://clinicalgenome.org/","sha256":source_sha}},"schema":{"minimum":SNAPSHOT_SCHEMA_SEMVER,"maximum":SNAPSHOT_SCHEMA_SEMVER,"actual":SNAPSHOT_SCHEMA_SEMVER},"record_counts":counts,"artifact":{"filename":bundle.name,"sha256":compressed,"compressed_size":bundle.stat().st_size,"max_compressed_size":67108864,"expanded_tree_sha256":expanded,"expanded_size":raw.stat().st_size,"max_expanded_size":268435456,"member_count":1,"max_members":1},"previous_known_good_digest":"sha256:e0204a40541e82fb86cf4725a2b5fa9edc5e0eec838ada9564fa8de973c51626"}
+          identity=sealed_identity(manifest)
+          (out/"data-release-manifest.json").write_text(json.dumps(manifest,sort_keys=True,indent=2)+"\n"); raw.unlink()
+          (out/"SHA256SUMS").write_text(f"{compressed}  {bundle.name}\n{hashlib.sha256((out/'data-release-manifest.json').read_bytes()).hexdigest()}  data-release-manifest.json\n")
+          Path(os.environ["GITHUB_OUTPUT"]).open("a").write(f"tag={identity.tag}\n")
           PY
-          uv run python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-          import jsonschema
-          root = Path(os.environ["GITHUB_WORKSPACE"])
-          out = Path(os.environ["RUNNER_TEMP"]) / "data-release"
-          schema = json.loads((root / "vendor/genefoundry/data-release-manifest.schema.json").read_text())
-          manifest = json.loads((out / "data-release-manifest.json").read_text())
-          jsonschema.Draft202012Validator(schema, format_checker=jsonschema.FormatChecker()).validate(manifest)
-          PY
-      - name: Upload immutable build handoff
+      - id: upload_handoff
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: clingen-data-${{ github.run_id }}-${{ github.run_attempt }}
@@ -142,115 +67,203 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
-  publish:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
+  validate-publication:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main' && github.ref_protected }}
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment: data-release
-    permissions:
-      contents: write
-      id-token: write
-      attestations: write
-    env:
-      # This job is privileged and deliberately never checks out the source: it consumes
-      # only the sealed build handoff. `gh` therefore has no git remote to infer the
-      # repository from, so name it explicitly instead of granting it a working tree.
-      GH_REPO: ${{ github.repository }}
+    permissions: {contents: read}
+    outputs:
+      approval_name: clingen-approval-${{ github.run_id }}-${{ github.run_attempt }}
+      approval_id: ${{ steps.upload_approval.outputs.artifact-id }}
+      approval_digest: ${{ steps.upload_approval.outputs.artifact-digest }}
     steps:
-      - name: Require affirmative redistribution review
-        env:
-          ALLOWED: ${{ inputs.redistribution_allowed }}
-          REVIEW: ${{ inputs.redistribution_review }}
-        run: |
-          test "$ALLOWED" = true
-          test -n "$REVIEW"
-      - name: Download exact build handoff
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with: {python-version: "3.12"}
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with: {version: "0.8.7"}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: clingen-data-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ${{ needs.build.outputs.artifact_name }}
           path: ${{ runner.temp }}/data-release
-      - name: Install checksum-pinned GitHub CLI
+      - name: validate_rights_record and seal exact approval
+        env:
+          CLINGEN_RIGHTS_RECORD_JSON: ${{ secrets.CLINGEN_RIGHTS_RECORD_JSON }}
+          TAG: ${{ needs.build.outputs.tag }}
+          BUILD_ARTIFACT_ID: ${{ needs.build.outputs.artifact_id }}
+          BUILD_ARTIFACT_DIGEST: ${{ needs.build.outputs.artifact_digest }}
+          BUILD_SOURCE_DIGEST: ${{ needs.build.outputs.source_digest }}
         run: |
           set -euo pipefail
-          gh_version=2.96.0
-          gh_sha256=83d5c2ccad5498f58bf6368acb1ab32588cf43ab3a4b1c301bf36328b1c8bd60
-          curl -fsSL --proto '=https' --tlsv1.2 -o "$RUNNER_TEMP/gh.tar.gz" \
-            "https://github.com/cli/cli/releases/download/v${gh_version}/gh_${gh_version}_linux_amd64.tar.gz"
-          echo "$gh_sha256  $RUNNER_TEMP/gh.tar.gz" | sha256sum -c -
-          tar -xzf "$RUNNER_TEMP/gh.tar.gz" -C "$RUNNER_TEMP"
-          install -m 0755 "$RUNNER_TEMP/gh_${gh_version}_linux_amd64/bin/gh" "$RUNNER_TEMP/gh"
-      - name: Verify previous known-good rollback target
+          test -n "$CLINGEN_RIGHTS_RECORD_JSON"
+          uv sync --group dev --frozen
+          HANDOFF="$RUNNER_TEMP/data-release" APPROVAL="$RUNNER_TEMP/approval.json" uv run python - <<'PY'
+          import hashlib,json,os
+          from datetime import UTC,datetime
+          from pathlib import Path
+          from clingen_link.etl.release_identity import sealed_identity
+          from clingen_link.etl.rights_record import validate_rights_record
+          handoff=Path(os.environ["HANDOFF"]); expected={"clingen.sqlite.zst","data-release-manifest.json","SHA256SUMS"}
+          if {p.name for p in handoff.iterdir()} != expected: raise SystemExit("unexpected handoff asset")
+          sums=dict(line.split(None,1) for line in (handoff/"SHA256SUMS").read_text().splitlines())
+          for name in expected-{ "SHA256SUMS" }:
+              if hashlib.sha256((handoff/name).read_bytes()).hexdigest()!=sums.get(name): raise SystemExit("checksum mismatch")
+          identity=sealed_identity(json.loads((handoff/"data-release-manifest.json").read_text()))
+          if identity.tag!=os.environ["TAG"]: raise SystemExit("tag mismatch")
+          rights=validate_rights_record(json.loads(os.environ["CLINGEN_RIGHTS_RECORD_JSON"]),identity)
+          approval={"run_id":os.environ["GITHUB_RUN_ID"],"run_attempt":os.environ["GITHUB_RUN_ATTEMPT"],"artifact_id":os.environ["BUILD_ARTIFACT_ID"],"artifact_digest":os.environ["BUILD_ARTIFACT_DIGEST"],"build_source_digest":os.environ["BUILD_SOURCE_DIGEST"],"artifact_name":f"clingen-data-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}","handoff_sha256":"sha256:"+hashlib.sha256((handoff/"SHA256SUMS").read_bytes()).hexdigest(),"tag":identity.tag,"source_sha256":identity.source_sha256,"artifact_sha256":identity.artifact_sha256,"rights_record_digest":rights.digest,"validated_at":datetime.now(UTC).isoformat()}
+          Path(os.environ["APPROVAL"]).write_text(json.dumps(approval,sort_keys=True))
+          PY
+      - id: upload_approval
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: clingen-approval-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/approval.json
+          if-no-files-found: error
+          retention-days: 3
+
+  publish-release:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main' && github.ref_protected }}
+    needs: [build, validate-publication]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: data-release
+    permissions: {contents: write, id-token: write, attestations: write}
+    env:
+      GH_REPO: ${{ github.repository }}
+      SOURCE_DIGEST: ${{ needs.build.outputs.source_digest }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact_id }}
+          path: ${{ runner.temp }}/data-release
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.validate-publication.outputs.approval_id }}
+          path: ${{ runner.temp }}/approval
+      - name: Determine closed immutable release state
+        id: release_state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/data-release"; sha256sum --check SHA256SUMS
+          test "$(jq -r .run_id "$RUNNER_TEMP/approval/approval.json")" = "$GITHUB_RUN_ID"
+          test "$(jq -r .run_attempt "$RUNNER_TEMP/approval/approval.json")" = "$GITHUB_RUN_ATTEMPT"
+          test "$(jq -r .artifact_name "$RUNNER_TEMP/approval/approval.json")" = "clingen-data-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          test "$(jq -r .artifact_id "$RUNNER_TEMP/approval/approval.json")" = "${{ needs.build.outputs.artifact_id }}"
+          test "$(jq -r .artifact_digest "$RUNNER_TEMP/approval/approval.json")" = "${{ needs.build.outputs.artifact_digest }}"
+          test "$(jq -r .build_source_digest "$RUNNER_TEMP/approval/approval.json")" = "$SOURCE_DIGEST"
+          test -n "${{ needs.validate-publication.outputs.approval_digest }}"
+          test "$(jq -r .tag "$RUNNER_TEMP/approval/approval.json")" = "$TAG"
+          test "$(jq -r .handoff_sha256 "$RUNNER_TEMP/approval/approval.json")" = "sha256:$(sha256sum SHA256SUMS | cut -d' ' -f1)"
+          source_sha="$(jq -r .dataset.source.sha256 data-release-manifest.json)"
+          artifact_sha="$(jq -r .artifact.sha256 data-release-manifest.json)"
+          test "$(jq -r .source_sha256 "$RUNNER_TEMP/approval/approval.json")" = "$source_sha"
+          test "$(jq -r .artifact_sha256 "$RUNNER_TEMP/approval/approval.json")" = "$artifact_sha"
+          verify_remote_release() {
+            local release_json="$1" remote="$2" asset id digest
+            mkdir "$remote"
+            jq -e '
+              .assets as $assets
+              | ($assets | type == "array" and length == 3)
+              and ($assets | map(.name) | sort == ["SHA256SUMS", "clingen.sqlite.zst", "data-release-manifest.json"])
+              and ($assets | map(.id) | unique | length == 3)
+              and ($assets | all(.[]; (.name | type) == "string" and (.id | type) == "number" and (.id | floor) == .id and .id > 0 and (.size | type) == "number" and (.size | floor) == .size and .size >= 0 and (.digest | type) == "string" and (.digest | test("^sha256:[0-9a-f]{64}$"))))
+            ' "$release_json" >/dev/null
+            for asset in clingen.sqlite.zst data-release-manifest.json SHA256SUMS; do
+              id="$(jq -er --arg asset "$asset" '.assets[] | select(.name == $asset) | .id' "$release_json")"
+              timeout 180s gh api -H 'Accept: application/octet-stream' "repos/$GH_REPO/releases/assets/$id" > "$remote/$asset"
+              test "$(stat -c %s "$remote/$asset")" = "$(jq -er --arg asset "$asset" '.assets[] | select(.name == $asset) | .size' "$release_json")"
+              digest="$(jq -er --arg asset "$asset" '.assets[] | select(.name == $asset) | .digest' "$release_json")"
+              test "sha256:$(sha256sum "$remote/$asset" | cut -d' ' -f1)" = "$digest"
+              cmp -- "$asset" "$remote/$asset"
+            done
+            (cd "$remote" && sha256sum --check SHA256SUMS)
+            for asset in clingen.sqlite.zst data-release-manifest.json SHA256SUMS; do
+              timeout 120s gh attestation verify "$remote/$asset" --repo "$GH_REPO" \
+                --signer-workflow "berntpopp/clingen-link/.github/workflows/data-refresh.yml" \
+                --source-ref "refs/heads/main" --source-digest "$SOURCE_DIGEST" \
+                --deny-self-hosted-runners
+            done
+          }
+          status="$(curl --silent --show-error --max-time 30 --max-redirs 0 --output "$RUNNER_TEMP/release.json" --write-out '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$GH_REPO/releases/tags/$TAG")"
+          state=collision
+          case "$status" in
+            404) state=create ;;
+            200)
+              remote="$RUNNER_TEMP/remote-initial"
+              verify_remote_release "$RUNNER_TEMP/release.json" "$remote"
+              draft="$(jq -er '.draft | if type == "boolean" then . else error("draft must be boolean") end' "$RUNNER_TEMP/release.json")"
+              test "$draft" = true && state=draft_publish_existing || state=published_noop
+              ;;
+            *) echo "unexpected GitHub release status: $status" >&2; exit 1 ;;
+          esac
+          printf '%s\n' "$state" > "$RUNNER_TEMP/release-state"
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+      - name: Create only an absent draft
+        if: steps.release_state.outputs.state == 'create'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.build.outputs.tag }}
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/data-release"
-          gh="$RUNNER_TEMP/gh"
-          previous_tag="$("$gh" release list --limit 1000 --json tagName,isDraft,publishedAt | jq -r --arg current "$TAG" '
-            [ .[]
-              | select(.tagName | startswith("data-clingen-"))
-              | select(.tagName != $current)
-              | select(.isDraft == false)
-            ]
-            | sort_by(.publishedAt)
-            | last
-            | .tagName // empty
-          ')"
-          if [ -n "$previous_tag" ]; then
-            previous_dir="$RUNNER_TEMP/previous-known-good"
-            mkdir -p "$previous_dir"
-            "$gh" release download "$previous_tag" --pattern data-release-manifest.json --dir "$previous_dir"
-            previous_sha="$(jq -er '.artifact.sha256' "$previous_dir/data-release-manifest.json")"
-            pinned_digest="$(jq -er '.previous_known_good_digest' "$RUNNER_TEMP/data-release/data-release-manifest.json")"
-            expected_digest="sha256:$previous_sha"
-            if [ "$pinned_digest" != "$expected_digest" ]; then
-              printf 'previous_known_good_digest is stale: got %s; update it to %s from %s\n' \
-                "$pinned_digest" "$expected_digest" "$previous_tag" >&2
-              exit 1
-            fi
+          if [ "$(cat "$RUNNER_TEMP/release-state")" = create ]; then
+            gh release create "$TAG" --draft --verify-tag --title "$TAG" --notes "Immutable ClinGen reference snapshot. Research use only; not clinical decision support."
+            gh release upload "$TAG" clingen.sqlite.zst data-release-manifest.json SHA256SUMS
           fi
-      - name: Verify handoff and create matching draft
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.build.outputs.tag }}
-        run: |
-          set -euo pipefail
-          cd "$RUNNER_TEMP/data-release"
-          sha256sum --check SHA256SUMS
-          gh="$RUNNER_TEMP/gh"
-          if "$gh" release view "$TAG" --json isDraft >"$RUNNER_TEMP/release.json" 2>/dev/null; then
-            test "$(jq -r .isDraft "$RUNNER_TEMP/release.json")" = true
-            rm -rf "$RUNNER_TEMP/existing" && mkdir "$RUNNER_TEMP/existing"
-            "$gh" release download "$TAG" --dir "$RUNNER_TEMP/existing"
-            if ! diff -q clingen.sqlite.zst "$RUNNER_TEMP/existing/clingen.sqlite.zst" \
-                || ! diff -q data-release-manifest.json "$RUNNER_TEMP/existing/data-release-manifest.json" \
-                || ! diff -q SHA256SUMS "$RUNNER_TEMP/existing/SHA256SUMS"; then
-              "$gh" release delete "$TAG" --yes --cleanup-tag
-              "$gh" release create "$TAG" --draft --title "$TAG" --notes "Immutable ClinGen reference snapshot. Research use only; not clinical decision support."
-              "$gh" release upload "$TAG" clingen.sqlite.zst data-release-manifest.json SHA256SUMS
-            fi
-          else
-            "$gh" release create "$TAG" --draft --title "$TAG" --notes "Immutable ClinGen reference snapshot. Research use only; not clinical decision support."
-            "$gh" release upload "$TAG" clingen.sqlite.zst data-release-manifest.json SHA256SUMS
-          fi
-      - name: Attest exact data assets
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        if: steps.release_state.outputs.state != 'published_noop'
         with:
           subject-path: |
             ${{ runner.temp }}/data-release/clingen.sqlite.zst
             ${{ runner.temp }}/data-release/data-release-manifest.json
-      - name: Publish once and verify immutable assets
+            ${{ runner.temp }}/data-release/SHA256SUMS
+      - name: Re-fetch exact draft identity immediately before promotion
+        if: steps.release_state.outputs.state != 'published_noop'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.build.outputs.tag }}
         run: |
           set -euo pipefail
-          # `verify-asset` compares the published asset against the LOCAL file, so it must
-          # run from the handoff directory. Each `run:` block starts a fresh shell in the
-          # workspace, so the cd from the previous step does not carry over.
           cd "$RUNNER_TEMP/data-release"
-          "$RUNNER_TEMP/gh" release edit "$TAG" --draft=false
-          "$RUNNER_TEMP/gh" release verify-asset "$TAG" clingen.sqlite.zst
-          "$RUNNER_TEMP/gh" release verify-asset "$TAG" data-release-manifest.json
-          "$RUNNER_TEMP/gh" release verify-asset "$TAG" SHA256SUMS
+          # This is the byte-level release_state equality decision for both drafts and published tags.
+          remote="$RUNNER_TEMP/remote-recheck"; mkdir "$remote"
+          status="$(curl --silent --show-error --max-time 30 --max-redirs 0 --output "$remote/release.json" --write-out '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$GH_REPO/releases/tags/$TAG")"
+          test "$status" = 200
+          draft="$(jq -er '.draft | if type == "boolean" then . else error("draft must be boolean") end' "$remote/release.json")"
+          test "$draft" = true
+          jq -e '
+            .assets as $assets
+            | ($assets | type == "array" and length == 3)
+            and ($assets | map(.name) | sort == ["SHA256SUMS", "clingen.sqlite.zst", "data-release-manifest.json"])
+            and ($assets | map(.id) | unique | length == 3)
+            and ($assets | all(.[]; (.name | type) == "string" and (.id | type) == "number" and (.id | floor) == .id and .id > 0 and (.size | type) == "number" and (.size | floor) == .size and .size >= 0 and (.digest | type) == "string" and (.digest | test("^sha256:[0-9a-f]{64}$"))))
+          ' "$remote/release.json" >/dev/null
+          for asset in clingen.sqlite.zst data-release-manifest.json SHA256SUMS; do
+            id="$(jq -er --arg asset "$asset" '.assets[] | select(.name == $asset) | .id' "$remote/release.json")"
+            timeout 180s gh api -H 'Accept: application/octet-stream' "repos/$GH_REPO/releases/assets/$id" > "$remote/$asset"
+            test "$(stat -c %s "$remote/$asset")" = "$(jq -er --arg asset "$asset" '.assets[] | select(.name == $asset) | .size' "$remote/release.json")"
+            digest="$(jq -er --arg asset "$asset" '.assets[] | select(.name == $asset) | .digest' "$remote/release.json")"
+            test "sha256:$(sha256sum "$remote/$asset" | cut -d' ' -f1)" = "$digest"
+            cmp -- "$asset" "$remote/$asset"
+          done
+          (cd "$remote" && sha256sum --check SHA256SUMS)
+          for asset in clingen.sqlite.zst data-release-manifest.json SHA256SUMS; do
+            timeout 120s gh attestation verify "$remote/$asset" --repo "$GH_REPO" \
+              --signer-workflow "berntpopp/clingen-link/.github/workflows/data-refresh.yml" \
+              --source-ref "refs/heads/main" --source-digest "$SOURCE_DIGEST" \
+              --deny-self-hosted-runners
+          done
+      - name: Promote only the exact rechecked draft
+        if: steps.release_state.outputs.state != 'published_noop'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release edit "$TAG" --draft=false
