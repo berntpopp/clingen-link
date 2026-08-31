@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import re
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "data-refresh.yml"
@@ -167,7 +171,39 @@ def test_published_release_is_rechecked_before_only_noop() -> None:
     assert "published_noop" in initial["run"]
     assert "verify_remote_release" in initial["run"]
     assert recheck["if"] == "steps.release_state.outputs.state != 'published_noop'"
-    assert 'test "$(jq -r .draft "$remote/release.json")" = true' in recheck["run"]
+    assert (
+        'jq -er \'.draft | if type == "boolean" then . else error("draft must be boolean") end\''
+        in recheck["run"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("draft", "valid"),
+    [(True, True), ("true", False), (None, False), (1, False), ({}, False), ("missing", False)],
+)
+def test_final_draft_recheck_accepts_only_a_literal_json_boolean(
+    draft: object, valid: bool
+) -> None:
+    """The exact workflow jq contract rejects truthy textual or missing values."""
+    publisher = _workflow()["jobs"]["publish-release"]
+    recheck = next(
+        step
+        for step in publisher["steps"]
+        if step.get("name") == "Re-fetch exact draft identity immediately before promotion"
+    )
+    strict_filter = '.draft | if type == "boolean" then . else error("draft must be boolean") end'
+    assert f"jq -er '{strict_filter}'" in recheck["run"]
+    payload = {} if draft == "missing" else {"draft": draft}
+    jq = shutil.which("jq")
+    assert jq is not None
+    result = subprocess.run(  # noqa: S603 - fixed local verifier and fixture exercise failure states
+        [jq, "-er", strict_filter],
+        input=json.dumps(payload),
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    assert (result.returncode == 0 and result.stdout.strip() == "true") is valid
 
 
 def test_every_existing_release_path_rejects_unsafe_asset_ids_and_binds_provenance() -> None:

@@ -235,7 +235,8 @@ jobs:
           remote="$RUNNER_TEMP/remote-recheck"; mkdir "$remote"
           status="$(curl --silent --show-error --max-time 30 --max-redirs 0 --output "$remote/release.json" --write-out '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$GH_REPO/releases/tags/$TAG")"
           test "$status" = 200
-          test "$(jq -r .draft "$remote/release.json")" = true
+          draft="$(jq -er '.draft | if type == "boolean" then . else error("draft must be boolean") end' "$remote/release.json")"
+          test "$draft" = true
           jq -e '
             .assets as $assets
             | ($assets | type == "array" and length == 3)
