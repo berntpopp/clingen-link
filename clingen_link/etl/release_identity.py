@@ -195,3 +195,34 @@ def assert_exact_assets(asset_names: object) -> None:
         raise ReleaseIdentityError("release assets must be a JSON string list")
     if len(asset_names) != len(set(asset_names)) or set(asset_names) != RELEASE_ASSETS:
         raise ReleaseIdentityError("release asset inventory is not exact")
+
+
+def assert_exact_asset_metadata(assets: object) -> None:
+    """Validate the projected GitHub metadata before an asset ID reaches a URL.
+
+    Callers must project API records to exactly ``name``, ``id``, ``size``, and
+    ``digest`` first.  That makes the policy independent of mutable or
+    undocumented API fields while rejecting duplicate, string, zero, or
+    negative IDs before any request interpolates one.
+    """
+    if not isinstance(assets, list):
+        raise ReleaseIdentityError("release assets must be a JSON list")
+    names: list[str] = []
+    identifiers: list[int] = []
+    for index, value in enumerate(assets):
+        asset = _mapping(value, f"release asset {index}")
+        if set(asset) != {"name", "id", "size", "digest"}:
+            raise ReleaseIdentityError("release asset metadata shape is not exact")
+        names.append(_text(asset.get("name"), f"release asset {index}.name"))
+        identifier = asset.get("id")
+        if isinstance(identifier, bool) or not isinstance(identifier, int) or identifier <= 0:
+            raise ReleaseIdentityError("release asset ID must be a positive integer")
+        identifiers.append(identifier)
+        _positive_int(asset.get("size"), f"release asset {index}.size")
+        digest = _text(asset.get("digest"), f"release asset {index}.digest")
+        if not digest.startswith("sha256:"):
+            raise ReleaseIdentityError("release asset digest must have sha256 prefix")
+        _sha(digest.removeprefix("sha256:"), f"release asset {index}.digest")
+    assert_exact_assets(names)
+    if len(identifiers) != len(set(identifiers)):
+        raise ReleaseIdentityError("release asset IDs must be unique")

@@ -139,8 +139,11 @@ def test_publisher_refetches_every_asset_and_attestation_before_the_only_promoti
     script = publisher["steps"][recheck]["run"]
     assert "clingen.sqlite.zst" in script
     assert ".digest" in script and ".size" in script
-    assert 'gh attestation verify "$remote/clingen.sqlite.zst"' in script
-    assert publisher["steps"][recheck].get("if") is None
+    assert 'gh attestation verify "$remote/$asset"' in script
+    assert (
+        publisher["steps"][recheck].get("if")
+        == "steps.release_state.outputs.state != 'published_noop'"
+    )
     assert "|| true" not in script and "grep -q '404'" not in script
 
 
@@ -157,11 +160,57 @@ def test_approval_binds_source_artifact_and_exact_handoff() -> None:
 
 def test_published_release_is_rechecked_before_only_noop() -> None:
     publisher = _workflow()["jobs"]["publish-release"]
-    recheck = next(
+    steps = publisher["steps"]
+    names = [step.get("name") for step in steps]
+    initial = steps[names.index("Determine closed immutable release state")]
+    recheck = steps[names.index("Re-fetch exact draft identity immediately before promotion")]
+    assert "published_noop" in initial["run"]
+    assert "verify_remote_release" in initial["run"]
+    assert recheck["if"] == "steps.release_state.outputs.state != 'published_noop'"
+    assert 'test "$(jq -r .draft "$remote/release.json")" = true' in recheck["run"]
+
+
+def test_every_existing_release_path_rejects_unsafe_asset_ids_and_binds_provenance() -> None:
+    publisher = _workflow()["jobs"]["publish-release"]
+    steps = publisher["steps"]
+    relevant = [
         step
-        for step in publisher["steps"]
-        if step.get("name") == "Re-fetch exact draft identity immediately before promotion"
+        for step in steps
+        if step.get("name")
+        in {
+            "Determine closed immutable release state",
+            "Re-fetch exact draft identity immediately before promotion",
+        }
+    ]
+    assert len(relevant) == 2
+    for step in relevant:
+        script = step["run"]
+        assert "unique | length == 3" in script
+        assert '(.id | type) == "number"' in script
+        assert ".id | floor" in script
+        assert ".id > 0" in script
+        assert "repos/$GH_REPO/releases/assets/$id" in script
+        assert 'gh attestation verify "$remote/$asset"' in script
+        assert "timeout 120s gh attestation verify" in script
+        assert (
+            '--signer-workflow "berntpopp/clingen-link/.github/workflows/data-refresh.yml"'
+            in script
+        )
+        assert '--source-ref "refs/heads/main"' in script
+        assert '--source-digest "$SOURCE_DIGEST"' in script
+
+
+def test_protected_main_only_jobs_bind_the_build_revision_and_attest_every_asset() -> None:
+    workflow = _workflow()
+    assert "github.ref == 'refs/heads/main'" in workflow["jobs"]["validate-publication"]["if"]
+    assert "github.ref_protected" in workflow["jobs"]["validate-publication"]["if"]
+    assert "github.ref == 'refs/heads/main'" in workflow["jobs"]["publish-release"]["if"]
+    assert "github.ref_protected" in workflow["jobs"]["publish-release"]["if"]
+    assert workflow["jobs"]["build"]["outputs"]["source_digest"] == "${{ github.sha }}"
+    assert "BUILD_SOURCE_DIGEST" in WORKFLOW.read_text(encoding="utf-8")
+    attest = next(
+        step
+        for step in workflow["jobs"]["publish-release"]["steps"]
+        if step.get("uses", "").startswith("actions/attest-build-provenance@")
     )
-    assert recheck.get("if") is None
-    assert "published" in recheck["run"]
-    assert "release_state" in recheck["run"]
+    assert "SHA256SUMS" in attest["with"]["subject-path"]

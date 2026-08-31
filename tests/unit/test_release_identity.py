@@ -8,6 +8,7 @@ import pytest
 
 from clingen_link.etl.release_identity import (
     ReleaseIdentityError,
+    assert_exact_asset_metadata,
     assert_exact_assets,
     load_sealed_identity,
     release_state,
@@ -110,6 +111,37 @@ def test_identity_rejects_symlink_or_extra_remote_assets(tmp_path: Path) -> None
         assert_exact_assets(
             ["clingen.sqlite.zst", "data-release-manifest.json", "SHA256SUMS", "extra"]
         )
+
+
+def test_remote_asset_metadata_accepts_only_the_exact_release_inventory() -> None:
+    assert_exact_asset_metadata(
+        [
+            {"name": "clingen.sqlite.zst", "id": 1, "size": 1, "digest": "sha256:" + "a" * 64},
+            {
+                "name": "data-release-manifest.json",
+                "id": 2,
+                "size": 1,
+                "digest": "sha256:" + "b" * 64,
+            },
+            {"name": "SHA256SUMS", "id": 3, "size": 1, "digest": "sha256:" + "c" * 64},
+        ]
+    )
+
+
+@pytest.mark.parametrize("bad_id", [0, -1, 2, "2"])
+def test_remote_asset_metadata_fails_closed_on_each_unsafe_id_type_or_value(bad_id: object) -> None:
+    assets: list[dict[str, object]] = [
+        {"name": "clingen.sqlite.zst", "id": 1, "size": 1, "digest": "sha256:" + "a" * 64},
+        {
+            "name": "data-release-manifest.json",
+            "id": bad_id,
+            "size": 1,
+            "digest": "sha256:" + "b" * 64,
+        },
+        {"name": "SHA256SUMS", "id": 2, "size": 1, "digest": "sha256:" + "c" * 64},
+    ]
+    with pytest.raises(ReleaseIdentityError):
+        assert_exact_asset_metadata(assets)
 
 
 @pytest.mark.parametrize(
