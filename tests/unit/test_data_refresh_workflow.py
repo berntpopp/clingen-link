@@ -65,20 +65,18 @@ def test_publication_requires_a_protected_complete_rights_record() -> None:
     assert text.index("validate_rights_record") < text.index("gh api")
 
 
-def test_publisher_verifies_the_rollback_target_against_the_latest_release() -> None:
-    """A build stays credential-free, while publication refuses a stale rollback pin."""
+def test_publisher_derives_a_closed_state_before_any_mutation() -> None:
+    """A build stays credential-free, while publication derives closed release states."""
     steps = _steps("publish-release")
     names = [step.get("name", "") for step in steps]
-    check = steps[names.index("Verify previous known-good rollback target")]
+    check = steps[names.index("Determine closed immutable release state")]
     script = check["run"]
 
-    assert names.index(check["name"]) < names.index(
-        "Create only an absent draft or publish exact existing draft"
-    )
-    assert "gh api" in script
-    assert "data-release-manifest.json" in script
+    assert names.index(check["name"]) < names.index("Create only an absent draft")
+    assert "curl" in script
+    assert "published_noop" in script and "collision" in script
     assert "release-state" in script
-    assert "cmp SHA256SUMS" in script
+    assert "curl" in script and "404" in script
     assert "publish-release" in _workflow()["jobs"]
     assert "release list" not in "\n".join(step.get("run", "") for step in _steps("build"))
 
@@ -128,3 +126,28 @@ def test_all_actions_are_full_sha_pinned() -> None:
             uses = step.get("uses")
             if uses:
                 assert len(uses.rsplit("@", 1)[1].split()[0]) == 40, uses
+
+
+def test_publisher_refetches_every_asset_and_attestation_before_the_only_promotion() -> None:
+    workflow = _workflow()
+    publisher = workflow["jobs"]["publish-release"]
+    assert publisher["timeout-minutes"] == 20
+    names = [step.get("name", "") for step in publisher["steps"]]
+    recheck = names.index("Re-fetch exact draft identity immediately before promotion")
+    promote = names.index("Promote only the exact rechecked draft")
+    assert recheck < promote
+    script = publisher["steps"][recheck]["run"]
+    assert "clingen.sqlite.zst" in script
+    assert ".digest" in script and ".size" in script
+    assert 'gh attestation verify "$remote/clingen.sqlite.zst"' in script
+    assert (
+        publisher["steps"][recheck]["if"] == "steps.release_state.outputs.state != 'published_noop'"
+    )
+    assert "|| true" not in script and "grep -q '404'" not in script
+
+
+def test_approval_binds_source_artifact_and_exact_handoff() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    for field in ("source_sha256", "artifact_sha256", "handoff_sha256", "artifact_id"):
+        assert field in text
+    assert "CLINGEN_RIGHTS_RECORD_JSON" in text

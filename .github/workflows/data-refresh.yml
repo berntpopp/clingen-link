@@ -20,6 +20,7 @@ permissions: {}
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 55
     permissions: {contents: read}
     outputs:
       tag: ${{ steps.bundle.outputs.tag }}
@@ -66,6 +67,7 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment: data-release
     permissions: {contents: read}
     outputs:
@@ -102,7 +104,7 @@ jobs:
           identity=sealed_identity(json.loads((handoff/"data-release-manifest.json").read_text()))
           if identity.tag!=os.environ["TAG"]: raise SystemExit("tag mismatch")
           rights=validate_rights_record(json.loads(os.environ["CLINGEN_RIGHTS_RECORD_JSON"]),identity)
-          approval={"run_id":os.environ["GITHUB_RUN_ID"],"run_attempt":os.environ["GITHUB_RUN_ATTEMPT"],"artifact_name":f"clingen-data-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}","tag":identity.tag,"source_sha256":identity.source_sha256,"artifact_sha256":identity.artifact_sha256,"rights_record_digest":rights.digest,"validated_at":datetime.now(UTC).isoformat()}
+          approval={"run_id":os.environ["GITHUB_RUN_ID"],"run_attempt":os.environ["GITHUB_RUN_ATTEMPT"],"artifact_id":f"clingen-data-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}","artifact_name":f"clingen-data-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}","handoff_sha256":"sha256:"+hashlib.sha256((handoff/"SHA256SUMS").read_bytes()).hexdigest(),"tag":identity.tag,"source_sha256":identity.source_sha256,"artifact_sha256":identity.artifact_sha256,"rights_record_digest":rights.digest,"validated_at":datetime.now(UTC).isoformat()}
           Path(os.environ["APPROVAL"]).write_text(json.dumps(approval,sort_keys=True))
           PY
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -116,6 +118,7 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
     needs: [build, validate-publication]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment: data-release
     permissions: {contents: write, id-token: write, attestations: write}
     env:
@@ -129,7 +132,8 @@ jobs:
         with:
           name: ${{ needs.validate-publication.outputs.approval_name }}
           path: ${{ runner.temp }}/approval
-      - name: Verify previous known-good rollback target
+      - name: Determine closed immutable release state
+        id: release_state
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.build.outputs.tag }}
@@ -139,18 +143,26 @@ jobs:
           test "$(jq -r .run_id "$RUNNER_TEMP/approval/approval.json")" = "$GITHUB_RUN_ID"
           test "$(jq -r .run_attempt "$RUNNER_TEMP/approval/approval.json")" = "$GITHUB_RUN_ATTEMPT"
           test "$(jq -r .artifact_name "$RUNNER_TEMP/approval/approval.json")" = "clingen-data-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          test "$(jq -r .artifact_id "$RUNNER_TEMP/approval/approval.json")" = "clingen-data-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           test "$(jq -r .tag "$RUNNER_TEMP/approval/approval.json")" = "$TAG"
-          timeout 30s gh api --method GET "repos/$GH_REPO/releases/tags/$TAG" > "$RUNNER_TEMP/release.json" 2> "$RUNNER_TEMP/release.err" || true
-          if [ -s "$RUNNER_TEMP/release.json" ]; then
-            test "$(jq -r .isDraft "$RUNNER_TEMP/release.json")" = true || exit 0
-            jq -e '[.assets[].name] | sort == ["SHA256SUMS","clingen.sqlite.zst","data-release-manifest.json"]' "$RUNNER_TEMP/release.json" >/dev/null
-            timeout 60s gh release download "$TAG" --dir "$RUNNER_TEMP/existing" --pattern data-release-manifest.json --pattern SHA256SUMS
-            cmp data-release-manifest.json "$RUNNER_TEMP/existing/data-release-manifest.json"
-            cmp SHA256SUMS "$RUNNER_TEMP/existing/SHA256SUMS"; state=draft_publish_existing
-          elif grep -q '404' "$RUNNER_TEMP/release.err"; then state=create
-          else cat "$RUNNER_TEMP/release.err" >&2; exit 1; fi
+          test "$(jq -r .handoff_sha256 "$RUNNER_TEMP/approval/approval.json")" = "sha256:$(sha256sum SHA256SUMS | cut -d' ' -f1)"
+          source_sha="$(jq -r .dataset.source.sha256 data-release-manifest.json)"
+          artifact_sha="$(jq -r .artifact.sha256 data-release-manifest.json)"
+          test "$(jq -r .source_sha256 "$RUNNER_TEMP/approval/approval.json")" = "$source_sha"
+          test "$(jq -r .artifact_sha256 "$RUNNER_TEMP/approval/approval.json")" = "$artifact_sha"
+          status="$(curl --silent --show-error --max-time 30 --max-redirs 0 --output "$RUNNER_TEMP/release.json" --write-out '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$GH_REPO/releases/tags/$TAG")"
+          state=collision
+          case "$status" in
+            404) state=create ;;
+            200)
+              test "$(jq -r .draft "$RUNNER_TEMP/release.json")" = true && state=draft_publish_existing || state=published_noop
+              ;;
+            *) echo "unexpected GitHub release status: $status" >&2; exit 1 ;;
+          esac
           printf '%s\n' "$state" > "$RUNNER_TEMP/release-state"
-      - name: Create only an absent draft or publish exact existing draft
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+      - name: Create only an absent draft
+        if: steps.release_state.outputs.state == 'create'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.build.outputs.tag }}
@@ -161,20 +173,40 @@ jobs:
             gh release create "$TAG" --draft --verify-tag --title "$TAG" --notes "Immutable ClinGen reference snapshot. Research use only; not clinical decision support."
             gh release upload "$TAG" clingen.sqlite.zst data-release-manifest.json SHA256SUMS
           fi
-          gh attestation verify clingen.sqlite.zst --repo "$GH_REPO"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        if: steps.release_state.outputs.state != 'published_noop'
         with:
           subject-path: |
             ${{ runner.temp }}/data-release/clingen.sqlite.zst
             ${{ runner.temp }}/data-release/data-release-manifest.json
-      - name: Publish once and verify immutable assets
+      - name: Re-fetch exact draft identity immediately before promotion
+        if: steps.release_state.outputs.state != 'published_noop'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.build.outputs.tag }}
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/data-release"
+          remote="$RUNNER_TEMP/remote-recheck"; mkdir "$remote"
+          status="$(curl --silent --show-error --max-time 30 --max-redirs 0 --output "$remote/release.json" --write-out '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$GH_REPO/releases/tags/$TAG")"
+          test "$status" = 200
+          test "$(jq -r .draft "$remote/release.json")" = true
+          jq -e '[.assets[] | {name,size,digest,id}] | sort_by(.name) | map(.name) == ["SHA256SUMS","clingen.sqlite.zst","data-release-manifest.json"]' "$remote/release.json" >/dev/null
+          for asset in clingen.sqlite.zst data-release-manifest.json SHA256SUMS; do
+            id="$(jq -er --arg asset "$asset" '.assets[] | select(.name == $asset) | .id' "$remote/release.json")"
+            timeout 180s gh api -H 'Accept: application/octet-stream' "repos/$GH_REPO/releases/assets/$id" > "$remote/$asset"
+            test "$(stat -c %s "$remote/$asset")" = "$(jq -er --arg asset "$asset" '.assets[] | select(.name == $asset) | .size' "$remote/release.json")"
+            digest="$(jq -er --arg asset "$asset" '.assets[] | select(.name == $asset) | .digest' "$remote/release.json")"
+            test "sha256:$(sha256sum "$remote/$asset" | cut -d' ' -f1)" = "$digest"
+            cmp -- "$asset" "$remote/$asset"
+          done
+          (cd "$remote" && sha256sum --check SHA256SUMS)
+          gh attestation verify "$remote/clingen.sqlite.zst" --repo "$GH_REPO"
+      - name: Promote only the exact rechecked draft
+        if: steps.release_state.outputs.state != 'published_noop'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          set -euo pipefail
           gh release edit "$TAG" --draft=false
-          gh release verify-asset "$TAG" clingen.sqlite.zst
-          gh release verify-asset "$TAG" data-release-manifest.json
-          gh release verify-asset "$TAG" SHA256SUMS
