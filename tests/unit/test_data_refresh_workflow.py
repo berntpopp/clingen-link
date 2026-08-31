@@ -31,53 +31,55 @@ def _steps(job: str) -> list[dict[str, Any]]:
 
 def test_build_and_publish_jobs_are_separated() -> None:
     jobs = _workflow()["jobs"]
-    assert set(jobs) == {"build", "publish"}
+    assert set(jobs) == {"build", "validate-publication", "publish-release"}
     assert jobs["build"]["permissions"] == {"contents": "read"}
-    assert jobs["publish"]["permissions"] == {
+    assert jobs["validate-publication"]["permissions"] == {"contents": "read"}
+    assert jobs["publish-release"]["permissions"] == {
         "contents": "write",
         "id-token": "write",
         "attestations": "write",
     }
-    assert jobs["publish"]["needs"] == "build"
+    assert jobs["publish-release"]["needs"] == ["build", "validate-publication"]
     assert not any(
-        step.get("uses", "").startswith("actions/checkout") for step in _steps("publish")
+        step.get("uses", "").startswith("actions/checkout") for step in _steps("publish-release")
     )
 
 
 def test_publisher_is_draft_first_attested_and_never_clobbers() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
-    assert "release create" in text and "--draft" in text
+    assert "release create" in text and "--draft" in text and "--verify-tag" in text
     assert (
         "actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2"
     ) in text
-    assert 'release verify "$TAG"' not in text
-    assert text.count("release verify-asset") == 3
-    assert "attestation verify" not in text
+    assert "attestation verify" in text
+    assert "release delete" not in text
+    assert "release upload" in text
     assert "--clobber" not in text
 
 
-def test_publication_requires_affirmative_redistribution_review() -> None:
+def test_publication_requires_a_protected_complete_rights_record() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
-    assert "redistribution_allowed" in text
-    assert "redistribution_review" in text
-    assert "data-clingen-" in text
+    assert "CLINGEN_RIGHTS_RECORD_JSON" in text
+    assert "redistribution_allowed" not in text
+    assert "redistribution_review" not in text
+    assert text.index("validate_rights_record") < text.index("gh api")
 
 
 def test_publisher_verifies_the_rollback_target_against_the_latest_release() -> None:
     """A build stays credential-free, while publication refuses a stale rollback pin."""
-    steps = _steps("publish")
-    names = [step["name"] for step in steps]
+    steps = _steps("publish-release")
+    names = [step.get("name", "") for step in steps]
     check = steps[names.index("Verify previous known-good rollback target")]
     script = check["run"]
 
-    assert names.index(check["name"]) < names.index("Verify handoff and create matching draft")
-    assert "release list" in script
-    assert "release download" in script
+    assert names.index(check["name"]) < names.index(
+        "Create only an absent draft or publish exact existing draft"
+    )
+    assert "gh api" in script
     assert "data-release-manifest.json" in script
-    assert "previous_known_good_digest" in script
-    assert ".artifact.sha256" in script
-    assert '--arg current "$TAG"' in script
-    assert "publish" in _workflow()["jobs"]
+    assert "release-state" in script
+    assert "cmp SHA256SUMS" in script
+    assert "publish-release" in _workflow()["jobs"]
     assert "release list" not in "\n".join(step.get("run", "") for step in _steps("build"))
 
 
@@ -98,7 +100,7 @@ def test_publish_steps_naming_handoff_files_run_from_the_handoff_dir() -> None:
     Scoped to ``publish``: only that job resolves names against the handoff dir. The
     build job writes the same names from Python, where they are paths under ``out``.
     """
-    for step in _steps("publish"):
+    for step in _steps("publish-release"):
         script = step.get("run")
         if not script:
             continue
