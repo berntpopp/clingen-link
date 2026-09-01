@@ -197,6 +197,40 @@ def assert_exact_assets(asset_names: object) -> None:
         raise ReleaseIdentityError("release asset inventory is not exact")
 
 
+def parse_sha256sums(payload: str, expected_names: set[str]) -> dict[str, str]:
+    """Parse an exact, filename-keyed SHA256SUMS handoff.
+
+    The checksum convention is ``<digest>  <filename>``.  Parsing into a
+    filename-keyed mapping keeps validation aligned with the later file lookup
+    and rejects missing, extra, duplicate, malformed, or non-canonical records.
+    """
+    if (
+        not isinstance(payload, str)
+        or not expected_names
+        or any(not isinstance(name, str) or not name for name in expected_names)
+    ):
+        raise ReleaseIdentityError("SHA256SUMS input is not a non-empty file set")
+    lines = payload.splitlines()
+    if len(lines) != len(expected_names):
+        raise ReleaseIdentityError("SHA256SUMS record count is not exact")
+    checksums: dict[str, str] = {}
+    for line_number, line in enumerate(lines, 1):
+        fields = line.split()
+        if len(fields) != 2:
+            raise ReleaseIdentityError(f"SHA256SUMS line {line_number} is malformed")
+        digest, name = fields
+        if name not in expected_names:
+            raise ReleaseIdentityError(f"SHA256SUMS line {line_number} names an unexpected file")
+        if name in checksums:
+            raise ReleaseIdentityError(f"SHA256SUMS line {line_number} duplicates a file")
+        if len(digest) != 64 or any(char not in _HEX for char in digest):
+            raise ReleaseIdentityError(f"SHA256SUMS line {line_number} has an invalid digest")
+        checksums[name] = digest
+    if set(checksums) != expected_names:
+        raise ReleaseIdentityError("SHA256SUMS filenames are not exact")
+    return checksums
+
+
 def assert_exact_asset_metadata(assets: object) -> None:
     """Validate the projected GitHub metadata before an asset ID reaches a URL.
 

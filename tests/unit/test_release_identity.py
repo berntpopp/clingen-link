@@ -11,6 +11,7 @@ from clingen_link.etl.release_identity import (
     assert_exact_asset_metadata,
     assert_exact_assets,
     load_sealed_identity,
+    parse_sha256sums,
     release_state,
     sealed_identity,
 )
@@ -98,6 +99,25 @@ def test_manifest_file_is_capped_and_checksum_bound(tmp_path: Path) -> None:
         ).source_sha256
         == "a" * 64
     )
+
+
+def test_sha256sums_parser_rejects_non_exact_records() -> None:
+    expected = {"clingen.sqlite.zst", "data-release-manifest.json"}
+    valid = "a" * 64 + "  clingen.sqlite.zst\n" + "b" * 64 + "  data-release-manifest.json"
+    assert parse_sha256sums(valid, expected) == {
+        "clingen.sqlite.zst": "a" * 64,
+        "data-release-manifest.json": "b" * 64,
+    }
+    invalid = (
+        valid,
+        "a" * 64 + "  clingen.sqlite.zst\n" + "a" * 64 + "  clingen.sqlite.zst",
+        "a" * 64 + "  clingen.sqlite.zst\n" + "c" * 64 + "  extra",
+        "a" * 64 + "  clingen.sqlite.zst\nmalformed",
+        "A" * 64 + "  clingen.sqlite.zst\n" + "b" * 64 + "  data-release-manifest.json",
+    )
+    for payload in invalid[1:]:
+        with pytest.raises(ReleaseIdentityError):
+            parse_sha256sums(payload, expected)
 
 
 def test_identity_rejects_symlink_or_extra_remote_assets(tmp_path: Path) -> None:

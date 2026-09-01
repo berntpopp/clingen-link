@@ -103,11 +103,11 @@ jobs:
           import hashlib,json,os
           from datetime import UTC,datetime
           from pathlib import Path
-          from clingen_link.etl.release_identity import sealed_identity
+          from clingen_link.etl.release_identity import parse_sha256sums, sealed_identity
           from clingen_link.etl.rights_record import validate_rights_record
           handoff=Path(os.environ["HANDOFF"]); expected={"clingen.sqlite.zst","data-release-manifest.json","SHA256SUMS"}
           if {p.name for p in handoff.iterdir()} != expected: raise SystemExit("unexpected handoff asset")
-          sums=dict(line.split(None,1) for line in (handoff/"SHA256SUMS").read_text().splitlines())
+          sums=parse_sha256sums((handoff/"SHA256SUMS").read_text(), expected-{ "SHA256SUMS" })
           for name in expected-{ "SHA256SUMS" }:
               if hashlib.sha256((handoff/name).read_bytes()).hexdigest()!=sums.get(name): raise SystemExit("checksum mismatch")
           identity=sealed_identity(json.loads((handoff/"data-release-manifest.json").read_text()))

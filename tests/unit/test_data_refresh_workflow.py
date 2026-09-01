@@ -162,6 +162,25 @@ def test_approval_binds_source_artifact_and_exact_handoff() -> None:
     assert "needs.validate-publication.outputs.approval_digest" in text
 
 
+def test_checksum_validation_keys_sha256sums_by_filename() -> None:
+    """A valid handoff must resolve each filename to its declared digest."""
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "parse_sha256sums(" in text
+
+    from clingen_link.etl.release_identity import parse_sha256sums
+
+    payload = "\n".join(
+        (
+            "a" * 64 + "  clingen.sqlite.zst",
+            "b" * 64 + "  data-release-manifest.json",
+        )
+    )
+    assert parse_sha256sums(payload, {"clingen.sqlite.zst", "data-release-manifest.json"}) == {
+        "clingen.sqlite.zst": "a" * 64,
+        "data-release-manifest.json": "b" * 64,
+    }
+
+
 def test_published_release_is_rechecked_before_only_noop() -> None:
     publisher = _workflow()["jobs"]["publish-release"]
     steps = publisher["steps"]
