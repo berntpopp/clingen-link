@@ -30,8 +30,8 @@
   },
   "data": {
     "mode": "external-reference",
-    "release_tag": "data-clingen-2026-07-16",
-    "digest": "sha256:9b8ef2094b31dade597b59cd2f58c3ccbba80f45e8b00d34ec6519291d2e6cbe",
+    "release_tag": "data-clingen-de5f403028d2e1e1",
+    "digest": "sha256:2386237724d0470fc8507202f0c8ecc79390935e938b1a916e26df85b8d53b44",
     "image_allowlist": [
       "opt/venv/lib/python3.14/site-packages/clingen_link/data/svi_guidance.json"
     ]
@@ -44,7 +44,7 @@
     "profile": "immutable-bundle"
   },
   "smoke_environment": [
-    "CLINGEN_LINK_DATA_BUNDLE_SHA256=8ef351827e0ac86741891af4e53d91c1793f6c6cfc278754bff107774f9dd53c"
+    "CLINGEN_LINK_DATA_BUNDLE_SHA256=ae1dbfb8962b5073a0e9d4acd6ed1c7aa9c72509f00ae61878d9b8531c36492f"
   ],
   "preparation": "docker/ci-prepare-smoke.sh"
 }

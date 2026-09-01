@@ -18,8 +18,8 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCKER = ROOT / "docker"
-DATA_RELEASE_TAG = "data-clingen-2026-07-16"
-DATA_IDENTITY_DIGEST = "sha256:9b8ef2094b31dade597b59cd2f58c3ccbba80f45e8b00d34ec6519291d2e6cbe"
+DATA_RELEASE_TAG = "data-clingen-de5f403028d2e1e1"
+DATA_IDENTITY_DIGEST = "sha256:2386237724d0470fc8507202f0c8ecc79390935e938b1a916e26df85b8d53b44"
 RUNTIME_CAPABLE_RELEASE_BUILDER = (
     "berntpopp/genefoundry-router/.github/workflows/_container-release.yml"
     "@db47bd3357cebf33e6722615c4f0e7419a64857e"
