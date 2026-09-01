@@ -151,6 +151,184 @@ def test_publisher_refetches_every_asset_and_attestation_before_the_only_promoti
     assert "|| true" not in script and "grep -q '404'" not in script
 
 
+def test_draft_recheck_uses_exact_release_id_and_target_identity() -> None:
+    """Draft lookup must not use the tag endpoint, which hides draft releases."""
+    publisher = _workflow()["jobs"]["publish-release"]
+    steps = publisher["steps"]
+    names = [step.get("name") for step in steps]
+    initial = steps[names.index("Determine closed immutable release state")]
+    create = steps[names.index("Create only an absent draft")]
+    recheck = steps[names.index("Re-fetch exact draft identity immediately before promotion")]
+
+    initial_script = initial["run"]
+    create_script = create["run"]
+    recheck_script = recheck["run"]
+    assert "releases?per_page=100" in initial_script
+    assert "MAX_RELEASE_PAGES=20" in initial_script
+    assert "release-pagination.sh" in initial_script
+    assert 'source "$RUNNER_TEMP/release-pagination.sh"' in create_script
+    assert "release_id" in initial_script
+    assert ".id" in initial_script and ".tag_name" in initial_script
+    assert ".target_commitish" in initial_script
+    assert "release-id" in create.get("run", "")
+    assert 'RELEASE_ID="$(cat "$RUNNER_TEMP/release-id")"' in recheck_script
+    assert "releases/$RELEASE_ID" in recheck_script
+    assert "releases/tags/$TAG" not in recheck_script
+    assert ".id == ($release_id|tonumber)" in recheck_script
+    assert ".tag_name == $TAG" in recheck_script
+    assert '.target_commitish == "main"' in recheck_script
+
+    jq = shutil.which("jq")
+    assert jq is not None
+    predicate = (
+        ".id == ($release_id|tonumber) and .tag_name == $TAG and "
+        '.draft == true and .target_commitish == "main"'
+    )
+    valid = {
+        "id": 380448098,
+        "tag_name": "data-clingen-a",
+        "draft": True,
+        "target_commitish": "main",
+    }
+    for candidate, valid_result in (
+        (valid, True),
+        ({**valid, "id": 380448099}, False),
+        ({**valid, "tag_name": "data-clingen-b"}, False),
+        ({**valid, "draft": False}, False),
+        ({**valid, "target_commitish": "other"}, False),
+    ):
+        result = subprocess.run(  # noqa: S603 - fixed local verifier and fixture exercise failure states
+            [
+                jq,
+                "-e",
+                "--argjson",
+                "release_id",
+                "380448098",
+                "--arg",
+                "TAG",
+                "data-clingen-a",
+                predicate,
+            ],
+            input=json.dumps(candidate),
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        assert (result.returncode == 0) is valid_result
+
+
+def _shell_function(script: str, name: str) -> str:
+    lines = script.splitlines()
+    start = next(i for i, line in enumerate(lines) if line.strip() == f"{name}() {{")
+    depth = 0
+    selected: list[str] = []
+    for line in lines[start:]:
+        selected.append(line)
+        depth += line.count("{") - line.count("}")
+        if depth == 0:
+            return "\n".join(selected)
+    raise AssertionError(f"unterminated shell function: {name}")
+
+
+def _run_release_pagination(
+    script: str,
+    tmp_path: Path,
+    pages: list[list[dict[str, Any]]],
+    *,
+    max_pages: int = 20,
+) -> subprocess.CompletedProcess[str]:
+    fixture_dir = tmp_path / "pages"
+    fixture_dir.mkdir(parents=True)
+    for number, page in enumerate(pages, start=1):
+        (fixture_dir / f"page-{number}.json").write_text(json.dumps(page), encoding="utf-8")
+    fake_curl = tmp_path / "curl"
+    fake_curl.write_text(
+        """#!/bin/sh
+set -eu
+output=
+url=
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --output) output=$2; shift 2 ;;
+    *) url=$1; shift ;;
+  esac
+done
+page=${url##*page=}
+cp "$FIXTURE_DIR/page-$page.json" "$output"
+printf '200'
+""",
+        encoding="utf-8",
+    )
+    fake_curl.chmod(0o755)
+    function = _shell_function(script, "find_tag_releases")
+    harness = f"""\
+set -euo pipefail
+RUNNER_TEMP={tmp_path}
+GH_REPO=example/repo
+GH_TOKEN=fixture
+TAG=data-clingen-test
+MAX_RELEASE_PAGES={max_pages}
+FIXTURE_DIR={fixture_dir}
+PATH={tmp_path}:$PATH
+export FIXTURE_DIR PATH
+{function}
+find_tag_releases "$RUNNER_TEMP/matches.json"
+cat "$RUNNER_TEMP/matches.json"
+"""
+    return subprocess.run(  # noqa: S603 - executes only the extracted local workflow helper
+        ["bash", "-c", harness],  # noqa: S607 - controlled system shell
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_release_pagination_finds_later_page_and_rejects_duplicates(tmp_path: Path) -> None:
+    """Fallback lookup must exhaust full pages and preserve all matches for rejection."""
+    steps = _steps("publish-release")
+    names = [step.get("name", "") for step in steps]
+    script = steps[names.index("Determine closed immutable release state")]["run"]
+    first_page = [{"id": i, "tag_name": f"other-{i}"} for i in range(100)]
+    later = [
+        {
+            "id": 200,
+            "tag_name": "data-clingen-test",
+            "draft": True,
+            "target_commitish": "main",
+        }
+    ]
+    result = _run_release_pagination(script, tmp_path / "later", [first_page, later])
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == later
+
+    duplicate = [{"id": 200, "tag_name": "data-clingen-test"}, *first_page[1:]]
+    second_match = [
+        {
+            "id": 201,
+            "tag_name": "data-clingen-test",
+            "draft": True,
+            "target_commitish": "main",
+        }
+    ]
+    result = _run_release_pagination(script, tmp_path / "duplicate", [duplicate, second_match])
+    assert result.returncode == 0, result.stderr
+    assert [release["id"] for release in json.loads(result.stdout)] == [200, 201]
+    assert '*) echo "multiple GitHub releases use tag $TAG" >&2; exit 1 ;;' in script
+
+
+def test_release_pagination_fails_closed_when_page_bound_is_exhausted(tmp_path: Path) -> None:
+    """A continuously full inventory must not be treated as complete at the bound."""
+    steps = _steps("publish-release")
+    names = [step.get("name", "") for step in steps]
+    script = steps[names.index("Determine closed immutable release state")]["run"]
+    full_page = [{"id": i, "tag_name": f"other-{i}"} for i in range(100)]
+    result = _run_release_pagination(
+        script, tmp_path / "overflow", [full_page, full_page], max_pages=2
+    )
+    assert result.returncode != 0
+    assert "pagination" in result.stderr.lower()
+
+
 def test_approval_binds_source_artifact_and_exact_handoff() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     for field in ("source_sha256", "artifact_sha256", "handoff_sha256", "artifact_id"):
