@@ -6,11 +6,14 @@ from pathlib import Path
 
 import pytest
 
+import clingen_link.etl.release_identity as release_identity
 from clingen_link.etl.release_identity import (
     ReleaseIdentityError,
     assert_exact_asset_metadata,
     assert_exact_assets,
     load_sealed_identity,
+    load_sha256sums,
+    parse_sha256sums,
     release_state,
     sealed_identity,
 )
@@ -98,6 +101,65 @@ def test_manifest_file_is_capped_and_checksum_bound(tmp_path: Path) -> None:
         ).source_sha256
         == "a" * 64
     )
+
+
+def test_sha256sums_parser_rejects_non_exact_records() -> None:
+    expected = {"clingen.sqlite.zst", "data-release-manifest.json"}
+    valid = b"a" * 64 + b"  clingen.sqlite.zst\n" + b"b" * 64 + b"  data-release-manifest.json"
+    assert parse_sha256sums(valid, expected) == {
+        "clingen.sqlite.zst": "a" * 64,
+        "data-release-manifest.json": "b" * 64,
+    }
+    invalid = (
+        b"a" * 64 + b"  clingen.sqlite.zst\n" + b"a" * 64 + b"  clingen.sqlite.zst",
+        b"a" * 64 + b"  clingen.sqlite.zst\n" + b"c" * 64 + b"  extra",
+        b"a" * 64 + b"  clingen.sqlite.zst\nmalformed",
+        b"A" * 64 + b"  clingen.sqlite.zst\n" + b"b" * 64 + b"  data-release-manifest.json",
+        b"a" * 64 + b"  clingen.sqlite.zst\n" + b"a" * 64 + b"  data-release-manifest.json",
+        valid.replace(b"  ", b" "),
+        valid.replace(b"  ", b"   "),
+        valid.replace(b"  ", b"\t"),
+        b" " + valid,
+        valid + b" ",
+        valid.replace(b"\n", b"\r\n"),
+        valid.replace(b"\n", b"\n\n"),
+    )
+    for payload in invalid:
+        with pytest.raises(ReleaseIdentityError):
+            parse_sha256sums(payload, expected)
+
+
+def test_sha256sums_loader_rejects_oversize_and_accepts_exact_boundary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    expected = {"clingen.sqlite.zst", "data-release-manifest.json"}
+    valid = b"a" * 64 + b"  clingen.sqlite.zst\n" + b"b" * 64 + b"  data-release-manifest.json"
+    path = tmp_path / "SHA256SUMS"
+    monkeypatch.setattr(release_identity, "MAX_SHA256SUMS_BYTES", len(valid))
+    path.write_bytes(valid)
+    assert load_sha256sums(path, expected)["clingen.sqlite.zst"] == "a" * 64
+    path.write_bytes(valid + b"x")
+    with pytest.raises(ReleaseIdentityError):
+        load_sha256sums(path, expected)
+
+
+def test_sha256sums_loader_normalizes_missing_path_errors(tmp_path: Path) -> None:
+    with pytest.raises(ReleaseIdentityError):
+        load_sha256sums(tmp_path / "missing-SHA256SUMS", {"clingen.sqlite.zst"})
+
+
+def test_sha256sums_loader_normalizes_open_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "SHA256SUMS"
+    path.write_bytes(b"a" * 64 + b"  clingen.sqlite.zst")
+
+    def fail_open(*args: object, **kwargs: object) -> int:
+        raise OSError("open failed")
+
+    monkeypatch.setattr(release_identity.os, "open", fail_open)
+    with pytest.raises(ReleaseIdentityError):
+        load_sha256sums(path, {"clingen.sqlite.zst"})
 
 
 def test_identity_rejects_symlink_or_extra_remote_assets(tmp_path: Path) -> None:
