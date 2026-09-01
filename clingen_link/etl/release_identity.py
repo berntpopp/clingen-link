@@ -221,6 +221,7 @@ def parse_sha256sums(payload: bytes, expected_names: set[str]) -> dict[str, str]
     if len(lines) != len(expected_names):
         raise ReleaseIdentityError("SHA256SUMS record count is not exact")
     checksums: dict[str, str] = {}
+    digests: set[bytes] = set()
     for line_number, line in enumerate(lines, 1):
         if len(line) < 66 or line[64:66] != b"  ":
             raise ReleaseIdentityError(f"SHA256SUMS line {line_number} is malformed")
@@ -232,6 +233,9 @@ def parse_sha256sums(payload: bytes, expected_names: set[str]) -> dict[str, str]
             raise ReleaseIdentityError(f"SHA256SUMS line {line_number} duplicates a file")
         if len(digest) != 64 or any(char not in _HEX_BYTES for char in digest):
             raise ReleaseIdentityError(f"SHA256SUMS line {line_number} has an invalid digest")
+        if digest in digests:
+            raise ReleaseIdentityError(f"SHA256SUMS line {line_number} duplicates a digest")
+        digests.add(digest)
         checksums[decoded_name] = digest.decode("ascii")
     if set(checksums) != expected_names:
         raise ReleaseIdentityError("SHA256SUMS filenames are not exact")
@@ -240,8 +244,12 @@ def parse_sha256sums(payload: bytes, expected_names: set[str]) -> dict[str, str]
 
 def load_sha256sums(path: Path, expected_names: set[str]) -> dict[str, str]:
     """Read and parse a checksum handoff through a bounded no-follow descriptor."""
-    status = path.lstat()
-    if not path.is_file() or status.st_size > MAX_SHA256SUMS_BYTES:
+    try:
+        status = path.lstat()
+        regular = path.is_file()
+    except OSError as error:
+        raise ReleaseIdentityError("SHA256SUMS stat failed") from error
+    if not regular or status.st_size > MAX_SHA256SUMS_BYTES:
         raise ReleaseIdentityError("SHA256SUMS must be a regular file within the size limit")
     try:
         descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
