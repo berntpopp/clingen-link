@@ -198,13 +198,34 @@ jobs:
               and (.target_commitish | type == "string") and .target_commitish == "main"
             ' "$release_json" >/dev/null
           }
+          MAX_RELEASE_PAGES=20
+          find_tag_releases() {
+            local matches_file="$1" page=1 page_file status count
+            : > "$matches_file.ndjson"
+            while [ "$page" -le "$MAX_RELEASE_PAGES" ]; do
+              page_file="$RUNNER_TEMP/releases-page-$page.json"
+              status="$(curl --silent --show-error --max-time 30 --max-redirs 0 --output "$page_file" --write-out '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$GH_REPO/releases?per_page=100&page=$page")"
+              test "$status" = 200
+              jq -e 'type == "array"' "$page_file" >/dev/null
+              jq -c --arg tag "$TAG" '.[] | select(.tag_name == $tag)' "$page_file" >> "$matches_file.ndjson"
+              count="$(jq 'length' "$page_file")"
+              if [ "$count" -lt 100 ]; then
+                jq -s '.' "$matches_file.ndjson" > "$matches_file"
+                rm -f "$matches_file.ndjson"
+                return 0
+              fi
+              page=$((page + 1))
+            done
+            echo "GitHub release pagination exceeded $MAX_RELEASE_PAGES pages" >&2
+            return 1
+          }
+          printf 'MAX_RELEASE_PAGES=%s\n' "$MAX_RELEASE_PAGES" > "$RUNNER_TEMP/release-pagination.sh"
+          declare -f find_tag_releases >> "$RUNNER_TEMP/release-pagination.sh"
           release_id_file="$RUNNER_TEMP/release-id"
           rm -f "$release_id_file"
           status="$(curl --silent --show-error --max-time 30 --max-redirs 0 --output "$RUNNER_TEMP/release.json" --write-out '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$GH_REPO/releases/tags/$TAG")"
           if [ "$status" = 404 ]; then
-            list_status="$(curl --silent --show-error --max-time 30 --max-redirs 0 --output "$RUNNER_TEMP/releases.json" --write-out '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$GH_REPO/releases?per_page=100")"
-            test "$list_status" = 200
-            jq --arg tag "$TAG" '[.[] | select(.tag_name == $tag)]' "$RUNNER_TEMP/releases.json" > "$RUNNER_TEMP/tag-matches.json"
+            find_tag_releases "$RUNNER_TEMP/tag-matches.json"
             matches="$(jq 'length' "$RUNNER_TEMP/tag-matches.json")"
             case "$matches" in
               0) ;;
@@ -236,12 +257,13 @@ jobs:
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/data-release"
+          source "$RUNNER_TEMP/release-pagination.sh"
           if [ "$(cat "$RUNNER_TEMP/release-state")" = create ]; then
             gh release create "$TAG" --draft --verify-tag --title "$TAG" --notes "Immutable ClinGen reference snapshot. Research use only; not clinical decision support."
             gh release upload "$TAG" clingen.sqlite.zst data-release-manifest.json SHA256SUMS
-            status="$(curl --silent --show-error --max-time 30 --max-redirs 0 --output "$RUNNER_TEMP/releases-after-create.json" --write-out '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$GH_REPO/releases?per_page=100")"
-            test "$status" = 200
-            jq --arg tag "$TAG" '[.[] | select(.tag_name == $tag and .draft == true)]' "$RUNNER_TEMP/releases-after-create.json" > "$RUNNER_TEMP/draft-matches.json"
+            find_tag_releases "$RUNNER_TEMP/draft-matches.json"
+            jq --arg tag "$TAG" '[.[] | select(.draft == true)]' "$RUNNER_TEMP/draft-matches.json" > "$RUNNER_TEMP/draft-matches.json.tmp"
+            mv "$RUNNER_TEMP/draft-matches.json.tmp" "$RUNNER_TEMP/draft-matches.json"
             test "$(jq 'length' "$RUNNER_TEMP/draft-matches.json")" = 1
             jq -er '.[0].id | if type == "number" and floor == . and . > 0 then tostring else error("draft release id must be a positive integer") end' "$RUNNER_TEMP/draft-matches.json" > "$RUNNER_TEMP/release-id"
           fi
