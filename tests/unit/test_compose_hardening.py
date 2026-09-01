@@ -18,8 +18,11 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCKER = ROOT / "docker"
-DATA_RELEASE_TAG = "data-clingen-2026-07-16"
-DATA_IDENTITY_DIGEST = "sha256:9b8ef2094b31dade597b59cd2f58c3ccbba80f45e8b00d34ec6519291d2e6cbe"
+DATA_RELEASE_TAG = "data-clingen-de5f403028d2e1e1"
+DATA_IDENTITY_DIGEST = "sha256:74dc6e1a82f773b17303d33ff82b63c96e9aed0b16fa5f3020b13fd69ffdf789"
+RUNTIME_DATA_IDENTITY_DIGEST = (
+    "sha256:74dc6e1a82f773b17303d33ff82b63c96e9aed0b16fa5f3020b13fd69ffdf789"
+)
 RUNTIME_CAPABLE_RELEASE_BUILDER = (
     "berntpopp/genefoundry-router/.github/workflows/_container-release.yml"
     "@db47bd3357cebf33e6722615c4f0e7419a64857e"
@@ -165,6 +168,7 @@ def test_every_compose_profile_carries_the_declared_runtime_data_identity() -> N
     the one the release contract pins.
     """
     declared = _release_config()["data"]
+    assert declared["digest"] == RUNTIME_DATA_IDENTITY_DIGEST
     assert declared == {
         "mode": "external-reference",
         "release_tag": DATA_RELEASE_TAG,

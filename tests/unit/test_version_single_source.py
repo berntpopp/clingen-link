@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import tomllib
 from importlib.metadata import version
 from pathlib import Path
@@ -27,3 +28,17 @@ def test_dunder_version_is_metadata_derived() -> None:
 
 def test_mcp_server_info_version_matches_package() -> None:
     assert create_clingen_mcp().version == __version__
+
+
+def test_citation_release_date_matches_current_changelog_entry() -> None:
+    root = Path(__file__).resolve().parents[2]
+    project_version = _pyproject_version()
+    changelog = (root / "CHANGELOG.md").read_text(encoding="utf-8")
+    match = re.search(
+        rf"^## \[{re.escape(project_version)}\] - (\d{{4}}-\d{{2}}-\d{{2}})$",
+        changelog,
+        re.MULTILINE,
+    )
+    assert match is not None
+    citation = (root / "CITATION.cff").read_text(encoding="utf-8")
+    assert f"date-released: '{match.group(1)}'" in citation
