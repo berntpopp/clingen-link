@@ -282,3 +282,31 @@ def test_npm_overlay_materializes_its_own_reference_data() -> None:
     server = npm["services"]["clingen_link"]
     condition = server["depends_on"]["clingen_data_init"]["condition"]
     assert condition == "service_completed_successfully"
+
+
+# --- fleet deploy contract: numeric non-root user ---------------------------------------
+
+NUMERIC_USER = re.compile(r"^[1-9][0-9]*:[1-9][0-9]*$")
+
+
+def test_npm_overlay_declares_numeric_user_for_every_service() -> None:
+    """The deployed NPM overlay wants a numeric non-root `user` on every service; the
+    release Compose files feed a shared gate that forbids that same key entirely."""
+    npm = _compose("docker-compose.npm.yml")
+    for name, service in npm["services"].items():
+        user = service.get("user")
+        assert user is not None, f"{name} must declare a numeric user in the NPM overlay"
+        assert NUMERIC_USER.match(str(user)), (
+            f"{name} declares user={user!r}; the deploy contract requires "
+            "'<uid>:<gid>' with both non-root and numeric"
+        )
+
+
+def test_release_compose_files_never_declare_user() -> None:
+    for rel_path in _release_config()["service"]["compose_files"]:
+        compose = _compose(Path(rel_path).name)
+        for name, service in compose["services"].items():
+            assert "user" not in service, (
+                f"{name} in {rel_path} declares 'user'; the release Compose gate "
+                "(container_release.py validate-compose) forbids it there"
+            )
