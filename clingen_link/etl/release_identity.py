@@ -16,7 +16,9 @@ class ReleaseIdentityError(ValueError):
 
 ReleaseState = Literal["create", "published_noop", "draft_publish_existing", "collision"]
 _HEX = frozenset("0123456789abcdef")
+_HEX_BYTES = frozenset(b"0123456789abcdef")
 MAX_MANIFEST_BYTES = 1 << 20
+MAX_SHA256SUMS_BYTES = 1 << 12
 RELEASE_ASSETS = frozenset({"clingen.sqlite.zst", "data-release-manifest.json", "SHA256SUMS"})
 _ROOT_FIELDS = frozenset(
     {
@@ -197,38 +199,62 @@ def assert_exact_assets(asset_names: object) -> None:
         raise ReleaseIdentityError("release asset inventory is not exact")
 
 
-def parse_sha256sums(payload: str, expected_names: set[str]) -> dict[str, str]:
+def parse_sha256sums(payload: bytes, expected_names: set[str]) -> dict[str, str]:
     """Parse an exact, filename-keyed SHA256SUMS handoff.
 
     The checksum convention is ``<digest>  <filename>``.  Parsing into a
     filename-keyed mapping keeps validation aligned with the later file lookup
     and rejects missing, extra, duplicate, malformed, or non-canonical records.
     """
-    if (
-        not isinstance(payload, str)
-        or not expected_names
-        or any(not isinstance(name, str) or not name for name in expected_names)
-    ):
+    if not isinstance(payload, bytes) or not expected_names:
         raise ReleaseIdentityError("SHA256SUMS input is not a non-empty file set")
-    lines = payload.splitlines()
+    try:
+        expected_bytes = {name.encode("ascii") for name in expected_names}
+    except (AttributeError, UnicodeEncodeError) as error:
+        raise ReleaseIdentityError("SHA256SUMS filenames must be ASCII strings") from error
+    if len(expected_bytes) != len(expected_names) or any(not name for name in expected_bytes):
+        raise ReleaseIdentityError("SHA256SUMS filenames are not exact")
+    if b"\r" in payload:
+        raise ReleaseIdentityError("SHA256SUMS must use LF line endings")
+    body = payload[:-1] if payload.endswith(b"\n") else payload
+    lines = body.split(b"\n")
     if len(lines) != len(expected_names):
         raise ReleaseIdentityError("SHA256SUMS record count is not exact")
     checksums: dict[str, str] = {}
     for line_number, line in enumerate(lines, 1):
-        fields = line.split()
-        if len(fields) != 2:
+        if len(line) < 66 or line[64:66] != b"  ":
             raise ReleaseIdentityError(f"SHA256SUMS line {line_number} is malformed")
-        digest, name = fields
-        if name not in expected_names:
+        digest, name = line[:64], line[66:]
+        if name not in expected_bytes:
             raise ReleaseIdentityError(f"SHA256SUMS line {line_number} names an unexpected file")
-        if name in checksums:
+        decoded_name = name.decode("ascii")
+        if decoded_name in checksums:
             raise ReleaseIdentityError(f"SHA256SUMS line {line_number} duplicates a file")
-        if len(digest) != 64 or any(char not in _HEX for char in digest):
+        if len(digest) != 64 or any(char not in _HEX_BYTES for char in digest):
             raise ReleaseIdentityError(f"SHA256SUMS line {line_number} has an invalid digest")
-        checksums[name] = digest
+        checksums[decoded_name] = digest.decode("ascii")
     if set(checksums) != expected_names:
         raise ReleaseIdentityError("SHA256SUMS filenames are not exact")
     return checksums
+
+
+def load_sha256sums(path: Path, expected_names: set[str]) -> dict[str, str]:
+    """Read and parse a checksum handoff through a bounded no-follow descriptor."""
+    status = path.lstat()
+    if not path.is_file() or status.st_size > MAX_SHA256SUMS_BYTES:
+        raise ReleaseIdentityError("SHA256SUMS must be a regular file within the size limit")
+    try:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except OSError as error:
+        raise ReleaseIdentityError("SHA256SUMS cannot be opened without following links") from error
+    try:
+        with os.fdopen(descriptor, "rb") as source:
+            payload = source.read(MAX_SHA256SUMS_BYTES + 1)
+    except OSError as error:
+        raise ReleaseIdentityError("SHA256SUMS read failed") from error
+    if len(payload) > MAX_SHA256SUMS_BYTES:
+        raise ReleaseIdentityError("SHA256SUMS exceeds the size limit")
+    return parse_sha256sums(payload, expected_names)
 
 
 def assert_exact_asset_metadata(assets: object) -> None:
