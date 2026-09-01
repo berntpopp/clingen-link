@@ -30,7 +30,7 @@ atomically selects a versioned snapshot; the server mounts it read-only
 | `CLINGEN_LINK_DATA_BUNDLE_SHA256` | *required* | Exact compressed-bundle SHA-256. |
 | `CLINGEN_LINK_DATA_EXPANDED_SHA256` | *required* | Canonical expanded-tree SHA-256. |
 | `CLINGEN_LINK_DATA_RELEASE_TAG` | `data-clingen-de5f403028d2e1e1` | Immutable data-release tag written into the canonical runtime identity manifest. Mutable names such as `latest` are rejected. |
-| `CLINGEN_LINK_DATA_IDENTITY_DIGEST` | `sha256:2386237724d0470fc8507202f0c8ecc79390935e938b1a916e26df85b8d53b44` | Expected SHA-256 of the canonical runtime identity manifest. This is distinct from the compressed-bundle and expanded-tree digests. |
+| `CLINGEN_LINK_DATA_IDENTITY_DIGEST` | `sha256:74dc6e1a82f773b17303d33ff82b63c96e9aed0b16fa5f3020b13fd69ffdf789` | Expected SHA-256 of the canonical runtime identity manifest. This is distinct from the compressed-bundle and expanded-tree digests. |
 | `CLINGEN_LINK_DATA_SCHEMA_VERSION` | `2.0.0` | Exact expected snapshot schema version. |
 | `CLINGEN_LINK_DATA_SCHEMA_MINIMUM` | `2.0.0` | Lower bound of the compatible schema range. |
 | `CLINGEN_LINK_DATA_SCHEMA_MAXIMUM` | `2.0.0` | Upper bound of the compatible schema range. |

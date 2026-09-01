@@ -24,7 +24,7 @@ _DEFAULT_DATA_ROOT = "/data"
 _DEFAULT_SNAPSHOT_PATH = f"{_DEFAULT_DATA_ROOT}/current/clingen.sqlite"
 _DEFAULT_DATA_RELEASE_TAG = "data-clingen-de5f403028d2e1e1"
 _DEFAULT_DATA_IDENTITY_DIGEST = (
-    "sha256:2386237724d0470fc8507202f0c8ecc79390935e938b1a916e26df85b8d53b44"
+    "sha256:74dc6e1a82f773b17303d33ff82b63c96e9aed0b16fa5f3020b13fd69ffdf789"
 )
 _RELEASE_TAG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _MUTABLE_RELEASE_TAGS = frozenset({"latest", "main", "master", "head", "stable", "current"})

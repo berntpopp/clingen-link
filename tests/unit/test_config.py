@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from clingen_link.config import ServerConfig, Settings, settings
 
 _DATA_RELEASE_TAG = "data-clingen-de5f403028d2e1e1"
-_DATA_IDENTITY_DIGEST = "sha256:2386237724d0470fc8507202f0c8ecc79390935e938b1a916e26df85b8d53b44"
+_DATA_IDENTITY_DIGEST = "sha256:74dc6e1a82f773b17303d33ff82b63c96e9aed0b16fa5f3020b13fd69ffdf789"
 
 
 def test_defaults_present() -> None:
