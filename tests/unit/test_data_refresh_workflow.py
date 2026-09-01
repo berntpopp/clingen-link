@@ -151,6 +151,68 @@ def test_publisher_refetches_every_asset_and_attestation_before_the_only_promoti
     assert "|| true" not in script and "grep -q '404'" not in script
 
 
+def test_draft_recheck_uses_exact_release_id_and_target_identity() -> None:
+    """Draft lookup must not use the tag endpoint, which hides draft releases."""
+    publisher = _workflow()["jobs"]["publish-release"]
+    steps = publisher["steps"]
+    names = [step.get("name") for step in steps]
+    initial = steps[names.index("Determine closed immutable release state")]
+    create = steps[names.index("Create only an absent draft")]
+    recheck = steps[names.index("Re-fetch exact draft identity immediately before promotion")]
+
+    initial_script = initial["run"]
+    recheck_script = recheck["run"]
+    assert "releases?per_page=100" in initial_script
+    assert "release_id" in initial_script
+    assert ".id" in initial_script and ".tag_name" in initial_script
+    assert ".target_commitish" in initial_script
+    assert "release-id" in create.get("run", "")
+    assert 'RELEASE_ID="$(cat "$RUNNER_TEMP/release-id")"' in recheck_script
+    assert "releases/$RELEASE_ID" in recheck_script
+    assert "releases/tags/$TAG" not in recheck_script
+    assert ".id == ($release_id|tonumber)" in recheck_script
+    assert ".tag_name == $TAG" in recheck_script
+    assert '.target_commitish == "main"' in recheck_script
+
+    jq = shutil.which("jq")
+    assert jq is not None
+    predicate = (
+        ".id == ($release_id|tonumber) and .tag_name == $TAG and "
+        '.draft == true and .target_commitish == "main"'
+    )
+    valid = {
+        "id": 380448098,
+        "tag_name": "data-clingen-a",
+        "draft": True,
+        "target_commitish": "main",
+    }
+    for candidate, valid_result in (
+        (valid, True),
+        ({**valid, "id": 380448099}, False),
+        ({**valid, "tag_name": "data-clingen-b"}, False),
+        ({**valid, "draft": False}, False),
+        ({**valid, "target_commitish": "other"}, False),
+    ):
+        result = subprocess.run(  # noqa: S603 - fixed local verifier and fixture exercise failure states
+            [
+                jq,
+                "-e",
+                "--argjson",
+                "release_id",
+                "380448098",
+                "--arg",
+                "TAG",
+                "data-clingen-a",
+                predicate,
+            ],
+            input=json.dumps(candidate),
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        assert (result.returncode == 0) is valid_result
+
+
 def test_approval_binds_source_artifact_and_exact_handoff() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     for field in ("source_sha256", "artifact_sha256", "handoff_sha256", "artifact_id"):
