@@ -116,6 +116,30 @@ the same public HTTPS origin in `CLINGEN_LINK_ALLOWED_ORIGINS` and
    Enable Websockets Support, Block Common Exploits, and Force SSL after
    certificate issuance.
 
+### Fleet deploy contract
+
+`docker/docker-compose.npm.yml` is the file the GeneFoundry fleet controller
+(`strato_v6_docker_npm`) deploys and validates. Every service in it —
+`clingen_data_init` and `clingen_link` — declares a numeric, non-root
+`user: "10001:10001"`, matching this image's own `USER 10001:10001` from
+`docker/Dockerfile`; the value is never copied from a sibling repo, since
+sibling `-link` images use their own uid:gid. `user` must NOT appear in the
+Compose files listed in `container-release.json`
+(`docker-compose.yml`, `docker-compose.prod.yml`) — the shared release gate
+forbids it there. `tests/unit/test_compose_hardening.py` guards both sides of
+this contract. Reproduce the controller's own projection check locally:
+
+```bash
+export CLINGEN_LINK_IMAGE="ghcr.io/berntpopp/clingen-link@sha256:<digest>"
+docker compose -f docker/docker-compose.npm.yml config --format json > /tmp/clingen-link-rendered.json
+cd <path-to-strato_v6_docker_npm> && uv run python -c "
+import sys, json; sys.path.insert(0, 'scripts')
+from utils.deployment_preflight import canonical_projection
+p = canonical_projection(json.load(open('/tmp/clingen-link-rendered.json')), project='clingen-link')
+for n, s in p['services'].items(): print(n, 'user=', s.get('user'))
+print('PROJECTION OK')"
+```
+
 ## Image build notes
 
 The Dockerfile uses a multi-stage `uv` build:

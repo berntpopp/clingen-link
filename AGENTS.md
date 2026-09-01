@@ -67,6 +67,29 @@ JSON in prod / console in `--dev`, with `asgi-correlation-id`). Other areas:
   PR.
 - **Do not** hand-edit the snapshot bundle or `tests/fixtures/`.
 
+## Fleet deploy contract
+
+- `docker/docker-compose.npm.yml` is the file the GeneFoundry fleet controller
+  (`strato_v6_docker_npm`, `scripts/utils/deployment_preflight.py`) deploys and
+  validates. Every service in it (`clingen_data_init`, `clingen_link`) declares
+  `user: "<uid>:<gid>"` numerically — this image's own value read from
+  `docker/Dockerfile` (`USER 10001:10001`), never copied from a sibling `-link`
+  repo.
+- `user` must **not** appear in the Compose files listed in
+  `container-release.json` (`docker-compose.yml`, `docker-compose.prod.yml`) —
+  the shared release gate (`container_release.py validate-compose`) forbids it
+  there.
+- `tests/unit/test_compose_hardening.py` guards both sides of this contract.
+- Release checklist this repo enforces (see `tests/unit/test_version_single_source.py`):
+  bump `version` in `pyproject.toml`, `uv lock`, add a `CHANGELOG.md` heading
+  `## [x.y.z] - YYYY-MM-DD`, and set `CITATION.cff` `version:` **and**
+  `date-released:` to match — this repo's test asserts `date-released` equals
+  the date on the newest `## [<pyproject version>] - ...` CHANGELOG heading
+  exactly (not a fixed literal). Tag `vx.y.z`, then approve the `release`
+  environment gate via
+  `gh api repos/berntpopp/clingen-link/actions/runs/<id>/pending_deployments`
+  (it can gate twice; `status: waiting` is the gate, not a slow build).
+
 ## Commands
 
 Required check before claiming completion:
