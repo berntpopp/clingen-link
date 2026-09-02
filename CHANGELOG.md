@@ -4,6 +4,18 @@ All notable changes to clingen-link are documented here.
 
 ## [Unreleased]
 
+## [4.0.8] - 2026-09-02
+
+- Deploy: make the reference volume's physical name selectable
+  (`CLINGEN_REFERENCE_VOLUME`, defaulting to the name Compose already derives) so the fleet
+  controller can prepare and verify a candidate volume before switching to it.
+- Deploy: `clingen_link` now uses `restart: unless-stopped` instead of `on-failure`, so the
+  container returns after a host reboot or a Docker upgrade.
+- Release: declare `service.deployed_compose_files` and `service.deployed_seed_binds`
+  (`["/seed"]`) in `container-release.json`, and pin the reusable container workflows to
+  genefoundry-router v0.8.5 (`31ea81ce…`), whose `validate-deployed-overlay` gate now runs
+  on every release.
+
 ## [4.0.7] - 2026-09-02
 
 - Deploy: declare the image's numeric uid:gid in docker/docker-compose.npm.yml so the fleet
