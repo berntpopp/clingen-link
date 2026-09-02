@@ -78,6 +78,28 @@ def test_build_carries_the_rights_notice_into_the_published_manifest() -> None:
     assert '"rights":dict(rights.block)' in text
 
 
+def test_publisher_creates_the_data_tag_it_then_verifies() -> None:
+    """`gh release create --verify-tag` refuses an absent tag, and the data tag is
+    derived from the dataset identity in `build` -- nobody pushes it. The publisher
+    must create it on the exact validated source commit, only when a release is
+    about to be created, and must refuse a tag that already names another commit."""
+    steps = _steps("publish-release")
+    names = [step.get("name") for step in steps]
+    tag_step = steps[names.index("Ensure the release tag names this exact source")]
+    assert tag_step["if"] == "steps.release_state.outputs.state == 'create'"
+    assert names.index(tag_step["name"]) < names.index("Create only an absent draft")
+    assert names.index("Determine closed immutable release state") < names.index(tag_step["name"])
+    script = tag_step["run"]
+    assert 'gh api "repos/$GH_REPO/git/ref/tags/$TAG"' in script
+    assert (
+        '--method POST "repos/$GH_REPO/git/refs" -f ref="refs/tags/$TAG" -f sha="$GITHUB_SHA"'
+        in script
+    )
+    assert '[ "$existing" != "$GITHUB_SHA" ]' in script and "exit 1" in script
+    create = steps[names.index("Create only an absent draft")]
+    assert "--verify-tag" in create["run"]
+
+
 def test_publisher_derives_a_closed_state_before_any_mutation() -> None:
     """A build stays credential-free, while publication derives closed release states."""
     steps = _steps("publish-release")
