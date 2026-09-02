@@ -4,6 +4,13 @@ All notable changes to clingen-link are documented here.
 
 ## [Unreleased]
 
+## [4.0.12] - 2026-09-02
+
+- Release: same content as 4.0.11, whose `Release validation` run failed on a
+  test-only defect (the squash of #97 carried a step lookup that trips on the
+  unnamed download-artifact steps); the container release was not approved.
+  Test fixed here. No product change.
+
 ## [4.0.11] - 2026-09-02
 
 - Release: same content as 4.0.10, whose container release never published —
