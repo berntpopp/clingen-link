@@ -4,6 +4,14 @@ All notable changes to clingen-link are documented here.
 
 ## [Unreleased]
 
+## [4.0.11] - 2026-09-02
+
+- Release: same content as 4.0.10, whose container release never published —
+  the shared release workflow's source-alias push hit a transient GHCR
+  `not found` on the manifest, and a re-run cannot recover because the build
+  artifact is named by run attempt. No product change; `data-refresh` now
+  creates the data tag it verifies (#97).
+
 ## [4.0.10] - 2026-09-02
 
 - Data: pin the fresh ClinGen snapshot `data-clingen-83dcb565417a23bd`
