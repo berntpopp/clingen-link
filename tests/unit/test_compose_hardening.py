@@ -23,9 +23,10 @@ DATA_IDENTITY_DIGEST = "sha256:74dc6e1a82f773b17303d33ff82b63c96e9aed0b16fa5f302
 RUNTIME_DATA_IDENTITY_DIGEST = (
     "sha256:74dc6e1a82f773b17303d33ff82b63c96e9aed0b16fa5f3020b13fd69ffdf789"
 )
-# genefoundry-router v0.8.5: the first revision whose `_container-release.yml` runs
-# `validate-deployed-overlay` against docker/docker-compose.npm.yml.
-ROUTER_WORKFLOW_SHA = "31ea81cee5475fc3655c047c63a89739948f99a9"
+# genefoundry-router v0.8.6: adds `data.schema_compatibility` to the release config models
+# (the first revision whose `_container-release.yml` accepts it); still runs
+# `validate-deployed-overlay` against docker/docker-compose.npm.yml, unchanged since v0.8.5.
+ROUTER_WORKFLOW_SHA = "3d3cc20477828ddbd8a0c980b5b4f709e2612c02"
 RUNTIME_CAPABLE_RELEASE_BUILDER = (
     f"berntpopp/genefoundry-router/.github/workflows/_container-release.yml@{ROUTER_WORKFLOW_SHA}"
 )
@@ -177,6 +178,7 @@ def test_every_compose_profile_carries_the_declared_runtime_data_identity() -> N
         "mode": "external-reference",
         "release_tag": DATA_RELEASE_TAG,
         "digest": DATA_IDENTITY_DIGEST,
+        "schema_compatibility": ["2"],
         "image_allowlist": [
             "opt/venv/lib/python3.14/site-packages/clingen_link/data/svi_guidance.json"
         ],
@@ -210,15 +212,14 @@ def test_declared_data_release_is_compatible_with_the_application_schema() -> No
     # `data.schema_compatibility` is what the release workflow projects into the published
     # manifest's `data_requirements.schema_compatibility`, and the fleet controller refuses
     # a data-activation record whose attested `schema_version` is not a member of it
-    # (strato_v6_docker_npm `scripts/utils/data_attestation.py`). It cannot be declared yet:
-    # the router's own `ReleaseConfig` data models are `extra="forbid"` and carry no such
-    # field, so adding it here makes `validate-deployed-overlay` fail the release outright.
-    # When the router grows the field, the value is the RAW `meta.snapshot_version` stamp
-    # (`SNAPSHOT_SCHEMA_VERSION`, "2") that the controller's probe reads back out of the
-    # SQLite file -- not the deployment pin `SNAPSHOT_SCHEMA_SEMVER` ("2.0.0").
+    # (strato_v6_docker_npm `scripts/utils/data_attestation.py`). The value is the RAW
+    # `meta.snapshot_version` stamp (`SNAPSHOT_SCHEMA_VERSION`, "2") the controller's probe
+    # reads back out of the SQLite file -- not the deployment pin `SNAPSHOT_SCHEMA_SEMVER`
+    # ("2.0.0"). Declarable since router v0.8.6, whose `ReleaseConfig` data models grew the
+    # field (it was `extra="forbid"` with no such field through v0.8.5).
     assert SNAPSHOT_SCHEMA_VERSION == "2"
     assert SNAPSHOT_SCHEMA_SEMVER == "2.0.0"
-    assert "schema_compatibility" not in declared
+    assert declared["schema_compatibility"] == [SNAPSHOT_SCHEMA_VERSION]
 
 
 def test_smoke_preparation_hook_verifies_the_committed_digest() -> None:
