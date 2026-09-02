@@ -84,7 +84,7 @@ def test_publisher_creates_the_data_tag_it_then_verifies() -> None:
     must create it on the exact validated source commit, only when a release is
     about to be created, and must refuse a tag that already names another commit."""
     steps = _steps("publish-release")
-    names = [step["name"] for step in steps]
+    names = [step.get("name") for step in steps]
     tag_step = steps[names.index("Ensure the release tag names this exact source")]
     assert tag_step["if"] == "steps.release_state.outputs.state == 'create'"
     assert names.index(tag_step["name"]) < names.index("Create only an absent draft")
