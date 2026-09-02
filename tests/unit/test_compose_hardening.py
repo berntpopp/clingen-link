@@ -18,10 +18,10 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCKER = ROOT / "docker"
-DATA_RELEASE_TAG = "data-clingen-de5f403028d2e1e1"
-DATA_IDENTITY_DIGEST = "sha256:74dc6e1a82f773b17303d33ff82b63c96e9aed0b16fa5f3020b13fd69ffdf789"
+DATA_RELEASE_TAG = "data-clingen-83dcb565417a23bd"
+DATA_IDENTITY_DIGEST = "sha256:38ff5ebb9b299f313ff23fa8def48ca5a97284c5fea85db21fe3ae06734a2c5b"
 RUNTIME_DATA_IDENTITY_DIGEST = (
-    "sha256:74dc6e1a82f773b17303d33ff82b63c96e9aed0b16fa5f3020b13fd69ffdf789"
+    "sha256:38ff5ebb9b299f313ff23fa8def48ca5a97284c5fea85db21fe3ae06734a2c5b"
 )
 # genefoundry-router v0.8.6: adds `data.schema_compatibility` to the release config models
 # (the first revision whose `_container-release.yml` accepts it); still runs

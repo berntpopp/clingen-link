@@ -4,6 +4,14 @@ All notable changes to clingen-link are documented here.
 
 ## [Unreleased]
 
+## [4.0.10] - 2026-09-02
+
+- Data: pin the fresh ClinGen snapshot `data-clingen-83dcb565417a23bd`
+  (erepo 13211, validity 3670, dosage 2041, actionability 181, cspec 126) —
+  compressed `sha256:d0aca92c…`, expanded-tree `sha256:82aca3f8…`, runtime
+  identity `sha256:38ff5ebb…` — in `container-release.json`, the Compose files,
+  `.env.docker.example` and the docs. First release published through the
+  committed rights notice.
 - Data release: replace the per-release, hash-bound `CLINGEN_RIGHTS_RECORD_JSON`
   environment secret with a committed, versioned rights notice in `data/RIGHTS.json`
   (CC BY 4.0, © ClinGen / Clinical Genome Resource, terms reviewed 2026-09-02).
