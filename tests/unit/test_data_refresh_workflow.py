@@ -61,12 +61,21 @@ def test_publisher_is_draft_first_attested_and_never_clobbers() -> None:
     assert "--clobber" not in text
 
 
-def test_publication_requires_a_protected_complete_rights_record() -> None:
+def test_publication_validates_the_committed_rights_notice() -> None:
+    """ClinGen is CC BY 4.0: a committed notice replaces the per-release secret sign-off."""
     text = WORKFLOW.read_text(encoding="utf-8")
-    assert "CLINGEN_RIGHTS_RECORD_JSON" in text
+    assert "CLINGEN_RIGHTS_RECORD_JSON" not in text
+    assert "secrets." not in text
+    assert "data/RIGHTS.json" in text
     assert "redistribution_allowed" not in text
     assert "redistribution_review" not in text
-    assert text.index("validate_rights_record") < text.index("gh api")
+    assert text.index("validate_rights_notice") < text.index("gh api")
+
+
+def test_build_carries_the_rights_notice_into_the_published_manifest() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "load_rights_notice" in text
+    assert '"rights":dict(rights.block)' in text
 
 
 def test_publisher_derives_a_closed_state_before_any_mutation() -> None:
@@ -333,7 +342,7 @@ def test_approval_binds_source_artifact_and_exact_handoff() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     for field in ("source_sha256", "artifact_sha256", "handoff_sha256", "artifact_id"):
         assert field in text
-    assert "CLINGEN_RIGHTS_RECORD_JSON" in text
+    assert "rights_notice_digest" in text
     assert "steps.upload_handoff.outputs.artifact-id" in text
     assert "steps.upload_handoff.outputs.artifact-digest" in text
     assert "needs.build.outputs.artifact_id" in text

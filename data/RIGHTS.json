@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "dataset": "ClinGen curated evidence snapshot",
+  "license": {
+    "name": "Creative Commons Attribution 4.0 International",
+    "spdx_id": "CC-BY-4.0",
+    "url": "https://creativecommons.org/licenses/by/4.0/"
+  },
+  "attribution": "ClinGen data © ClinGen / Clinical Genome Resource, used under CC BY 4.0.",
+  "citation": "Strande NT, et al. Evaluating the Clinical Validity of Gene-Disease Associations: An Evidence-Based Framework Developed by the Clinical Genome Resource. Am J Hum Genet. 2017;100(6):895-906. PMID: 28552198.",
+  "source_url": "https://clinicalgenome.org/",
+  "terms_url": "https://clinicalgenome.org/docs/terms-of-use/",
+  "terms_reviewed_at": "2026-09-02"
+}

@@ -47,13 +47,15 @@ jobs:
           import zstandard
           from clingen_link.data_contract import SNAPSHOT_SCHEMA_SEMVER
           from clingen_link.etl.release_identity import sealed_identity
+          from clingen_link.etl.rights_notice import load_rights_notice
+          rights=load_rights_notice(Path("data/RIGHTS.json"))
           out=Path(os.environ["OUT"]); raw=out/"clingen.sqlite"; bundle=out/"clingen.sqlite.zst"
           with raw.open("rb") as src, bundle.open("wb") as dst: zstandard.ZstdCompressor(level=19).copy_stream(src,dst)
           raw_sha=hashlib.sha256(raw.read_bytes()).hexdigest(); compressed=hashlib.sha256(bundle.read_bytes()).hexdigest()
           with sqlite3.connect(raw) as conn:
               counts=dict(conn.execute("SELECT domain, record_count FROM meta")); source_sha=hashlib.sha256("".join(sorted(row[0] for row in conn.execute("SELECT content_sha256 FROM meta"))).encode()).hexdigest()
           expanded=hashlib.sha256(f"clingen.sqlite\0{0o444:o}\0{raw.stat().st_size}\0{raw_sha}".encode()).hexdigest()
-          manifest={"schema_version":1,"dataset":{"name":"ClinGen curated evidence snapshot","release":f"data-clingen-{source_sha[:16]}","source":{"identifier":"clingen-content-sha256","url":"https://clinicalgenome.org/","sha256":source_sha}},"schema":{"minimum":SNAPSHOT_SCHEMA_SEMVER,"maximum":SNAPSHOT_SCHEMA_SEMVER,"actual":SNAPSHOT_SCHEMA_SEMVER},"record_counts":counts,"artifact":{"filename":bundle.name,"sha256":compressed,"compressed_size":bundle.stat().st_size,"max_compressed_size":67108864,"expanded_tree_sha256":expanded,"expanded_size":raw.stat().st_size,"max_expanded_size":268435456,"member_count":1,"max_members":1},"previous_known_good_digest":"sha256:e0204a40541e82fb86cf4725a2b5fa9edc5e0eec838ada9564fa8de973c51626"}
+          manifest={"schema_version":1,"dataset":{"name":"ClinGen curated evidence snapshot","release":f"data-clingen-{source_sha[:16]}","source":{"identifier":"clingen-content-sha256","url":"https://clinicalgenome.org/","sha256":source_sha}},"schema":{"minimum":SNAPSHOT_SCHEMA_SEMVER,"maximum":SNAPSHOT_SCHEMA_SEMVER,"actual":SNAPSHOT_SCHEMA_SEMVER},"record_counts":counts,"artifact":{"filename":bundle.name,"sha256":compressed,"compressed_size":bundle.stat().st_size,"max_compressed_size":67108864,"expanded_tree_sha256":expanded,"expanded_size":raw.stat().st_size,"max_expanded_size":268435456,"member_count":1,"max_members":1},"previous_known_good_digest":"sha256:e0204a40541e82fb86cf4725a2b5fa9edc5e0eec838ada9564fa8de973c51626","rights":dict(rights.block)}
           identity=sealed_identity(manifest)
           (out/"data-release-manifest.json").write_text(json.dumps(manifest,sort_keys=True,indent=2)+"\n"); raw.unlink()
           (out/"SHA256SUMS").write_text(f"{compressed}  {bundle.name}\n{hashlib.sha256((out/'data-release-manifest.json').read_bytes()).hexdigest()}  data-release-manifest.json\n")
@@ -88,32 +90,33 @@ jobs:
         with:
           name: ${{ needs.build.outputs.artifact_name }}
           path: ${{ runner.temp }}/data-release
-      - name: validate_rights_record and seal exact approval
+      - name: validate_rights_notice and seal exact approval
         env:
-          CLINGEN_RIGHTS_RECORD_JSON: ${{ secrets.CLINGEN_RIGHTS_RECORD_JSON }}
           TAG: ${{ needs.build.outputs.tag }}
           BUILD_ARTIFACT_ID: ${{ needs.build.outputs.artifact_id }}
           BUILD_ARTIFACT_DIGEST: ${{ needs.build.outputs.artifact_digest }}
           BUILD_SOURCE_DIGEST: ${{ needs.build.outputs.source_digest }}
         run: |
           set -euo pipefail
-          test -n "$CLINGEN_RIGHTS_RECORD_JSON"
+          test -s data/RIGHTS.json
           uv sync --group dev --frozen
           HANDOFF="$RUNNER_TEMP/data-release" APPROVAL="$RUNNER_TEMP/approval.json" uv run python - <<'PY'
           import hashlib,json,os
           from datetime import UTC,datetime
           from pathlib import Path
           from clingen_link.etl.release_identity import load_sha256sums, sealed_identity
-          from clingen_link.etl.rights_record import validate_rights_record
+          from clingen_link.etl.rights_notice import load_rights_notice, validate_rights_notice
           handoff=Path(os.environ["HANDOFF"]); expected={"clingen.sqlite.zst","data-release-manifest.json","SHA256SUMS"}
           if {p.name for p in handoff.iterdir()} != expected: raise SystemExit("unexpected handoff asset")
           sums=load_sha256sums(handoff/"SHA256SUMS", expected-{ "SHA256SUMS" })
           for name in expected-{ "SHA256SUMS" }:
               if hashlib.sha256((handoff/name).read_bytes()).hexdigest()!=sums.get(name): raise SystemExit("checksum mismatch")
-          identity=sealed_identity(json.loads((handoff/"data-release-manifest.json").read_text()))
+          manifest=json.loads((handoff/"data-release-manifest.json").read_text())
+          identity=sealed_identity(manifest)
           if identity.tag!=os.environ["TAG"]: raise SystemExit("tag mismatch")
-          rights=validate_rights_record(json.loads(os.environ["CLINGEN_RIGHTS_RECORD_JSON"]),identity)
-          approval={"run_id":os.environ["GITHUB_RUN_ID"],"run_attempt":os.environ["GITHUB_RUN_ATTEMPT"],"artifact_id":os.environ["BUILD_ARTIFACT_ID"],"artifact_digest":os.environ["BUILD_ARTIFACT_DIGEST"],"build_source_digest":os.environ["BUILD_SOURCE_DIGEST"],"artifact_name":f"clingen-data-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}","handoff_sha256":"sha256:"+hashlib.sha256((handoff/"SHA256SUMS").read_bytes()).hexdigest(),"tag":identity.tag,"source_sha256":identity.source_sha256,"artifact_sha256":identity.artifact_sha256,"rights_record_digest":rights.digest,"validated_at":datetime.now(UTC).isoformat()}
+          rights=validate_rights_notice(manifest.get("rights"))
+          if rights.digest!=load_rights_notice(Path("data/RIGHTS.json")).digest: raise SystemExit("published rights notice does not match the committed notice")
+          approval={"run_id":os.environ["GITHUB_RUN_ID"],"run_attempt":os.environ["GITHUB_RUN_ATTEMPT"],"artifact_id":os.environ["BUILD_ARTIFACT_ID"],"artifact_digest":os.environ["BUILD_ARTIFACT_DIGEST"],"build_source_digest":os.environ["BUILD_SOURCE_DIGEST"],"artifact_name":f"clingen-data-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}","handoff_sha256":"sha256:"+hashlib.sha256((handoff/"SHA256SUMS").read_bytes()).hexdigest(),"tag":identity.tag,"source_sha256":identity.source_sha256,"artifact_sha256":identity.artifact_sha256,"rights_notice_digest":rights.digest,"validated_at":datetime.now(UTC).isoformat()}
           Path(os.environ["APPROVAL"]).write_text(json.dumps(approval,sort_keys=True))
           PY
       - id: upload_approval
