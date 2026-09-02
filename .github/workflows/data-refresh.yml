@@ -252,6 +252,26 @@ jobs:
           printf '%s\n' "$state" > "$RUNNER_TEMP/release-state"
           echo "state=$state" >> "$GITHUB_OUTPUT"
           if [ -s "$release_id_file" ]; then echo "release_id=$(cat "$release_id_file")" >> "$GITHUB_OUTPUT"; fi
+      - name: Ensure the release tag names this exact source
+        if: steps.release_state.outputs.state == 'create'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # `gh release create --verify-tag` below refuses a tag that does not exist,
+          # and nothing else in this workflow creates one: the data tag is derived
+          # from the dataset identity in `build`, never pushed by a person. Create it
+          # as a lightweight ref on the exact commit this run validated, and refuse
+          # to reuse a tag that already names a different commit.
+          existing="$(gh api "repos/$GH_REPO/git/ref/tags/$TAG" --jq .object.sha 2>/dev/null || true)"
+          if [ -z "$existing" ]; then
+            gh api --method POST "repos/$GH_REPO/git/refs" -f ref="refs/tags/$TAG" -f sha="$GITHUB_SHA" >/dev/null
+            echo "created refs/tags/$TAG at $GITHUB_SHA"
+          elif [ "$existing" != "$GITHUB_SHA" ]; then
+            echo "tag $TAG already exists at $existing, not at $GITHUB_SHA" >&2
+            exit 1
+          fi
       - name: Create only an absent draft
         if: steps.release_state.outputs.state == 'create'
         env:
