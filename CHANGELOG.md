@@ -4,6 +4,16 @@ All notable changes to clingen-link are documented here.
 
 ## [Unreleased]
 
+## [4.0.9] - 2026-09-02
+
+- Release: pin the reusable container workflows to genefoundry-router v0.8.6
+  (`3d3cc20477828ddbd8a0c980b5b4f709e2612c02`), which accepts
+  `container-release.json` `data.schema_compatibility`.
+- Release: declare `data.schema_compatibility: ["2"]` in `container-release.json`,
+  matching the bare `meta.snapshot_version` the fleet controller's probe reads —
+  the published manifest now carries a non-empty `data_requirements.schema_compatibility`,
+  unblocking the controller's data-activation record for this service.
+
 ## [4.0.8] - 2026-09-02
 
 - Deploy: make the reference volume's physical name selectable
