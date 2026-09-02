@@ -81,7 +81,7 @@ JSON in prod / console in `--dev`, with `asgi-correlation-id`). Other areas:
   there.
 - `tests/unit/test_compose_hardening.py` guards both sides of this contract.
 - The overlay is gated centrally: the release workflow pins
-  `genefoundry-router/.github/workflows/_container-release.yml@31ea81ce…` (v0.8.5), which
+  `genefoundry-router/.github/workflows/_container-release.yml@3d3cc204…` (v0.8.6), which
   runs `validate-deployed-overlay` against it before the image is built. Reproduce it
   locally with the router checked out:
   `uv run python scripts/container_release.py validate-deployed-overlay --config
@@ -110,11 +110,11 @@ JSON in prod / console in `--dev`, with `asgi-correlation-id`). Other areas:
   `sha256(SELECT symbol FROM gene ORDER BY symbol LIMIT 1)`. `meta.snapshot_version` is the
   bare `SNAPSHOT_SCHEMA_VERSION` (`"2"`), not the deployment pin `SNAPSHOT_SCHEMA_SEMVER`
   (`"2.0.0"`) — anything binding to the probe must use `"2"`.
-- **Known gap.** The published manifest's `data_requirements.schema_compatibility` is
-  still `[]`, so the controller cannot yet run a data-activation record for this service.
-  The workflow projects it from `container-release.json` `data.schema_compatibility`, but
-  the router's `ReleaseConfig` data models are `extra="forbid"` and have no such field at
-  v0.8.5, so declaring it fails the release. Fix belongs in the router first.
+- **Schema compatibility.** `container-release.json` `data.schema_compatibility: ["2"]`
+  (router v0.8.6+ accepts the field) is projected verbatim into the published manifest's
+  `data_requirements.schema_compatibility`, unblocking the controller's data-activation
+  record. The value must equal the bare `meta.snapshot_version` the probe reads back
+  (`"2"`), not the deployment pin `SNAPSHOT_SCHEMA_SEMVER` (`"2.0.0"`).
 - Release checklist this repo enforces (see `tests/unit/test_version_single_source.py`):
   bump `version` in `pyproject.toml`, `uv lock`, add a `CHANGELOG.md` heading
   `## [x.y.z] - YYYY-MM-DD`, and set `CITATION.cff` `version:` **and**
