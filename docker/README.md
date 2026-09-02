@@ -140,6 +140,41 @@ for n, s in p['services'].items(): print(n, 'user=', s.get('user'))
 print('PROJECTION OK')"
 ```
 
+The same overlay is gated centrally at release time. The release workflow pins
+`genefoundry-router/.github/workflows/_container-release.yml@31ea81ce…` (v0.8.5), whose
+`validate-deployed-overlay` step renders this file and refuses the release on any
+violation. Run it yourself against a router checkout — it must exit 0:
+
+```bash
+cd <path-to-genefoundry-router> && uv run python scripts/container_release.py \
+  validate-deployed-overlay --config <path-to-clingen-link>/container-release.json \
+  --project-dir <path-to-clingen-link>
+```
+
+Three facts that gate makes non-negotiable here:
+
+- **Restart policy.** `clingen_link` is `restart: unless-stopped`, not `on-failure`: an
+  `on-failure` container does not come back after a host reboot or a Docker upgrade. The
+  run-once `clingen_data_init` stays `restart: "no"`.
+- **Declared binds.** `/seed` is the only host bind, it is `read_only: true`, and it is
+  listed in `container-release.json` `service.deployed_seed_binds`. An undeclared bind is
+  refused. `service.deployed_compose_files` names exactly the file set the controller
+  deploys (`["docker/docker-compose.npm.yml"]`).
+- **Selectable reference volume.** `volumes.clingen_reference.name` is
+  `"${CLINGEN_REFERENCE_VOLUME:-clingen-link-npm_clingen_reference}"`. The default is the
+  name Compose derives on its own from the project name, so leaving the variable unset
+  changes nothing on a running host. It exists so the fleet controller can create a
+  *candidate* volume, run `clingen-data-init` into it, verify it, and switch the server
+  onto it as one reviewed data-activation step rather than mutating the live volume.
+
+The controller also proves the data identity independently. `container-release.json`
+`data.digest` is the SHA-256 of the **canonical JSON bytes** of the runtime
+`data-identity-manifest.json` written into the selected version directory (the file
+content without its trailing newline) — not the compressed `.zst` digest and not the
+expanded-tree digest. Its semantic probe opens `/data/current/clingen.sqlite` read-only and
+immutable and reads `meta.snapshot_version` (the bare `"2"` stamp, not the `"2.0.0"`
+deployment pin), `COUNT(*) FROM gene`, and the SHA-256 of the first `symbol`.
+
 ## Image build notes
 
 The Dockerfile uses a multi-stage `uv` build:

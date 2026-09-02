@@ -101,7 +101,11 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
-    restart: on-failure
+    # `unless-stopped`, not `on-failure`: an `on-failure` container does not come back
+    # after a host reboot or a Docker upgrade. The fleet release gate
+    # (genefoundry-router `validate-deployed-overlay`) refuses any other policy on a
+    # long-running service; run-once services keep `restart: "no"`.
+    restart: unless-stopped
     # Self-contained: read_only, the writable tmpfs, and security_opt are declared here.
     read_only: true
     # GeneFoundry deploy contract: the fleet controller (strato_v6_docker_npm,
@@ -146,4 +150,9 @@ networks:
     name: "${NPM_SHARED_NETWORK_NAME:-npm_default}"
 
 volumes:
+  # The PHYSICAL volume name is selectable so the fleet controller can prepare a
+  # *candidate* volume, verify it, and switch to it in one reviewed step
+  # (strato_v6_docker_npm `scripts/utils/remote_activation.py`). The default is the exact
+  # volume this project already uses, so leaving the variable unset is a no-op.
   clingen_reference:
+    name: "${CLINGEN_REFERENCE_VOLUME:-clingen-link-npm_clingen_reference}"

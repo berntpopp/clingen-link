@@ -23,14 +23,18 @@ DATA_IDENTITY_DIGEST = "sha256:74dc6e1a82f773b17303d33ff82b63c96e9aed0b16fa5f302
 RUNTIME_DATA_IDENTITY_DIGEST = (
     "sha256:74dc6e1a82f773b17303d33ff82b63c96e9aed0b16fa5f3020b13fd69ffdf789"
 )
+# genefoundry-router v0.8.5: the first revision whose `_container-release.yml` runs
+# `validate-deployed-overlay` against docker/docker-compose.npm.yml.
+ROUTER_WORKFLOW_SHA = "31ea81cee5475fc3655c047c63a89739948f99a9"
 RUNTIME_CAPABLE_RELEASE_BUILDER = (
-    "berntpopp/genefoundry-router/.github/workflows/_container-release.yml"
-    "@db47bd3357cebf33e6722615c4f0e7419a64857e"
+    f"berntpopp/genefoundry-router/.github/workflows/_container-release.yml@{ROUTER_WORKFLOW_SHA}"
 )
 RUNTIME_CAPABLE_CI_BUILDER = (
-    "berntpopp/genefoundry-router/.github/workflows/_container-ci.yml"
-    "@db47bd3357cebf33e6722615c4f0e7419a64857e"
+    f"berntpopp/genefoundry-router/.github/workflows/_container-ci.yml@{ROUTER_WORKFLOW_SHA}"
 )
+# The physical Docker volume the deployed stack uses today. Compose derives it from the
+# project name plus the logical key, so the default below must stay byte-identical.
+CURRENT_REFERENCE_VOLUME = "clingen-link-npm_clingen_reference"
 
 
 class _ComposeLoader(yaml.SafeLoader):
@@ -198,14 +202,21 @@ def test_every_compose_profile_carries_the_declared_runtime_data_identity() -> N
 
 def test_declared_data_release_is_compatible_with_the_application_schema() -> None:
     """A schema-2 application must not publish a schema-1 data requirement."""
-    from clingen_link.data_contract import SNAPSHOT_SCHEMA_SEMVER
+    from clingen_link.data_contract import SNAPSHOT_SCHEMA_SEMVER, SNAPSHOT_SCHEMA_VERSION
 
     declared = _release_config()["data"]
     assert declared["release_tag"] == DATA_RELEASE_TAG
     assert declared["digest"] == DATA_IDENTITY_DIGEST
-    # The reusable router release schema intentionally accepts only its documented
-    # external-reference fields. This mapping test is where the application/data
-    # schema relationship is made explicit.
+    # `data.schema_compatibility` is what the release workflow projects into the published
+    # manifest's `data_requirements.schema_compatibility`, and the fleet controller refuses
+    # a data-activation record whose attested `schema_version` is not a member of it
+    # (strato_v6_docker_npm `scripts/utils/data_attestation.py`). It cannot be declared yet:
+    # the router's own `ReleaseConfig` data models are `extra="forbid"` and carry no such
+    # field, so adding it here makes `validate-deployed-overlay` fail the release outright.
+    # When the router grows the field, the value is the RAW `meta.snapshot_version` stamp
+    # (`SNAPSHOT_SCHEMA_VERSION`, "2") that the controller's probe reads back out of the
+    # SQLite file -- not the deployment pin `SNAPSHOT_SCHEMA_SEMVER` ("2.0.0").
+    assert SNAPSHOT_SCHEMA_VERSION == "2"
     assert SNAPSHOT_SCHEMA_SEMVER == "2.0.0"
     assert "schema_compatibility" not in declared
 
@@ -310,3 +321,60 @@ def test_release_compose_files_never_declare_user() -> None:
                 f"{name} in {rel_path} declares 'user'; the release Compose gate "
                 "(container_release.py validate-compose) forbids it there"
             )
+
+
+# --- fleet deploy contract: activation-ready overlay -------------------------------------
+
+
+def test_npm_overlay_reference_volume_is_selectable_and_defaults_to_the_live_volume() -> None:
+    """The controller prepares a *candidate* volume, verifies it, then switches to it.
+
+    That is only possible if the physical volume name is a variable. The default must stay
+    the name Compose derives on its own (`<project>_<logical key>`), so an operator who sets
+    nothing keeps the exact volume the service already serves from.
+    """
+    npm = _compose("docker-compose.npm.yml")
+    volume = npm["volumes"]["clingen_reference"]
+    assert volume["name"] == f"${{CLINGEN_REFERENCE_VOLUME:-{CURRENT_REFERENCE_VOLUME}}}"
+    assert f"{npm['name']}_clingen_reference" == CURRENT_REFERENCE_VOLUME
+    for service in npm["services"].values():
+        sources = {mount.get("source") for mount in service.get("volumes", [])}
+        assert "clingen_reference" in sources or sources == {
+            "${CLINGEN_LINK_DATA_SEED_DIR:-/srv/genefoundry/clingen-seed}"
+        }, sources
+
+
+def test_npm_overlay_restart_policies_survive_a_reboot() -> None:
+    """`on-failure` does not come back after a host reboot or a Docker upgrade.
+
+    The shared release gate (`validate-deployed-overlay`) requires `unless-stopped` on every
+    long-running service and `"no"` on the run-once init.
+    """
+    npm = _compose("docker-compose.npm.yml")
+    assert npm["services"]["clingen_link"]["restart"] == "unless-stopped"
+    assert npm["services"]["clingen_data_init"]["restart"] == "no"
+    for service in npm["services"].values():
+        assert "restart_policy" not in service.get("deploy", {}), (
+            "deploy.restart_policy silently overrides restart:"
+        )
+
+
+def test_container_release_declares_the_deployed_overlay_and_every_seed_bind() -> None:
+    """The gate refuses an undeclared host bind, and defaults would hide a layered stack."""
+    service = _release_config()["service"]
+    assert service["deployed_compose_files"] == ["docker/docker-compose.npm.yml"]
+    npm = _compose("docker-compose.npm.yml")
+    binds = {
+        mount["target"]
+        for definition in npm["services"].values()
+        for mount in definition.get("volumes", [])
+        if mount.get("type") == "bind"
+    }
+    assert binds == set(service["deployed_seed_binds"]), (
+        "every read-only bind in the deployed overlay must be declared in "
+        "container-release.json service.deployed_seed_binds"
+    )
+    for definition in npm["services"].values():
+        for mount in definition.get("volumes", []):
+            if mount.get("type") == "bind":
+                assert mount["read_only"] is True, "a declared seed bind is never writable"

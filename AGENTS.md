@@ -80,6 +80,41 @@ JSON in prod / console in `--dev`, with `asgi-correlation-id`). Other areas:
   the shared release gate (`container_release.py validate-compose`) forbids it
   there.
 - `tests/unit/test_compose_hardening.py` guards both sides of this contract.
+- The overlay is gated centrally: the release workflow pins
+  `genefoundry-router/.github/workflows/_container-release.yml@31ea81ce…` (v0.8.5), which
+  runs `validate-deployed-overlay` against it before the image is built. Reproduce it
+  locally with the router checked out:
+  `uv run python scripts/container_release.py validate-deployed-overlay --config
+  <clingen-link>/container-release.json --project-dir <clingen-link>` (must exit 0).
+  Its rules that bite here: `restart: unless-stopped` on `clingen_link` (an `on-failure`
+  container does not return after a host reboot) and `restart: "no"` on the init; every
+  read-only host bind declared in `container-release.json`
+  `service.deployed_seed_binds` (`["/seed"]`); `service.deployed_compose_files` naming
+  exactly the files the controller deploys (`["docker/docker-compose.npm.yml"]`).
+- **Volume variable.** `volumes.clingen_reference.name` is
+  `"${CLINGEN_REFERENCE_VOLUME:-clingen-link-npm_clingen_reference}"`. The default is the
+  name Compose derives on its own, so an unset variable is a no-op; the variable exists so
+  the controller can materialize a *candidate* volume, verify it, and switch to it in one
+  reviewed data-activation step. Never rename the logical key `clingen_reference` — the
+  controller's reviewed adapter table pins it.
+- **Data identity.** `container-release.json` `data.digest`
+  (`sha256:74dc6e1a…`) is the SHA-256 of the **canonical JSON bytes** of the runtime
+  `data-identity-manifest.json` that `clingen-link materialize-data` writes into the
+  selected version directory — i.e. the file's content *without* its trailing newline. It
+  is neither the compressed bundle digest (`ae1dbfb8…`) nor the expanded-tree digest
+  (`b75e39ca…`). `/health` republishes it as
+  `release_identity.data_identity.{expected,actual}`.
+- **Probe.** The controller's semantic probe opens
+  `/data/current/clingen.sqlite` immutably read-only and reads
+  `SELECT DISTINCT snapshot_version FROM meta`, `SELECT COUNT(*) FROM gene`, and
+  `sha256(SELECT symbol FROM gene ORDER BY symbol LIMIT 1)`. `meta.snapshot_version` is the
+  bare `SNAPSHOT_SCHEMA_VERSION` (`"2"`), not the deployment pin `SNAPSHOT_SCHEMA_SEMVER`
+  (`"2.0.0"`) — anything binding to the probe must use `"2"`.
+- **Known gap.** The published manifest's `data_requirements.schema_compatibility` is
+  still `[]`, so the controller cannot yet run a data-activation record for this service.
+  The workflow projects it from `container-release.json` `data.schema_compatibility`, but
+  the router's `ReleaseConfig` data models are `extra="forbid"` and have no such field at
+  v0.8.5, so declaring it fails the release. Fix belongs in the router first.
 - Release checklist this repo enforces (see `tests/unit/test_version_single_source.py`):
   bump `version` in `pyproject.toml`, `uv lock`, add a `CHANGELOG.md` heading
   `## [x.y.z] - YYYY-MM-DD`, and set `CITATION.cff` `version:` **and**
