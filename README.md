@@ -101,7 +101,9 @@ Each domain stamps a version/date/hash and has a cheap change signal, so
 `get_server_capabilities`, in every tool's `_meta`, and in the `clingen://freshness` resource.
 Full model, release workflow, and the live drill-down paths: [`docs/data.md`](docs/data.md).
 
-**ClinGen data is licensed CC BY 4.0** (© ClinGen / Clinical Genome Resource). Attribute
+**ClinGen data is licensed CC BY 4.0** (© ClinGen / Clinical Genome Resource); the exact
+redistribution notice this project publishes is committed in
+[`data/RIGHTS.json`](data/RIGHTS.json) and carried in every attested data release. Attribute
 ClinGen and cite the framework paper:
 
 > Strande NT, et al. Evaluating the Clinical Validity of Gene-Disease Associations: An

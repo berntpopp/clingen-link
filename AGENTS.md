@@ -66,6 +66,16 @@ JSON in prod / console in `--dev`, with `asgi-correlation-id`). Other areas:
   committed. A weekly `data-refresh.yml` Action automates the check + rebuild
   PR.
 - **Do not** hand-edit the snapshot bundle or `tests/fixtures/`.
+- **Rights notice, not a per-release sign-off.** ClinGen data is CC BY 4.0, so
+  redistribution needs honest attribution, not a human legal decision per release.
+  `data/RIGHTS.json` is the committed, versioned notice (licence name/SPDX/URL,
+  attribution, citation, source URL, terms URL, `terms_reviewed_at`).
+  `clingen_link/etl/rights_notice.py` validates it for presence and exact shape;
+  `data-refresh.yml` fails closed if it is missing or malformed, copies it verbatim
+  into the attested `data-release-manifest.json` (`rights`), and seals its digest as
+  `rights_notice_digest` in the approval. There is **no** rights secret — do not add
+  one; refresh `terms_reviewed_at` (and the notice) only when ClinGen's terms change.
+  Guard test: `tests/unit/test_rights_notice.py`.
 
 ## Fleet deploy contract
 

@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast
 
+from clingen_link.etl.rights_notice import RightsNoticeError, validate_rights_notice
+
 
 class ReleaseIdentityError(ValueError):
     """A release manifest is not a complete, typed sealed identity."""
@@ -30,6 +32,7 @@ _ROOT_FIELDS = frozenset(
         "previous_known_good_digest",
     }
 )
+"""Required root fields; ``rights`` is additionally allowed (and carries the notice)."""
 _ARTIFACT_FIELDS = frozenset(
     {
         "filename",
@@ -91,8 +94,16 @@ class ReleaseIdentity:
 def sealed_identity(manifest: object) -> ReleaseIdentity:
     """Extract a typed identity from a decoded manifest, rejecting ambiguity."""
     root = _mapping(manifest, "manifest")
-    if set(root) != _ROOT_FIELDS or root.get("schema_version") != 1:
+    if (
+        set(root) not in (_ROOT_FIELDS, _ROOT_FIELDS | {"rights"})
+        or root.get("schema_version") != 1
+    ):
         raise ReleaseIdentityError("schema_version must be integer 1")
+    if "rights" in root:
+        try:
+            validate_rights_notice(root.get("rights"))
+        except RightsNoticeError as error:
+            raise ReleaseIdentityError(f"manifest rights notice is invalid: {error}") from error
     dataset = _mapping(root.get("dataset"), "dataset")
     source = _mapping(dataset.get("source"), "dataset.source")
     schema = _mapping(root.get("schema"), "schema")

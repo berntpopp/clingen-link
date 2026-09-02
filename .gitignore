@@ -219,7 +219,9 @@ Desktop.ini
 *.bak
 *.tmp
 *.temp
-/data/
+/data/*
+# The committed, versioned redistribution rights notice is not a build artifact.
+!/data/RIGHTS.json
 /temp/
 /tmp/
 

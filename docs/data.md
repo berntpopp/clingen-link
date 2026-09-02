@@ -85,6 +85,18 @@ verifies the handoff, attests the exact bytes, and publishes a draft-first immut
 `data-clingen-YYYY-MM-DD` release. Deploys pin both the compressed and the canonical
 expanded-tree digest, plus the canonical runtime-manifest identity.
 
+**Rights notice.** ClinGen data is CC BY 4.0, so redistribution is gated on honest
+attribution rather than a per-release human sign-off. The notice is committed and
+versioned in [`data/RIGHTS.json`](../data/RIGHTS.json) — licence name, SPDX id and URL,
+attribution and citation strings, the ClinGen terms URL, and `terms_reviewed_at`, the date
+those terms were last reviewed. The build step loads it through
+`clingen_link/etl/rights_notice.py`, which validates presence and exact shape and fails
+closed otherwise, and copies it verbatim into the published, attested
+`data-release-manifest.json` under `rights`; the publisher re-validates that the manifest's
+notice matches the committed one byte-for-byte and seals its `rights_notice_digest` into the
+approval record. No secret is involved: update `data/RIGHTS.json` (and `terms_reviewed_at`)
+when ClinGen's terms change, not once per release.
+
 Do **not** hand-edit a snapshot bundle or `tests/fixtures/`.
 
 ## Live drill-down

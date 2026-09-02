@@ -4,6 +4,16 @@ All notable changes to clingen-link are documented here.
 
 ## [Unreleased]
 
+- Data release: replace the per-release, hash-bound `CLINGEN_RIGHTS_RECORD_JSON`
+  environment secret with a committed, versioned rights notice in `data/RIGHTS.json`
+  (CC BY 4.0, © ClinGen / Clinical Genome Resource, terms reviewed 2026-09-02).
+  `clingen_link/etl/rights_notice.py` validates it for presence and exact shape;
+  `data-refresh.yml` fails closed on a missing or malformed notice, publishes it verbatim
+  in the attested `data-release-manifest.json` (`rights`), and seals its digest as
+  `rights_notice_digest`. ClinGen's licence is permissive, so a per-release human legal
+  decision bought no safety while making every publish depend on refreshing a secret.
+  Removes `clingen_link/etl/rights_record.py` and `tests/unit/test_rights_record.py`.
+
 ## [4.0.9] - 2026-09-02
 
 - Release: pin the reusable container workflows to genefoundry-router v0.8.6
