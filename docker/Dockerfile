@@ -56,6 +56,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     TMPDIR=/tmp
 
 RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y --only-upgrade --no-install-recommends \
     openssl \
     libssl3t64 \
