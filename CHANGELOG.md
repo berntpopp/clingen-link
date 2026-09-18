@@ -4,6 +4,15 @@ All notable changes to clingen-link are documented here.
 
 ## [Unreleased]
 
+## [4.0.13] - 2026-09-18
+
+- Dependencies: consolidate Dependabot and security updates.
+  - Bump `ruff` to >=0.16.8, `mypy` to >=2.3.1, `pydantic` to >=2.13.5, and `typer` to >=0.27.2.
+  - Bump `astral-sh/setup-uv` to v10.1.0 (`bec219d24cd3e171d82865faccec33120bb574f4`).
+  - Bump `github/codeql-action` to v4.38.0 (`b96794f015dfd88f77b49b1c93e0fa7110f94c63`).
+  - Pin reusable workflows `_container-ci.yml` and `_container-release.yml` to genefoundry-router v0.9.1 (`adfc1cffed6530d6453c9dbb40be5f4c5884b8a2`).
+  - Add Debian security package upgrade in Dockerfile and configure Dependabot grouping.
+
 ## [4.0.12] - 2026-09-02
 
 - Release: same content as 4.0.11, whose `Release validation` run failed on a
