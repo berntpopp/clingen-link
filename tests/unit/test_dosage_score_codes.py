@@ -9,7 +9,7 @@ Two defects, one root cause (issue #46):
   "Gene associated with autosomal recessive phenotype" in a numeric field.
 
 Upstream (``ClinGen_gene_curation_list_GRCh38.tsv``) publishes a Score column whose
-vocabulary is ``{0,1,2,3,30,40}`` (plus the ``Not yet evaluated`` sentinel and empty
+vocabulary is ``{-1,0,1,2,3,30,40}`` (plus the ``Not yet evaluated`` sentinel and empty
 in the triplosensitivity column) and a *separate* Description column carrying the
 prose. The snapshot must keep them separate too.
 """
