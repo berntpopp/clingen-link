@@ -4,11 +4,21 @@ All notable changes to clingen-link are documented here.
 
 ## [Unreleased]
 
+## [4.0.15] - 2026-10-03
+
 ### Fixed
 
 - Preserve ClinGen dosage code `-1` as a distinct, searchable programmatic flag
   (will not be evaluated), including when its upstream description is blank.
   The snapshot refresh accepts this documented code while still rejecting unknown codes.
+
+### Data
+
+- Pin the refreshed immutable snapshot `data-clingen-fc7cb06c3b0041a2`: validity
+  3,695, dosage 2,045, ERepo 13,278, actionability 181, and CSpec 126 records.
+  Align runtime identity, compressed bundle, and expanded-tree pins across
+  application defaults, all Compose overlays, release smoke, and configuration docs.
+  Snapshot schema remains 2.0.0.
 
 ## [4.0.14] - 2026-10-03
 
