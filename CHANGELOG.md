@@ -6,6 +6,9 @@ All notable changes to clingen-link are documented here.
 
 ### Fixed
 
+- Treat only HTTP 404 as an absent immutable data tag; validate an existing tag's
+  exact source commit and refuse API failures before publication.
+
 - Preserve ClinGen dosage code `-1` as a distinct, searchable programmatic flag
   (will not be evaluated), including when its upstream description is blank.
   The snapshot refresh accepts this documented code while still rejecting unknown codes.
