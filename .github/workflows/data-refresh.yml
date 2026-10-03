@@ -264,14 +264,20 @@ jobs:
           # from the dataset identity in `build`, never pushed by a person. Create it
           # as a lightweight ref on the exact commit this run validated, and refuse
           # to reuse a tag that already names a different commit.
-          existing="$(gh api "repos/$GH_REPO/git/ref/tags/$TAG" --jq .object.sha 2>/dev/null || true)"
-          if [ -z "$existing" ]; then
-            gh api --method POST "repos/$GH_REPO/git/refs" -f ref="refs/tags/$TAG" -f sha="$GITHUB_SHA" >/dev/null
-            echo "created refs/tags/$TAG at $GITHUB_SHA"
-          elif [ "$existing" != "$GITHUB_SHA" ]; then
-            echo "tag $TAG already exists at $existing, not at $GITHUB_SHA" >&2
-            exit 1
-          fi
+          response="$RUNNER_TEMP/tag-ref.json"
+          status="$(curl --silent --show-error --max-time 30 --max-redirs 0 --output "$response" --write-out '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$GH_REPO/git/ref/tags/$TAG")"
+          case "$status" in
+            404)
+              gh api --method POST "repos/$GH_REPO/git/refs" -f ref="refs/tags/$TAG" -f sha="$GITHUB_SHA" >/dev/null
+              echo "created refs/tags/$TAG at $GITHUB_SHA"
+              ;;
+            200)
+              jq -e --arg ref "refs/tags/$TAG" --arg sha "$GITHUB_SHA" '
+                .ref == $ref and .object.type == "commit" and .object.sha == $sha
+              ' "$response" >/dev/null
+              ;;
+            *) echo "unexpected GitHub tag status: $status" >&2; exit 1 ;;
+          esac
       - name: Create only an absent draft
         if: steps.release_state.outputs.state == 'create'
         env:

@@ -90,12 +90,13 @@ def test_publisher_creates_the_data_tag_it_then_verifies() -> None:
     assert names.index(tag_step["name"]) < names.index("Create only an absent draft")
     assert names.index("Determine closed immutable release state") < names.index(tag_step["name"])
     script = tag_step["run"]
-    assert 'gh api "repos/$GH_REPO/git/ref/tags/$TAG"' in script
+    assert '"https://api.github.com/repos/$GH_REPO/git/ref/tags/$TAG"' in script
     assert (
         '--method POST "repos/$GH_REPO/git/refs" -f ref="refs/tags/$TAG" -f sha="$GITHUB_SHA"'
         in script
     )
-    assert '[ "$existing" != "$GITHUB_SHA" ]' in script and "exit 1" in script
+    assert '.object.type == "commit" and .object.sha == $sha' in script
+    assert "404)" in script and "exit 1" in script
     create = steps[names.index("Create only an absent draft")]
     assert "--verify-tag" in create["run"]
 
@@ -485,3 +486,75 @@ def test_protected_main_only_jobs_bind_the_build_revision_and_attest_every_asset
         if step.get("uses", "").startswith("actions/attest-build-provenance@")
     )
     assert "SHA256SUMS" in attest["with"]["subject-path"]
+
+
+@pytest.mark.parametrize(
+    ("status", "object_type", "revision", "expected_success", "expected_create"),
+    [
+        (404, "commit", "a" * 40, True, True),
+        (200, "commit", "a" * 40, True, False),
+        (200, "commit", "b" * 40, False, False),
+        (200, "tag", "a" * 40, False, False),
+        (403, "commit", "a" * 40, False, False),
+        (500, "commit", "a" * 40, False, False),
+    ],
+)
+def test_tag_lookup_distinguishes_absence_from_api_errors(
+    tmp_path, status, object_type, revision, expected_success, expected_create
+) -> None:
+    """Run the publisher shell against actual CLI-style error JSON on stdout."""
+    import os
+
+    tag = "data-clingen-" + "c" * 16
+    body = (
+        {"ref": f"refs/tags/{tag}", "object": {"type": object_type, "sha": revision}}
+        if status == 200
+        else {"message": "Not Found" if status == 404 else "API unavailable", "status": str(status)}
+    )
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    curl = bin_dir / "curl"
+    curl.write_text(
+        "#!/usr/bin/env python3\nimport sys,os\nfrom pathlib import Path\n"
+        "args=sys.argv[1:]\nPath(args[args.index('--output')+1]).write_text(os.environ['LOOKUP_BODY'])\n"
+        "print(os.environ['LOOKUP_STATUS'],end='')\n"
+    )
+    gh = bin_dir / "gh"
+    gh.write_text(
+        "#!/usr/bin/env python3\nimport sys,os\nfrom pathlib import Path\n"
+        "if '--method' in sys.argv and 'POST' in sys.argv:\n"
+        " Path(os.environ['CREATE_LOG']).write_text(' '.join(sys.argv[1:]));sys.exit(0)\n"
+        "print(os.environ['LOOKUP_BODY'])\n"
+        "sys.exit(0 if os.environ['LOOKUP_STATUS']=='200' else 1)\n"
+    )
+    curl.chmod(0o755)
+    gh.chmod(0o755)
+    log = tmp_path / "created"
+    env = dict(
+        os.environ,
+        PATH=f"{bin_dir}:{os.environ['PATH']}",
+        RUNNER_TEMP=str(tmp_path),
+        GH_REPO="berntpopp/clingen-link",
+        GH_TOKEN="test-token",  # noqa: S106 - inert fixture; never sent to GitHub
+        TAG=tag,
+        GITHUB_SHA="a" * 40,
+        LOOKUP_BODY=json.dumps(body),
+        LOOKUP_STATUS=str(status),
+        CREATE_LOG=str(log),
+    )
+    script = next(
+        step["run"]
+        for step in _steps("publish-release")
+        if step.get("name") == "Ensure the release tag names this exact source"
+    )
+    result = subprocess.run(  # noqa: S603 - executes the extracted local workflow with CLI stubs
+        ["bash", "-c", script],  # noqa: S607 - controlled system shell
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert (result.returncode == 0) == expected_success, result.stderr
+    assert log.exists() == expected_create
+    if expected_create:
+        assert f"ref=refs/tags/{tag}" in log.read_text()
+        assert "sha=" + "a" * 40 in log.read_text()
