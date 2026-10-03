@@ -4,6 +4,13 @@ All notable changes to clingen-link are documented here.
 
 ## [Unreleased]
 
+## [4.0.14] - 2026-10-03
+
+- Update PyJWT to 2.15.0, AnyIO to 4.14.2, and virtualenv to 21.7.13.
+- Consolidate the open grouped dependency and GitHub Actions updates, including FastAPI, gunicorn, OpenTelemetry, orjson, pre-commit, pytest-mock, Ruff, setup-uv, and CodeQL.
+- Refresh the pinned Python 3.14 base image and router v0.9.3 reusable container workflows.
+
+
 ## [4.0.13] - 2026-09-18
 
 - Dependencies: consolidate Dependabot and security updates.
