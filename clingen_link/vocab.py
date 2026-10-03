@@ -17,6 +17,7 @@ The score vocabulary is closed:
 ===== ==============================================================
 code   meaning
 ===== ==============================================================
+-1     will not be evaluated (programmatic flag)
 0      no evidence
 1      little evidence
 2      some evidence (emerging)
@@ -25,7 +26,10 @@ code   meaning
 40     dosage sensitivity unlikely
 ===== ==============================================================
 
-``30`` and ``40`` are **not ordinal** — they are flags, not "more evidence than 3".
+``-1``, ``30`` and ``40`` are **not ordinal** — they are flags, not evidence levels.
+ClinGen documents ``-1`` in its dosage framework (Thaxton et al., PMID 34694049,
+https://pmc.ncbi.nlm.nih.gov/articles/PMC9035475/). The current TSV can publish
+it with a blank Description column; it must remain distinct from an absent score.
 The triplosensitivity column additionally ships the literal sentinel
 ``Not yet evaluated`` (and blanks) *in the score column*; that is an absent score,
 not a code, and the ETL stores it as ``NULL``.
@@ -37,7 +41,7 @@ from typing import Literal, get_args
 
 # The closed dosage score vocabulary. `Literal` (not a bare `str`) so an `enum`
 # appears in the tool's inputSchema and FastMCP rejects anything outside it.
-DosageScoreCode = Literal["0", "1", "2", "3", "30", "40"]
+DosageScoreCode = Literal["-1", "0", "1", "2", "3", "30", "40"]
 
 DOSAGE_SCORE_CODES: frozenset[str] = frozenset(get_args(DosageScoreCode))
 
@@ -47,6 +51,7 @@ DOSAGE_NOT_EVALUATED = "Not yet evaluated"
 
 # Plain-English reading of each code, so a model does not have to memorise the scale.
 DOSAGE_SCORE_TEXT: dict[str, str] = {
+    "-1": "Will not be evaluated",
     "0": "No evidence",
     "1": "Little evidence",
     "2": "Some evidence (emerging)",

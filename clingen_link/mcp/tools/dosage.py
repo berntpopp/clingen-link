@@ -198,7 +198,8 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
                     "Exact ClinGen haploinsufficiency score CODE (not its description): "
                     "0 no evidence, 1 little, 2 some, 3 sufficient evidence; "
                     "30 gene associated with an autosomal-recessive phenotype; "
-                    "40 dosage sensitivity unlikely. 30 and 40 are flags, not 'more than 3'."
+                    "40 dosage sensitivity unlikely; -1 will not be evaluated. "
+                    "-1, 30 and 40 are flags, not evidence levels."
                 ),
                 examples=_SCORE_EXAMPLES,
             ),
@@ -208,7 +209,7 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
             Field(
                 description=(
                     "Exact ClinGen triplosensitivity score CODE (same scale as haplo_score). "
-                    "Genes upstream has not evaluated carry no code and are not matched by any."
+                    "Absent scores match no code; -1 marks genes that will not be evaluated."
                 ),
                 examples=_SCORE_EXAMPLES,
             ),

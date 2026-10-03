@@ -225,7 +225,8 @@ def get_reference_resource() -> dict[str, Any]:
             "haplo_score / triplo_score": (
                 "Dosage score CODE (not its prose): 0-3 evidence scale, plus 30 (gene "
                 "associated with an autosomal-recessive phenotype) and 40 (dosage sensitivity "
-                "unlikely). The plain-English reading is in haplo_interpretation."
+                "unlikely) and -1 (will not be evaluated). These flags are not evidence levels. "
+                "The plain-English reading is in haplo_interpretation."
             ),
             "perm_id": "CGGV validity permalink token.",
             "caid": "ClinGen Allele Registry id (e.g. CA003783).",

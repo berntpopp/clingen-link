@@ -4,6 +4,12 @@ All notable changes to clingen-link are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve ClinGen dosage code `-1` as a distinct, searchable programmatic flag
+  (will not be evaluated), including when its upstream description is blank.
+  The snapshot refresh accepts this documented code while still rejecting unknown codes.
+
 ## [4.0.14] - 2026-10-03
 
 - Update PyJWT to 2.15.0, AnyIO to 4.14.2, and virtualenv to 21.7.13.
