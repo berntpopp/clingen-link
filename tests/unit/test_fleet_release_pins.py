@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def test_release_dependencies_use_reviewed_immutable_pins() -> None:
     assert (
-        "python:3.14-slim@sha256:cae66f2ef0ec51a9891263eeee7f987dacf0a9879e8aa9353d5606e0530619a5"
+        "python:3.14-slim@sha256:0741d101873c12ab927e6f8653feb8862b9bd58771177acb1b885b95141f91b4"
         in (ROOT / "docker/Dockerfile").read_text()
     )
     assert (
@@ -15,15 +15,15 @@ def test_release_dependencies_use_reviewed_immutable_pins() -> None:
         in (ROOT / "docker/Dockerfile").read_text()
     )
     assert (
-        "astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4"
+        "astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7"
         in (ROOT / ".github/workflows/ci.yml").read_text()
     )
     assert (
-        "_container-ci.yml@adfc1cffed6530d6453c9dbb40be5f4c5884b8a2"
+        "_container-ci.yml@0122f6e6d8f6a9057b80134d7cacbf61c5bd2e84"
         in (ROOT / ".github/workflows/container-ci.yml").read_text()
     )
     assert (
-        "_container-release.yml@adfc1cffed6530d6453c9dbb40be5f4c5884b8a2"
+        "_container-release.yml@0122f6e6d8f6a9057b80134d7cacbf61c5bd2e84"
         in (ROOT / ".github/workflows/container-release.yml").read_text()
     )
 

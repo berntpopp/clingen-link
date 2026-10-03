@@ -23,10 +23,10 @@ DATA_IDENTITY_DIGEST = "sha256:38ff5ebb9b299f313ff23fa8def48ca5a97284c5fea85db21
 RUNTIME_DATA_IDENTITY_DIGEST = (
     "sha256:38ff5ebb9b299f313ff23fa8def48ca5a97284c5fea85db21fe3ae06734a2c5b"
 )
-# genefoundry-router v0.9.1: adds `data.schema_compatibility` to the release config models
+# genefoundry-router v0.9.3: adds `data.schema_compatibility` to the release config models
 # (the first revision whose `_container-release.yml` accepts it); still runs
 # `validate-deployed-overlay` against docker/docker-compose.npm.yml, unchanged since v0.8.5.
-ROUTER_WORKFLOW_SHA = "adfc1cffed6530d6453c9dbb40be5f4c5884b8a2"
+ROUTER_WORKFLOW_SHA = "0122f6e6d8f6a9057b80134d7cacbf61c5bd2e84"
 RUNTIME_CAPABLE_RELEASE_BUILDER = (
     f"berntpopp/genefoundry-router/.github/workflows/_container-release.yml@{ROUTER_WORKFLOW_SHA}"
 )
