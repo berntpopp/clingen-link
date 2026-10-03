@@ -9,19 +9,26 @@ Two defects, one root cause (issue #46):
   "Gene associated with autosomal recessive phenotype" in a numeric field.
 
 Upstream (``ClinGen_gene_curation_list_GRCh38.tsv``) publishes a Score column whose
-vocabulary is ``{0,1,2,3,30,40}`` (plus the ``Not yet evaluated`` sentinel and empty
+vocabulary is ``{-1,0,1,2,3,30,40}`` (plus the ``Not yet evaluated`` sentinel and empty
 in the triplosensitivity column) and a *separate* Description column carrying the
 prose. The snapshot must keep them separate too.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from fastmcp import FastMCP
 
+from clingen_link.etl.build import Sources, build_snapshot
 from clingen_link.etl.parse import parse_dosage
 from clingen_link.exceptions import SnapshotBuildError
+from clingen_link.mcp.facade import create_clingen_mcp
+from clingen_link.mcp.service_adapters import set_services
+from clingen_link.services.aggregator import ClingenServices
 from clingen_link.store import queries
+from clingen_link.store.db import Store
 from clingen_link.vocab import DOSAGE_SCORE_CODES
 
 # One upstream row per shape, in the real column order (23 columns).
@@ -76,6 +83,49 @@ class TestEtlKeepsTheUpstreamCode:
 
         with pytest.raises(SnapshotBuildError, match="dosage score"):
             parse_dosage(tsv, "")
+
+    def test_upstream_negative_one_remains_distinct_from_an_absent_score(self) -> None:
+        # VCAN's Oct 3 upstream TSV carries triplo=-1 with a blank description.
+        tsv = _HEADER + _gene_row("VCAN", "3", "Sufficient evidence", "-1", "")
+        record = parse_dosage(tsv, "")[0]
+        assert record["triplo_score"] == "-1"
+        assert record["triplo_description"] == ""
+
+    @pytest.mark.parametrize("code", ["-2", "-99"])
+    def test_other_negative_codes_still_fail_closed(self, code: str) -> None:
+        tsv = _HEADER + _gene_row("VCAN", "3", "Sufficient evidence", code, "")
+        with pytest.raises(SnapshotBuildError, match="dosage score"):
+            parse_dosage(tsv, "")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("axis", ["haplo", "triplo"])
+async def test_negative_one_round_trips_from_etl_through_search_with_interpretation(
+    tmp_path: Path, axis: str
+) -> None:
+    row = _gene_row(
+        "VCAN", "-1" if axis == "haplo" else "3", "", "-1" if axis == "triplo" else "0", ""
+    )
+    path = tmp_path / "negative-code.sqlite"
+    build_snapshot(path, Sources(dosage_gene_tsv=_HEADER + row), "2026-10-03T00:00:00Z")
+    store = Store(path)
+    services = ClingenServices(store)
+    try:
+        set_services(services)
+        mcp = create_clingen_mcp()
+        for mode in ["compact", "full"]:
+            result = await mcp.call_tool(
+                "search_dosage", {f"{axis}_score": "-1", "response_mode": mode}
+            )
+            payload = result.structured_content or {}
+            assert payload["success"] is True
+            assert payload["total"] == 1
+            record = payload["records"][0]
+            assert record[f"{axis}_score"] == "-1"
+            assert record[f"{axis}_interpretation"] == "Will not be evaluated"
+    finally:
+        await services.client.aclose()
+        store.close()
 
 
 class TestSnapshotVocabulary:
