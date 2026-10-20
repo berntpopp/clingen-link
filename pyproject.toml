@@ -67,6 +67,8 @@ packages = ["clingen_link"]
 [tool.ruff]
 line-length = 100
 target-version = "py314"
+# Vendored from the router; re-vendor is a separate rollout (keep byte-identical to main).
+extend-exclude = ["tests/conformance/behaviour.py"]
 
 [tool.ruff.lint]
 # `select`, not `extend-select`: ruff 0.16.0 grew its implicit default set from
