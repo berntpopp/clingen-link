@@ -4,6 +4,16 @@ All notable changes to clingen-link are documented here.
 
 ## [Unreleased]
 
+## [4.0.17] - 2026-10-20
+
+### Data
+
+- Pin the refreshed immutable snapshot `data-clingen-f0c047cff56d589b`: validity
+  3,707, dosage 2,050, ERepo 13,519, actionability 182, and CSpec 126 records.
+  Align runtime identity, compressed bundle, and expanded-tree pins across
+  application defaults, all Compose overlays, release smoke, and configuration docs.
+  Snapshot schema remains 2.0.0.
+
 ## [4.0.16] - 2026-10-20
 
 ### Security
