@@ -4,6 +4,21 @@ All notable changes to clingen-link are documented here.
 
 ## [Unreleased]
 
+## [4.0.16] - 2026-10-20
+
+### Security
+
+- Bump `mcp` 1.28.1 -> 1.30.0 (clears the open Dependabot alert; fix version 1.30.0).
+
+### Changed
+
+- Dependency sweep: `ast-serialize`, `async-lru`, `fastapi`, `librt`, `mypy`, `orjson`,
+  `pre-commit`, `pydantic`/`pydantic-core`, `ruff`, `typer`, `typing-extensions`,
+  `typing-inspection` bumped to their latest locked versions.
+- CI: `astral-sh/setup-uv` v10.3.0, `actions/upload-artifact` v7.0.2,
+  `actions/download-artifact` v8.0.2, `github/codeql-action` v4.38.3.
+- Reusable container workflows pinned to genefoundry-router v0.10.4.
+
 ## [4.0.15] - 2026-10-03
 
 ### Fixed
