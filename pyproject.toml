@@ -9,7 +9,7 @@ description = "An MCP server grounding gene/disease/variant questions in ClinGen
 readme = "README.md"
 authors = [{ name = "Bernt Popp" }]
 license = { text = "MIT" }
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -17,8 +17,6 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Topic :: Software Development :: Libraries :: Python Modules",
@@ -68,7 +66,9 @@ packages = ["clingen_link"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py314"
+# Vendored from the router; re-vendor is a separate rollout (keep byte-identical to main).
+extend-exclude = ["tests/conformance/behaviour.py"]
 
 [tool.ruff.lint]
 # `select`, not `extend-select`: ruff 0.16.0 grew its implicit default set from
@@ -112,7 +112,7 @@ line-ending = "lf"
 "tests/**/*" = ["S101", "T20"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.14"
 strict = true
 warn_unused_configs = false
 warn_unused_ignores = false

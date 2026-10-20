@@ -164,7 +164,7 @@ class UnifiedServerManager:
                     raise RuntimeDataIdentityError(
                         "verified runtime data identity does not match configured release identity"
                     )
-            except (OSError, RuntimeDataIdentityError):
+            except OSError, RuntimeDataIdentityError:
                 self.logger.exception("ClinGen runtime data identity verification failed")
                 result["status"] = "degraded"
                 result["data_available"] = False

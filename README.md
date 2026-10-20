@@ -1,6 +1,6 @@
 # clingen-link
 
-[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Python 3.14+](https://img.shields.io/badge/python-3.14%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![CI](https://github.com/berntpopp/clingen-link/actions/workflows/ci.yml/badge.svg)](https://github.com/berntpopp/clingen-link/actions/workflows/ci.yml)
 [![Conformance](https://github.com/berntpopp/clingen-link/actions/workflows/conformance.yml/badge.svg)](https://github.com/berntpopp/clingen-link/actions/workflows/conformance.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -38,7 +38,7 @@ The server is hosted — no install, no data build:
 claude mcp add --transport http clingen https://clingen-link.genefoundry.org/mcp
 ```
 
-To run it yourself (Python 3.12+, [uv](https://docs.astral.sh/uv/) — never `pip`), build a
+To run it yourself (Python 3.14+, [uv](https://docs.astral.sh/uv/) — never `pip`), build a
 snapshot first. **The application ships code-only and has no data until you do**:
 
 ```bash
