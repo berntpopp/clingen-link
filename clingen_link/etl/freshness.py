@@ -30,7 +30,7 @@ def _as_int(value: object) -> int:
     if isinstance(value, (str, float)):
         try:
             return int(value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return 0
     return 0
 
@@ -45,7 +45,7 @@ def _rfc1123_sort_key(value: str) -> datetime:
     """
     try:
         parsed = parsedate_to_datetime(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return datetime.min.replace(tzinfo=UTC)
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=UTC)

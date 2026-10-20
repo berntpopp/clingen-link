@@ -91,7 +91,7 @@ JSON in prod / console in `--dev`, with `asgi-correlation-id`). Other areas:
   there.
 - `tests/unit/test_compose_hardening.py` guards both sides of this contract.
 - The overlay is gated centrally: the release workflow pins
-  `genefoundry-router/.github/workflows/_container-release.yml@3d3cc204…` (v0.8.6), which
+  `genefoundry-router/.github/workflows/_container-release.yml@e8931f01…` (v0.10.5), which
   runs `validate-deployed-overlay` against it before the image is built. Reproduce it
   locally with the router checked out:
   `uv run python scripts/container_release.py validate-deployed-overlay --config
@@ -157,7 +157,7 @@ Useful focused commands:
 - Use `uv` for dependency management; never `pip install`.
 - Modern Python typing: `list[str]`, `dict[str, int]`, `str | None`.
 - Format and lint with Ruff (line length 100).
-- Type check with mypy targeting Python 3.12 (**strict mode**).
+- Type check with mypy targeting Python 3.14 (**strict mode**).
 - Use `respx` to mock outbound `httpx` calls in tests.
 - MCP tools follow the house pattern: `Annotated[..., Field(description,
   pattern, examples)]`, `Literal` enums, `response_mode`,
