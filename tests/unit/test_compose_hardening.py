@@ -180,7 +180,11 @@ def test_every_compose_profile_carries_the_declared_runtime_data_identity() -> N
         "digest": DATA_IDENTITY_DIGEST,
         "schema_compatibility": ["2"],
         "image_allowlist": [
-            "opt/venv/lib/python3.14/site-packages/clingen_link/data/svi_guidance.json"
+            "opt/venv/lib/python3.14/site-packages/beartype/_check/cls/hint/data/__init__.py",
+            "opt/venv/lib/python3.14/site-packages/beartype/_check/cls/hint/data/hintdataabc.py",
+            "opt/venv/lib/python3.14/site-packages/beartype/_check/cls/hint/data/hintdatacode.py",
+            "opt/venv/lib/python3.14/site-packages/beartype/_check/cls/hint/data/hintdataerror.py",
+            "opt/venv/lib/python3.14/site-packages/clingen_link/data/svi_guidance.json",
         ],
     }
     for compose_name in (
