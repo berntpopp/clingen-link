@@ -2,6 +2,13 @@
 
 All notable changes to clingen-link are documented here.
 
+## [4.0.19] - 2026-11-11
+
+### Security
+
+- Fleet dependency sweep: authlib 1.9.5 (critical CVE/GHSA family incl. 1.9.0/1.9.1 fixes), dnspython 2.9.2, joserfc 1.8.0, fastmcp / fastmcp-slim 3.4.11 (floor raised to >=3.4.10), opentelemetry-api 1.45.2, filelock 4.2.10, virtualenv 21.15.6; closes Dependabot alerts #24-#62.
+- GitHub Actions: setup-python v7.1.0, setup-uv v10.3.2, codeql-action v4.39.1.
+
 ## [Unreleased]
 
 ## [4.0.18] - 2026-10-20

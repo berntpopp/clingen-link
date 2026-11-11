@@ -15,7 +15,7 @@ def test_release_dependencies_use_reviewed_immutable_pins() -> None:
         in (ROOT / "docker/Dockerfile").read_text()
     )
     assert (
-        "astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884"
+        "astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e"
         in (ROOT / ".github/workflows/ci.yml").read_text()
     )
     assert (
