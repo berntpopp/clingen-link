@@ -3,7 +3,7 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-ROUTER_WORKFLOW_SHA = "bab3fb6bc9a9b2a9c87bd3d5aa9883a42bae039b"  # genefoundry-router v0.10.7
+ROUTER_WORKFLOW_SHA = "5fed6be02ea0a598b56f7d1a69efcc47ff5796c8"  # genefoundry-router v0.10.10
 
 
 def test_reusable_container_workflows_use_reviewed_router_revision() -> None:

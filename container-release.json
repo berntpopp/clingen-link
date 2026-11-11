@@ -40,6 +40,10 @@
     "digest": "sha256:a8fdc8af639ac94a44be4efd9163400c7b3c8f9f21c33fc67fd83bae11a52357",
     "schema_compatibility": ["2"],
     "image_allowlist": [
+      "opt/venv/lib/python3.14/site-packages/beartype/_check/cls/hint/data/__init__.py",
+      "opt/venv/lib/python3.14/site-packages/beartype/_check/cls/hint/data/hintdataabc.py",
+      "opt/venv/lib/python3.14/site-packages/beartype/_check/cls/hint/data/hintdatacode.py",
+      "opt/venv/lib/python3.14/site-packages/beartype/_check/cls/hint/data/hintdataerror.py",
       "opt/venv/lib/python3.14/site-packages/clingen_link/data/svi_guidance.json"
     ]
   },
