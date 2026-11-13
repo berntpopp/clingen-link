@@ -291,7 +291,7 @@ wheels = [
 
 [[package]]
 name = "clingen-link"
-version = "4.0.19"
+version = "4.0.20"
 source = { editable = "." }
 dependencies = [
     { name = "asgi-correlation-id" },
