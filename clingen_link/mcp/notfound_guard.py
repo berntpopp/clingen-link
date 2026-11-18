@@ -51,7 +51,7 @@ from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools.base import ToolResult
 from mcp.shared.exceptions import MCPError
 from mcp.types import CallToolResult, TextContent
-from mcp_types import INVALID_PARAMS
+from mcp_types import INVALID_PARAMS, METHOD_NOT_FOUND
 
 from clingen_link.mcp.errors import _FALLBACK_TOOL, _provenance_meta
 
@@ -212,6 +212,18 @@ def install_protocol_error_handler(mcp_server: Any) -> None:
     """
     lowlevel = mcp_server._mcp_server
 
+    # SDK 2 echoes an unknown JSON-RPC method name verbatim in the METHOD_NOT_FOUND
+    # error ``data`` (both eras); strip it so caller input never reaches the frame.
+    async def _strip_method_not_found_data(ctx: Any, call_next: Any) -> Any:
+        try:
+            return await call_next(ctx)
+        except MCPError as exc:
+            if exc.error.code == METHOD_NOT_FOUND and exc.error.data is not None:
+                raise MCPError(code=METHOD_NOT_FOUND, message="Method not found") from None
+            raise
+
+    lowlevel.middleware.insert(0, _strip_method_not_found_data)
+
     call_tool = lowlevel.get_request_handler("tools/call")
     if call_tool is not None:
 
@@ -291,6 +303,11 @@ _SCRUB_MARKERS: tuple[str, ...] = (
     "Failed to validate request",
     "Failed to validate notification",
     "Message that failed validation",
+    # SDK 2 runner/dispatcher lines that echo a caller-supplied method name.
+    "dropped %r",
+    "dropped %s",
+    "dropped a frame",
+    "no handler for notification",
     "Tool cache miss for",
 )
 
@@ -307,6 +324,7 @@ _SCRUB_LOGGERS: tuple[str, ...] = (
     "fastmcp.server.server",
     "fastmcp.server.mixins.mcp_operations",
     "mcp.server.lowlevel.server",
+    "mcp.server.runner",
 )
 
 _SCRUBBED_MESSAGE = "MCP request rejected (details omitted)."
