@@ -9,7 +9,7 @@ clingen-link is a Python MCP server that grounds gene/disease/variant questions
 in [ClinGen](https://clinicalgenome.org/) curated evidence across four domains:
 gene-disease validity, gene dosage, clinical actionability, and variant
 pathogenicity (ERepo). It is built on the `gnomad-link` house style: a
-hand-authored FastMCP v3 facade with the full canonical response envelope and
+hand-authored FastMCP v4 facade with the full canonical response envelope and
 Streamable-HTTP transport (unified / http). Data is served from a self-contained,
 read-only SQLite snapshot (bundled in the package), with a thin live HTTP layer
 for single-record drill-down.

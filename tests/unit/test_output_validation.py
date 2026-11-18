@@ -57,33 +57,29 @@ async def test_install_handler_wraps_output_validation_error() -> None:
 
     # Replace the underlying call-tool handler with one that emits an SDK-style
     # output-validation error, then install our interceptor on top of it.
-    async def fake_handler(_request: mcp.types.CallToolRequest) -> mcp.types.ServerResult:
-        return mcp.types.ServerResult(
-            mcp.types.CallToolResult(
-                content=[
-                    mcp.types.TextContent(
-                        type="text",
-                        text=f"{OUTPUT_VALIDATION_PREFIX} 'classification' is a required property",
-                    )
-                ],
-                isError=True,
-            )
+    async def fake_handler(_ctx: object, _params: object) -> mcp.types.CallToolResult:
+        return mcp.types.CallToolResult(
+            content=[
+                mcp.types.TextContent(
+                    type="text",
+                    text=f"{OUTPUT_VALIDATION_PREFIX} 'classification' is a required property",
+                )
+            ],
+            is_error=True,
         )
 
-    server._mcp_server.request_handlers[mcp.types.CallToolRequest] = fake_handler
+    lowlevel = server._mcp_server
+    lowlevel.add_request_handler("tools/call", mcp.types.CallToolRequestParams, fake_handler)
     install_output_validation_error_handler(server)
 
-    request = mcp.types.CallToolRequest(
-        method="tools/call",
-        params=mcp.types.CallToolRequestParams(name="get_gene_validity", arguments={}),
-    )
-    wrapped = server._mcp_server.request_handlers[mcp.types.CallToolRequest]
-    result = await wrapped(request)
-    call_result = result.root
-    assert call_result.isError is True
-    # Both mirrors must carry the envelope: the text one AND structuredContent (finding 5) —
+    params = mcp.types.CallToolRequestParams(name="get_gene_validity", arguments={})
+    entry = lowlevel.get_request_handler("tools/call")
+    assert entry is not None
+    call_result = await entry.handler(None, params)
+    assert call_result.is_error is True
+    # Both mirrors must carry the envelope: the text one AND structured_content (finding 5) —
     # a client reading the machine-readable path must not get null.
     assert "internal" in call_result.content[0].text
-    assert call_result.structuredContent is not None
-    assert call_result.structuredContent["error_code"] == "internal"
-    assert call_result.structuredContent["success"] is False
+    assert call_result.structured_content is not None
+    assert call_result.structured_content["error_code"] == "internal"
+    assert call_result.structured_content["success"] is False

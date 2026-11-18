@@ -11,6 +11,15 @@ All notable changes to clingen-link are documented here.
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-11-18
+
+### Changed
+
+- Upgrade FastMCP 3.4 → 4.2.2 and MCP SDK 1.x → 2.x (`fastmcp>=4.2.2,<5.0.0`, `mcp[cli]>=2.3.0,<3.0.0`); supports the 2026-07-28 sessionless protocol era alongside the legacy handshake.
+- Not-found reflection guard Layer 3 and the output-validation interceptor ported to the SDK 2 `get_request_handler` / `add_request_handler` API (the `request_handlers` dict is gone); the resource/prompt backstop now raises `MCPError(INVALID_PARAMS)` so callers keep code -32602 instead of SDK 2's bare 0.
+- Tool annotations and CallToolResult construction use the SDK 2 snake_case fields.
+- New test drives `server/discover` → `tools/list` → `tools/call` over the modern era through the Host/Origin guard.
+
 ## [4.0.20] - 2026-11-13
 
 ### Changed
