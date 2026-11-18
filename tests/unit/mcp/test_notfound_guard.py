@@ -33,7 +33,7 @@ import pytest
 from fastmcp import Client, FastMCP
 from mcp.shared.memory import create_client_server_memory_streams
 from mcp.shared.message import SessionMessage
-from mcp.types import JSONRPCMessage, JSONRPCNotification, JSONRPCRequest
+from mcp.types import JSONRPCNotification, JSONRPCRequest
 
 from clingen_link.mcp.facade import create_clingen_mcp
 from clingen_link.mcp.untrusted_content import FORBIDDEN_CODEPOINTS
@@ -206,18 +206,19 @@ async def _raw_request(method: str, params: dict[str, Any]) -> tuple[str, str]:
                         server_read,
                         server_write,
                         srv.create_initialization_options(),
-                        stateless=False,
                         raise_exceptions=False,
                     )
                 )
 
                 async def send(obj: Any) -> None:
-                    await client_write.send(SessionMessage(JSONRPCMessage(obj)))
+                    await client_write.send(SessionMessage(message=obj))
 
                 async def recv(req_id: int) -> str:
                     with anyio.move_on_after(3.0):
                         async for msg in client_read:
-                            root = msg.message.root if not isinstance(msg, Exception) else None
+                            root = (
+                                msg.message if not isinstance(msg, Exception) else None
+                            )  # SDK v2: plain union
                             if root is not None and getattr(root, "id", None) == req_id:
                                 return str(root.model_dump_json())
                     return "<timeout>"
@@ -314,6 +315,7 @@ async def test_unknown_prompt_name_not_reflected_via_raw() -> None:
         "prompts/get", {"name": HOSTILE_PROMPT_NAME, "arguments": {}}
     )
     _assert_no_leak(response)
+    assert '"code":-32602' in response, response  # spec code, not SDK 2's bare 0
     _assert_no_leak(logs)
 
 

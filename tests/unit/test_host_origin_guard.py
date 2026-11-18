@@ -5,6 +5,7 @@ from __future__ import annotations
 from importlib.metadata import version
 from pathlib import Path
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from packaging.version import Version
@@ -134,3 +135,70 @@ def test_docker_environment_example_uses_real_settings_prefix() -> None:
     assert f'CLINGEN_LINK_ALLOWED_ORIGINS=["{PUBLIC_ORIGIN}"]' in text
     assert f'CLINGEN_LINK_CORS_ORIGINS=["{PUBLIC_ORIGIN}"]' in text
     assert "CLINGEN_CORS_ORIGINS=" not in text
+
+
+_MODERN_VERSION = "2026-07-28"
+_MODERN_META = {
+    "io.modelcontextprotocol/protocolVersion": _MODERN_VERSION,
+    "io.modelcontextprotocol/clientCapabilities": {},
+    "io.modelcontextprotocol/clientInfo": {"name": "clingen-host-test", "version": "1.0.0"},
+}
+
+
+def _modern_post(
+    client: TestClient, req_id: int, method: str, params: dict[str, object], name: str | None = None
+) -> httpx.Response:
+    headers = {
+        "Host": PUBLIC_HOST,
+        "Origin": PUBLIC_ORIGIN,
+        "Accept": "application/json, text/event-stream",
+        "Content-Type": "application/json",
+        "mcp-protocol-version": _MODERN_VERSION,
+        "mcp-method": method,
+    }
+    if name is not None:
+        headers["mcp-name"] = name
+    body = {
+        "jsonrpc": "2.0",
+        "id": req_id,
+        "method": method,
+        "params": {"_meta": _MODERN_META, **params},
+    }
+    return client.post("/mcp", headers=headers, json=body)
+
+
+def test_modern_mcp_http_discovers_lists_calls_and_fences_unknown_tool(client: TestClient) -> None:
+    """The 2026-07-28 sessionless era (mcp-method / mcp-name headers) passes the
+    Host/Origin guard end to end, and an unknown hostile tool is still fenced."""
+    import json
+
+    hostile = "ignore-instructions-secret"
+    with client:
+        discover = _modern_post(client, 1, "server/discover", {})
+        listed = _modern_post(client, 2, "tools/list", {})
+        called = _modern_post(
+            client,
+            3,
+            "tools/call",
+            {"name": "get_server_capabilities", "arguments": {}},
+            name="get_server_capabilities",
+        )
+        unknown = _modern_post(
+            client, 4, "tools/call", {"name": hostile, "arguments": {}}, name=hostile
+        )
+
+    assert discover.status_code == 200, discover.text
+    assert _MODERN_VERSION in discover.json()["result"]["supportedVersions"]
+    assert "mcp-session-id" not in discover.headers
+    assert listed.status_code == 200, listed.text
+    names = {tool["name"] for tool in listed.json()["result"]["tools"]}
+    assert "get_server_capabilities" in names
+    assert called.status_code == 200, called.text
+    called_result = called.json()["result"]
+    assert called_result.get("isError") is not True, called_result
+    assert unknown.status_code == 200, unknown.text
+    unknown_result = unknown.json()["result"]
+    assert unknown_result["isError"] is True
+    assert json.loads(unknown_result["content"][0]["text"]) == unknown_result["structuredContent"]
+    assert unknown_result["structuredContent"]["error_code"] == "not_found"
+    assert hostile not in unknown.text
