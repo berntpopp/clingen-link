@@ -22,9 +22,9 @@ from .data_contract import SNAPSHOT_SCHEMA_SEMVER
 # path in the container hardening policy. `current` is the atomically selected version.
 _DEFAULT_DATA_ROOT = "/data"
 _DEFAULT_SNAPSHOT_PATH = f"{_DEFAULT_DATA_ROOT}/current/clingen.sqlite"
-_DEFAULT_DATA_RELEASE_TAG = "data-clingen-f0c047cff56d589b"
+_DEFAULT_DATA_RELEASE_TAG = "data-clingen-9a97518362a6acda"
 _DEFAULT_DATA_IDENTITY_DIGEST = (
-    "sha256:a8fdc8af639ac94a44be4efd9163400c7b3c8f9f21c33fc67fd83bae11a52357"
+    "sha256:e57591c1dbf549b311b8cf8548856929d471c409c3b9ac301892ded6619b23a6"
 )
 _RELEASE_TAG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _MUTABLE_RELEASE_TAGS = frozenset({"latest", "main", "master", "head", "stable", "current"})
