@@ -207,7 +207,7 @@ def register_cspec_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
         page: Annotated[int, Field(ge=1, le=1000, description="1-based page number.")] = 1,
         size: Annotated[int, Field(ge=1, le=100, description="Page size (max 100).")] = 25,
     ) -> ToolReturn:
-        """Use this to full-text search the CSpec catalog (spec labels, criteria descriptions, attachment filenames). Each hit names its entity_type + ids so you can chain into get_cspec or get_cspec_criterion. Paginated; returns ~1-6kB."""
+        """Search the ClinGen criteria-specification (CSpec) catalog full-text across spec labels, criteria descriptions, and attachment filenames; returns matching specs, criteria, and files. Each hit names its entity_type + ids so you can chain into get_cspec or get_cspec_criterion. Paginated; returns ~1-6kB."""
         return await _search_cspec_impl(
             query=query, page=page, size=size, service_factory=service_factory
         )

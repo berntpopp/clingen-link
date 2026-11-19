@@ -110,7 +110,7 @@ def register_validity_tools(
             Field(description="compact (default) trims verbose fields; full keeps everything."),
         ] = "compact",
     ) -> ToolReturn:
-        """Use this to list ClinGen gene-disease validity assertions (Definitive…Refuted) for one gene, optionally filtered by classification or mode of inheritance. Each record carries a CGGV permalink + recommended_citation. Returns ~1-6kB."""
+        """List ClinGen gene-disease validity assertions for one gene; returns per disease the classification (Definitive…Refuted), MONDO id, mode of inheritance, expert panel, classified date, CGGV permalink and recommended_citation. Returns ~1-6kB."""
 
         async def call() -> dict[str, Any]:
             services = service_factory()

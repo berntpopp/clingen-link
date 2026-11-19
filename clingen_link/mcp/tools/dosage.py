@@ -225,7 +225,7 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
             Field(description="compact (default) trims verbose fields; full keeps the PMID lists."),
         ] = "compact",
     ) -> ToolReturn:
-        """Use this to search ClinGen dosage (genes + regions) by text, ISCA region, cytoband, or haplo/triplo score, optionally restricted to gene or region records. Paginated; a `truncated` block appears when more matches exist. Returns ~2-10kB."""
+        """Search ClinGen dosage-sensitivity curations of genes and recurrent CNV regions (ISCA) by text, ISCA region id, cytoband, or haplo/triplo score; returns per record its haploinsufficiency + triplosensitivity scores with interpretation, cytoband, GRCh37/GRCh38 coordinates and permalink. Optionally restrict to gene or region records. Paginated; a `truncated` block appears when more matches exist. Returns ~2-10kB."""
 
         async def call() -> dict[str, Any]:
             services = service_factory()
