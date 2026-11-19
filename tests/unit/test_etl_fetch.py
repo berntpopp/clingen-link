@@ -280,3 +280,21 @@ def test_etl_dunder_main_no_command_prints_help(capsys: pytest.CaptureFixture[st
 
     assert etl_main.main([]) == 1
     assert "usage" in capsys.readouterr().out.lower()
+
+
+def test_run_refresh_shrink_guard_blocks_unless_allowed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out = tmp_path / "clingen.sqlite"
+    monkeypatch.setattr(refresh, "gather_sources", lambda: (_full_sources(), []))
+    baseline = tmp_path / "data-release-manifest.json"
+    baseline.write_text(json.dumps({"record_counts": {"cspec": 126, "validity": 1}}))
+    assert refresh.run_refresh(out, baseline) == 1
+    assert refresh.run_refresh(out, baseline, allow_shrink=True) == 0
+    baseline.write_text(json.dumps({"record_counts": {"validity": 1}}))
+    assert refresh.run_refresh(out, baseline) == 0
+
+
+def test_shrink_failures_threshold() -> None:
+    prev = {"a": 100, "b": 100, "c": 0}
+    assert refresh.shrink_failures(prev, {"a": 50, "b": 49, "c": 0}) == ["b: 100 -> 49"]

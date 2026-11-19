@@ -131,6 +131,12 @@ def refresh(
     out: str | None = typer.Option(
         None, "--out", help="Snapshot output path (default: bundled snapshot)."
     ),
+    baseline: str | None = typer.Option(
+        None, "--baseline", help="Previous data-release-manifest.json (shrink guard)."
+    ),
+    allow_shrink: bool = typer.Option(
+        False, "--allow-shrink", help="Accept a >50% per-domain row drop vs --baseline."
+    ),
 ) -> None:
     """Build or check the bundled ClinGen SQLite snapshot."""
     from pathlib import Path
@@ -139,7 +145,8 @@ def refresh(
     from .etl.refresh import run_check, run_refresh
 
     out_path = Path(out) if out else default_snapshot_path()
-    code = run_check(out_path) if check else run_refresh(out_path)
+    base = Path(baseline) if baseline else None
+    code = run_check(out_path) if check else run_refresh(out_path, base, allow_shrink)
     raise typer.Exit(code=code)
 
 

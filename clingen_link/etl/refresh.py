@@ -14,6 +14,7 @@ if stale, and writes nothing.
 from __future__ import annotations
 
 import argparse
+import json
 import sqlite3
 import sys
 from datetime import UTC, datetime
@@ -229,8 +230,22 @@ def run_check(out_path: Path) -> int:
     return 0
 
 
-def run_refresh(out_path: Path) -> int:
-    """Fetch all domains, build the snapshot, print counts. Returns exit code."""
+def shrink_failures(previous: dict[str, Any], current: dict[str, Any]) -> list[str]:
+    """Domains that had rows before and now dropped by more than half (or to zero)."""
+    return [
+        f"{domain}: {before} -> {current.get(domain, 0)}"
+        for domain, before in previous.items()
+        if isinstance(before, int) and before > 0 and current.get(domain, 0) * 2 < before
+    ]
+
+
+def run_refresh(out_path: Path, baseline: Path | None = None, allow_shrink: bool = False) -> int:
+    """Fetch all domains, build the snapshot, print counts. Returns exit code.
+
+    ``baseline`` is the previous release's ``data-release-manifest.json``; a domain
+    that shrinks by more than 50% against its ``record_counts`` fails the refresh
+    unless ``allow_shrink`` is set (an upstream fetch bug must never publish).
+    """
     print(f"Fetching ClinGen sources -> building snapshot at {out_path}")
     sources, failures = gather_sources()
     if failures:
@@ -243,6 +258,14 @@ def run_refresh(out_path: Path) -> int:
     if counts.get("validity", 0) == 0 and counts.get("erepo", 0) == 0:
         print("Refresh produced an empty snapshot.", file=sys.stderr)
         return 1
+    if baseline is not None:
+        previous = json.loads(baseline.read_text())["record_counts"]
+        current = {d: row["record_count"] for d, row in _read_meta(out_path).items()}
+        if shrunk := shrink_failures(previous, current):
+            print(f"Domains shrank >50% vs {baseline}: {'; '.join(shrunk)}", file=sys.stderr)
+            if not allow_shrink:
+                print("Refusing to publish; rerun with --allow-shrink if real.", file=sys.stderr)
+                return 1
     return 0
 
 
@@ -258,6 +281,8 @@ def add_refresh_arguments(parser: argparse.ArgumentParser) -> None:
         default=None,
         help="Snapshot output path (default: bundled clingen_link/data/clingen.sqlite).",
     )
+    parser.add_argument("--baseline", default=None, help="Previous data-release-manifest.json.")
+    parser.add_argument("--allow-shrink", action="store_true", help="Accept a >50%% domain drop.")
 
 
 def handle_refresh(args: argparse.Namespace) -> int:
@@ -265,7 +290,8 @@ def handle_refresh(args: argparse.Namespace) -> int:
     out_path = Path(args.out) if getattr(args, "out", None) else default_snapshot_path()
     if getattr(args, "check", False):
         return run_check(out_path)
-    return run_refresh(out_path)
+    baseline = Path(args.baseline) if getattr(args, "baseline", None) else None
+    return run_refresh(out_path, baseline, getattr(args, "allow_shrink", False))
 
 
 def main(argv: list[str] | None = None) -> int:
