@@ -72,6 +72,22 @@ class DataNotFoundError(ClingenApiError):
     """
 
 
+class GeneNotCuratedError(DataNotFoundError):
+    """The gene is absent from the snapshot's gene index: ClinGen has curated it in no domain.
+
+    Maps to ``not_found`` (not retryable). The index holds only ClinGen-curated genes, and
+    ``search_genes`` reads the same index, so the envelope must NOT send the caller back to it
+    (that was the get_gene_validity <-> search_genes loop, issue #151).
+    """
+
+    def __init__(self, subject: str) -> None:
+        super().__init__(
+            f"{subject} has no ClinGen curation: it is in no ClinGen domain (validity, dosage, "
+            "actionability, ERepo). Most human genes are uncurated, so this is an honest "
+            "absence, not proof of a typo, and not evidence against a gene-disease link."
+        )
+
+
 class AmbiguousQueryError(ClingenApiError):
     """The selector matched SEVERAL records where the caller asked for one.
 

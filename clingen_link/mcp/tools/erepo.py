@@ -264,10 +264,17 @@ def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
         async def call() -> dict[str, Any]:
             caid, hgvs, clinvar_variation_id = _split_variant_id(variant_id)
             services = service_factory()
-            # clinvar_variation_id is snapshot-only (the live API keys on caid/hgvs).
-            if clinvar_variation_id and not refresh:
+            # clinvar_variation_id is snapshot-only: the live ERepo API keys on caid/hgvs, so
+            # refresh=true used to send an empty selector and fail as upstream_unavailable (#151).
+            if clinvar_variation_id:
                 model = _by_clinvar(services, clinvar_variation_id)
-                source, notice = "snapshot", None
+                source = "snapshot"
+                notice = (
+                    "refresh ignored: live ERepo keys on CAID/HGVS, not ClinVar VariationID; "
+                    "served snapshot record"
+                    if refresh
+                    else None
+                )
             else:
                 model, source, notice = await services.erepo.get_interpretation(
                     caid=caid, hgvs=hgvs, refresh=refresh

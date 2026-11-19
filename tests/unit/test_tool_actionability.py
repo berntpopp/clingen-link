@@ -82,7 +82,7 @@ class TestGetGeneActionability:
     async def test_unknown_gene_not_found(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "get_gene_actionability", {"gene_symbol": "ZZZNOPE"})
         assert payload["success"] is False
-        assert payload["fallback_tool"] == "search_genes"
+        assert payload["fallback_tool"] == "get_server_capabilities"
 
 
 class TestSearchActionability:

@@ -23,6 +23,7 @@ from clingen_link.exceptions import (
     AmbiguousQueryError,
     ClingenApiError,
     DataNotFoundError,
+    GeneNotCuratedError,
     RateLimitedError,
     SnapshotUnavailableError,
     UpstreamInputError,
@@ -152,6 +153,9 @@ def _classify(
     if isinstance(exc, AmbiguousQueryError):
         # Checked BEFORE DataNotFoundError-style branches: "several match" is not "none exists".
         return "ambiguous_query", False, "get_server_capabilities", None
+    if isinstance(exc, GeneNotCuratedError):
+        # search_genes reads the same gene index, so pointing there is a loop (issue #151).
+        return "not_found", False, "get_server_capabilities", None
     if isinstance(exc, DataNotFoundError):
         tool, args = _fallback_for(context)
         return "not_found", False, tool, args
@@ -219,6 +223,14 @@ def _recovery_text(
             "The ClinGen snapshot this server reads is missing or unreadable — a server-side "
             "fault the caller cannot fix. Call get_diagnostics for snapshot freshness details; "
             "the operator must materialize the data bundle."
+        )
+    if isinstance(exc, GeneNotCuratedError):
+        return (
+            "Do not retry and do not re-resolve: search_genes and every gene-keyed tool here "
+            "read the same ClinGen gene index, so they return the same miss. If the symbol "
+            "may be misspelt, check it against HGNC (e.g. hgnc_resolve_symbol); for "
+            "gene-disease evidence beyond ClinGen use GenCC (gencc_get_gene_curations) or "
+            "Mondo."
         )
     if error_code == "ambiguous_query":
         return (

@@ -15,7 +15,7 @@ from typing import Annotated, Any, Literal
 from fastmcp import FastMCP
 from pydantic import Field
 
-from clingen_link.exceptions import DataNotFoundError
+from clingen_link.exceptions import GeneNotCuratedError
 from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
 from clingen_link.mcp.envelope import build_meta, data_version_for, pagination
 from clingen_link.mcp.errors import McpErrorContext, ToolReturn, run_mcp_tool
@@ -138,10 +138,7 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
             services = service_factory()
             symbol = services.gene.resolve(gene_symbol)
             if symbol is None:
-                raise DataNotFoundError(
-                    f"Gene '{gene_symbol}' is not in the ClinGen snapshot. "
-                    "Resolve with search_genes."
-                )
+                raise GeneNotCuratedError(f"Gene '{gene_symbol}'")
             models = await services.dosage.for_gene(symbol)
             # The gene resolved; an empty domain is success+0 (not not_found) — that is reserved for
             # a gene absent from the index entirely (assessment M5).

@@ -48,7 +48,7 @@ class TestGetGeneValidity:
         payload = await _call(tool_mcp, "get_gene_validity", {"gene_symbol": "ZZZNOPE"})
         assert payload["success"] is False
         assert payload["error_code"] == "not_found"
-        assert payload["fallback_tool"] == "search_genes"
+        assert payload["fallback_tool"] == "get_server_capabilities"
 
     async def test_next_commands_non_empty_args(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "get_gene_validity", {"gene_symbol": "AARS1"})

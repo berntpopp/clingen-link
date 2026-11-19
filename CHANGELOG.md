@@ -11,6 +11,19 @@ All notable changes to clingen-link are documented here.
 
 ## [Unreleased]
 
+## [4.1.3] - 2026-11-19
+
+### Fixed
+
+- A gene absent from the ClinGen gene index (a real but uncurated gene, or a typo) no longer
+  sends callers into a get_gene_validity <-> search_genes loop (#151): every gene-keyed tool
+  now answers "no ClinGen curation" as an honest absence, falls back to
+  get_server_capabilities instead of search_genes, and points to HGNC / GenCC / Mondo.
+  Guard test asserts no miss routes to another gene-keyed tool.
+- `get_variant_interpretation` with a ClinVar VariationID and `refresh=true` no longer fails as
+  `upstream_unavailable` (live ERepo has no ClinVar-id selector, so the empty selector failed
+  every time); it serves the snapshot record with a notice saying refresh was ignored.
+
 ## [4.1.2] - 2026-11-19
 
 - Tool descriptions lead with what each tool returns (D1, Tool-Schema Documentation v1.1).

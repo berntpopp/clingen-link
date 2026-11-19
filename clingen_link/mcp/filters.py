@@ -26,7 +26,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from clingen_link.exceptions import DataNotFoundError
+from clingen_link.exceptions import DataNotFoundError, GeneNotCuratedError
 from clingen_link.store import queries
 from clingen_link.store.db import Store
 
@@ -74,9 +74,5 @@ def ensure_gene(store: Store, symbol: str | None, *, param: str = "gene_symbol")
         return None
     canonical = store.resolve_gene(symbol)
     if canonical is None:
-        raise DataNotFoundError(
-            f"The {param} you supplied is not in the ClinGen gene index. Resolve it with "
-            "search_genes (it matches symbols, aliases and previous symbols) and retry with "
-            "the canonical symbol."
-        )
+        raise GeneNotCuratedError(f"The {param} you supplied")
     return canonical
