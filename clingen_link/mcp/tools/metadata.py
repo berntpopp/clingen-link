@@ -47,7 +47,7 @@ def register_metadata_tools(
         tags={"metadata"},
     )
     async def get_server_capabilities() -> ToolReturn:
-        """Use this when a client needs the supported tools, ClinGen datasets + per-domain snapshot freshness, recommended workflows, token-cost hints, error taxonomy, parameter conventions, or the capabilities_version content hash. Returns ~4kB."""
+        """Get this server's capabilities: supported tools, ClinGen datasets + per-domain snapshot freshness, recommended workflows, token-cost hints, error taxonomy, parameter conventions, and the capabilities_version content hash. Returns ~4kB."""
 
         async def call() -> dict[str, Any]:
             return get_capabilities_resource(_safe_meta(service_factory))

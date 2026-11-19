@@ -88,7 +88,7 @@ def register_gene_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenSe
             Field(description="compact (default) trims null fields; full keeps everything."),
         ] = "compact",
     ) -> ToolReturn:
-        """Use this FIRST to resolve a free-text gene (symbol / HGNC id / alias) into a canonical ClinGen gene plus its per-domain availability and counts. Follow the _meta.next_commands into get_gene_summary. Unknown input returns a not_found envelope with a fallback. Returns ~1-3kB."""
+        """Resolve a free-text gene (symbol / HGNC id / alias) to its canonical ClinGen gene; returns resolved_symbol plus candidates with per-domain availability and record counts. Use this FIRST, before any gene-keyed tool. Follow the _meta.next_commands into get_gene_summary. Unknown input returns a not_found envelope with a fallback. Returns ~1-3kB."""
 
         async def call() -> dict[str, Any]:
             services = service_factory()

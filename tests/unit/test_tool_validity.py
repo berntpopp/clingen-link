@@ -25,6 +25,13 @@ class TestGetGeneValidity:
         # M4: citation lives per-record, not duplicated into _meta.
         assert "recommended_citation" not in payload["_meta"]
 
+    async def test_fields_named_in_description_are_returned(self, tool_mcp: FastMCP) -> None:
+        # D1 contract truth: the description lead promises these fields in the default mode.
+        payload = await _call(tool_mcp, "get_gene_validity", {"gene_symbol": "AARS1"})
+        rec = payload["records"][0]
+        promised = {"classification", "mondo", "moi", "expert_panel", "classified_date"}
+        assert promised | {"disease_name", "permalink", "recommended_citation"} <= rec.keys()
+
     async def test_classification_filter(self, tool_mcp: FastMCP) -> None:
         payload = await _call(
             tool_mcp, "get_gene_validity", {"gene_symbol": "AARS1", "classification": "Refuted"}
