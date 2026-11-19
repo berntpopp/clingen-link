@@ -37,7 +37,18 @@ def fetch_catalog(
         page = 1
         while True:
             url = f"{_CATALOG_URL}?pg={page}&pgSize={page_size}&detail=low"
-            payload = _get(client, url, "cspec").json()
+            try:
+                payload = _get(client, url, "cspec").json()
+            except SourceFetchError as exc:
+                # A catalog that is an exact multiple of page_size ends with a 404 page.
+                cause = exc.__cause__
+                if (
+                    page > 1
+                    and isinstance(cause, httpx.HTTPStatusError)
+                    and cause.response.status_code == 404
+                ):
+                    return out
+                raise
             data = payload.get("data") if isinstance(payload, dict) else None
             if not isinstance(data, list):
                 raise SourceFetchError("cspec: unexpected catalog shape", source="cspec")

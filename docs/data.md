@@ -84,6 +84,9 @@ assets as a **credential-free workflow artifact**. An explicitly authorized publ
 verifies the handoff, attests the exact bytes, and publishes a draft-first immutable
 `data-clingen-YYYY-MM-DD` release. Deploys pin both the compressed and the canonical
 expanded-tree digest, plus the canonical runtime-manifest identity.
+The build fails (nothing publishes) when any domain shrinks by more than 50% against the
+pinned release's `data-release-manifest.json` (`refresh --baseline`); a real upstream retraction
+is accepted only with the explicit `allow_shrink` workflow input (`refresh --allow-shrink`).
 
 **Rights notice.** ClinGen data is CC BY 4.0, so redistribution is gated on honest
 attribution rather than a per-release human sign-off. The notice is committed and

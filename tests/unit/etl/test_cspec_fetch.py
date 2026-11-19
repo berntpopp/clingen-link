@@ -131,3 +131,24 @@ def test_fetch_catalog_page_size_zero_terminates() -> None:
     with httpx.Client() as client:
         rows = cspec_fetch.fetch_catalog(client, page_size=0)
     assert rows == []
+
+
+@respx.mock
+def test_fetch_catalog_exact_page_multiple_ends_on_page_404() -> None:
+    route = respx.get(f"{_BASE}/cspec/SequenceVariantInterpretation/id")
+    route.side_effect = [
+        httpx.Response(200, json={"data": [{"entId": "GN001"}, {"entId": "GN002"}]}),
+        httpx.Response(404),
+    ]
+    with httpx.Client() as client:
+        rows = cspec_fetch.fetch_catalog(client, page_size=2)
+    assert [r["entId"] for r in rows] == ["GN001", "GN002"]
+
+
+@respx.mock
+def test_fetch_catalog_first_page_404_still_fails() -> None:
+    respx.get(f"{_BASE}/cspec/SequenceVariantInterpretation/id").mock(
+        return_value=httpx.Response(404)
+    )
+    with httpx.Client() as client, pytest.raises(SourceFetchError):
+        cspec_fetch.fetch_catalog(client)

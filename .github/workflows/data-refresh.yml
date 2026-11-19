@@ -10,6 +10,11 @@ on:
         required: true
         default: false
         type: boolean
+      allow_shrink:
+        description: Publish even if a domain drops >50% vs the pinned release (real upstream retraction only)
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: data-clingen-${{ github.run_id }}
@@ -36,11 +41,16 @@ jobs:
         with: {version: "0.8.7"}
       - name: Build nonpublishing sealed snapshot
         id: bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ALLOW_SHRINK: ${{ inputs.allow_shrink && '1' || '' }}
         run: |
           set -euo pipefail
           uv sync --group dev --frozen
           out="$RUNNER_TEMP/data-release"; mkdir -p "$out"
-          uv run clingen-link refresh --out "$out/clingen.sqlite"
+          # Shrink guard baseline: the manifest of the currently pinned data release.
+          gh release download "$(jq -r .data.release_tag container-release.json)" -p data-release-manifest.json -O "$RUNNER_TEMP/baseline-manifest.json"
+          uv run clingen-link refresh --out "$out/clingen.sqlite" --baseline "$RUNNER_TEMP/baseline-manifest.json" ${ALLOW_SHRINK:+--allow-shrink}
           OUT="$out" uv run python - <<'PY'
           import hashlib, json, os, sqlite3
           from pathlib import Path

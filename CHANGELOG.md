@@ -11,6 +11,17 @@ All notable changes to clingen-link are documented here.
 
 ## [Unreleased]
 
+## [4.1.4] - 2026-11-19
+
+### Fixed
+
+- cspec catalog: a 404 on a page after the first now ends the catalog. ClinGen's catalog held
+  exactly 250 entries (one full page), so page 2 returned 404 and the refresh shipped 0 cspec rows.
+- Refresh shrink guard: `clingen-link refresh --baseline <previous data-release-manifest.json>`
+  fails when a domain with rows drops by more than 50% (or to zero); `--allow-shrink` (workflow
+  input `allow_shrink`) accepts a real upstream retraction. `data-refresh.yml` passes the pinned
+  release's manifest as the baseline.
+
 ## [4.1.3] - 2026-11-19
 
 ### Fixed
