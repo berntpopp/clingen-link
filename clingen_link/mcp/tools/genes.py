@@ -15,7 +15,7 @@ from typing import Annotated, Any, Literal
 from fastmcp import FastMCP
 from pydantic import Field
 
-from clingen_link.exceptions import DataNotFoundError
+from clingen_link.exceptions import DataNotFoundError, GeneNotCuratedError
 from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
 from clingen_link.mcp.envelope import build_meta, cross_domain_version, pagination
 from clingen_link.mcp.errors import McpErrorContext, ToolReturn, run_mcp_tool
@@ -97,9 +97,7 @@ def register_gene_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenSe
             candidates = [_availability(r) for r in rows]
             meta = services.meta()
             if resolved is None and not candidates:
-                raise DataNotFoundError(
-                    f"No ClinGen gene resolves from '{query}'. Check the symbol/HGNC id."
-                )
+                raise GeneNotCuratedError(f"'{query}'")
             headline = (
                 f"Resolved '{query}' to {resolved}."
                 if resolved
@@ -155,10 +153,7 @@ def register_gene_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenSe
             services = service_factory()
             symbol = services.gene.resolve(gene_symbol)
             if symbol is None:
-                raise DataNotFoundError(
-                    f"Gene '{gene_symbol}' is not in the ClinGen snapshot. "
-                    "Resolve with search_genes."
-                )
+                raise GeneNotCuratedError(f"Gene '{gene_symbol}'")
             summary = await services.gene.get_summary(symbol)
             if summary is None:
                 raise DataNotFoundError(f"Gene '{symbol}' has no ClinGen index row.")

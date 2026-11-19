@@ -101,6 +101,16 @@ class TestGetVariantInterpretation:
         assert payload["success"] is True
         assert payload["interpretation"]["gene"] == "GJB2"
 
+    async def test_clinvar_id_with_refresh_serves_snapshot(self, tool_mcp: FastMCP) -> None:
+        # #151: live ERepo has no ClinVar-id selector; refresh=true used to fail as
+        # upstream_unavailable (empty selector) instead of answering from the snapshot.
+        payload = await _call(
+            tool_mcp, "get_variant_interpretation", {"variant_id": "17000", "refresh": True}
+        )
+        assert payload["success"] is True
+        assert payload["source"] == "snapshot"
+        assert "refresh ignored" in payload["notice"]
+
     async def test_evidence_codes_in_full(self, tool_mcp: FastMCP) -> None:
         payload = await _call(
             tool_mcp,
