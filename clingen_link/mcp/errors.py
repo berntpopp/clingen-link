@@ -28,7 +28,12 @@ from clingen_link.exceptions import (
     SnapshotUnavailableError,
     UpstreamInputError,
 )
-from clingen_link.mcp.error_fields import extract_field_errors, pydantic_cause
+from clingen_link.mcp.error_fields import (
+    describe_pattern_mismatches,
+    extract_field_errors,
+    pydantic_cause,
+)
+from clingen_link.mcp.foreign_ids import ForeignIdentifierError
 from clingen_link.mcp.untrusted_content import UntrustedTextLimitError, sanitize_message
 
 logger = logging.getLogger(__name__)
@@ -281,8 +286,8 @@ def _envelope_message(exc: BaseException, error_code: str) -> str:
         # Developer-authored guard string (static or parameter NAMES only, no user
         # values), so it is safe to surface verbatim instead of redacting.
         return _safe_message(exc)
-    if isinstance(exc, UntrustedTextLimitError):
-        # Also developer-authored (a size, never a value).
+    if isinstance(exc, UntrustedTextLimitError | ForeignIdentifierError):
+        # Also developer-authored (a size or a namespace name, never a value).
         return _safe_message(exc)
     if isinstance(exc, ValueError):
         # A bare ValueError's message may carry the raw user input; keyed on the TYPE, not on
@@ -340,6 +345,14 @@ def mcp_validation_tool_error(
         },
     }
     return McpToolError(payload)
+
+
+def _apply_foreign(payload: dict[str, Any], exc: ForeignIdentifierError) -> None:
+    """Name the field, the accepted forms and the converter call (envelope standard §2b)."""
+    payload.update(exc.frame, message=_safe_message(exc), recovery=exc.frame["hint"])
+    payload["fallback_tool"] = exc.next_commands[0]["tool"]
+    payload["fallback_args"] = exc.next_commands[0]["arguments"]
+    payload["_meta"]["next_commands"] = [*exc.next_commands, *payload["_meta"]["next_commands"]]
 
 
 def _declared_parameters(tool: Any) -> list[str]:
@@ -400,6 +413,11 @@ def install_validation_error_handler(mcp_server: Any) -> None:
                     exc=pydantic_exc,
                     accepted=_declared_parameters(_tool),
                 ).payload
+                foreign = describe_pattern_mismatches(
+                    envelope["field_errors"], getattr(_tool, "parameters", None), arguments
+                )
+                if foreign is not None:
+                    _apply_foreign(envelope, foreign)
                 record_mcp_error(
                     tool_name=tool_name,
                     error_code="invalid_input",
@@ -435,7 +453,7 @@ def mcp_tool_error(exc: BaseException, context: McpErrorContext) -> McpToolError
     if fallback_tool and fallback_tool != _FALLBACK_TOOL:
         next_commands.append({"tool": fallback_tool, "arguments": fallback_args or {}})
     next_commands.append({"tool": _FALLBACK_TOOL, "arguments": {}})
-    payload = {
+    payload: dict[str, Any] = {
         "success": False,
         "error_code": error_code,
         "message": _envelope_message(exc, error_code),
@@ -450,6 +468,9 @@ def mcp_tool_error(exc: BaseException, context: McpErrorContext) -> McpToolError
             **_provenance_meta(context),
         },
     }
+    if isinstance(exc, ForeignIdentifierError):
+        payload["_meta"]["next_commands"] = [{"tool": _FALLBACK_TOOL, "arguments": {}}]
+        _apply_foreign(payload, exc)
     return McpToolError(payload)
 
 

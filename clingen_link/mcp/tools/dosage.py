@@ -15,11 +15,10 @@ from typing import Annotated, Any, Literal
 from fastmcp import FastMCP
 from pydantic import Field
 
-from clingen_link.exceptions import GeneNotCuratedError
 from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
 from clingen_link.mcp.envelope import build_meta, data_version_for, pagination
 from clingen_link.mcp.errors import McpErrorContext, ToolReturn, run_mcp_tool
-from clingen_link.mcp.filters import Identifier, ensure_identifier
+from clingen_link.mcp.filters import Identifier, ensure_identifier, gene_miss
 from clingen_link.mcp.next_commands import cmd
 from clingen_link.mcp.patterns import GENE_SYMBOL_PATTERN
 from clingen_link.mcp.service_adapters import ClingenServices
@@ -138,7 +137,7 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
             services = service_factory()
             symbol = services.gene.resolve(gene_symbol)
             if symbol is None:
-                raise GeneNotCuratedError(f"Gene '{gene_symbol}'")
+                raise gene_miss(gene_symbol, f"Gene '{gene_symbol}'")
             models = await services.dosage.for_gene(symbol)
             # The gene resolved; an empty domain is success+0 (not not_found) — that is reserved for
             # a gene absent from the index entirely (assessment M5).

@@ -70,8 +70,8 @@ def register_cspec_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
         gene_symbol: Annotated[
             str | None,
             Field(
-                description="Gene symbol covered by the spec (resolve with search_genes first).",
-                pattern=GENE_SYMBOL_PATTERN,
+                description="Gene symbol or HGNC id covered by the spec.",
+                pattern=GENE_SYMBOL_PATTERN + r"|^HGNC:\d+$",
                 examples=["BRCA1"],
             ),
         ] = None,

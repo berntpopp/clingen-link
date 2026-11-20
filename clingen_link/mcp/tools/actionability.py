@@ -14,11 +14,10 @@ from typing import Annotated, Any, Literal
 from fastmcp import FastMCP
 from pydantic import Field
 
-from clingen_link.exceptions import GeneNotCuratedError
 from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
 from clingen_link.mcp.envelope import build_meta, data_version_for, pagination
 from clingen_link.mcp.errors import McpErrorContext, ToolReturn, run_mcp_tool
-from clingen_link.mcp.filters import Identifier, ensure_gene, ensure_identifier
+from clingen_link.mcp.filters import Identifier, ensure_gene, ensure_identifier, gene_miss
 from clingen_link.mcp.next_commands import cmd
 from clingen_link.mcp.patterns import GENE_SYMBOL_PATTERN
 from clingen_link.mcp.service_adapters import ClingenServices
@@ -105,7 +104,7 @@ def register_actionability_tools(
             services = service_factory()
             symbol = services.gene.resolve(gene_symbol)
             if symbol is None:
-                raise GeneNotCuratedError(f"Gene '{gene_symbol}'")
+                raise gene_miss(gene_symbol, f"Gene '{gene_symbol}'")
             models = await services.actionability.for_gene(symbol, context=context)
             # The gene resolved; an empty domain is success+0 (not not_found) — reserved for a gene
             # absent from the index entirely (assessment M5).

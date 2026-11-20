@@ -11,6 +11,30 @@ All notable changes to clingen-link are documented here.
 
 ## [Unreleased]
 
+## [4.2.0] - 2026-11-20
+
+### Fixed
+
+- A gene given as an Ensembl gene/transcript id, a RefSeq accession, an NCBI Gene id or a bare
+  number is no longer answered `not_found` "has no ClinGen curation… an honest absence"
+  (`get_gene_validity(gene_symbol="ENSG00000133703")` said so although KRAS is curated). The
+  snapshot holds no such cross-reference, so every gene-keyed tool (`search_genes`,
+  `get_gene_summary`, `get_gene_validity`, `get_gene_dosage`, `get_gene_actionability`,
+  `search_validity`, `search_actionability`, `get_variant_interpretations`, `list_cspecs`) now
+  returns `invalid_input` with `field`, `allowed_values`, `hint`, and a ready-to-send
+  `hgnc_resolve_symbol` / `hgnc_resolve_gene_by_xref` call first in `_meta.next_commands`. A bare
+  number states that it was read as an NCBI Gene id and offers the `HGNC:n` reading. The absence
+  message is kept for a symbol or HGNC id that was understood (Response-Envelope Standard v1 §2b,
+  genefoundry-router#343).
+- A disease id from another ontology (`OMIM:`, `ORPHA:`, `DOID:`) in `mondo` / `disease` returns
+  the same frame with a `mondo_resolve_disease` call, instead of a bare "does not match the
+  required format" or a snapshot `not_found`.
+- A schema pattern mismatch now states the accepted pattern and examples in `field_errors`.
+
+### Changed
+
+- `list_cspecs(gene_symbol=…)` accepts an HGNC id like the other gene-keyed tools.
+
 ## [4.1.5] - 2026-11-19
 
 ### Data
