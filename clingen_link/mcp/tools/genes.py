@@ -21,7 +21,7 @@ from clingen_link.mcp.envelope import build_meta, cross_domain_version, paginati
 from clingen_link.mcp.errors import McpErrorContext, ToolReturn, run_mcp_tool
 from clingen_link.mcp.filters import gene_miss
 from clingen_link.mcp.next_commands import cmd
-from clingen_link.mcp.patterns import GENE_SYMBOL_PATTERN
+from clingen_link.mcp.patterns import GENE_ARG_PATTERN
 from clingen_link.mcp.service_adapters import ClingenServices
 from clingen_link.mcp.shaping import collect_fenced_objects, shape_records
 from clingen_link.mcp.untrusted_content import enforce_untrusted_text_limits
@@ -43,7 +43,7 @@ _GENE_QUERY = Annotated[
         description="Gene symbol, HGNC id, or alias to resolve (e.g. BRCA1, HGNC:1100).",
         min_length=1,
         max_length=64,
-        pattern=GENE_SYMBOL_PATTERN + r"|^HGNC:\d+$",
+        pattern=GENE_ARG_PATTERN,
         examples=["BRCA1", "HGNC:1100", "FANCS"],
     ),
 ]
@@ -53,7 +53,7 @@ _GENE_ARG = Annotated[
         description="Canonical gene symbol or HGNC id (resolve with search_genes first).",
         min_length=1,
         max_length=64,
-        pattern=GENE_SYMBOL_PATTERN + r"|^HGNC:\d+$",
+        pattern=GENE_ARG_PATTERN,
         examples=["BRCA1", "HGNC:1100"],
     ),
 ]

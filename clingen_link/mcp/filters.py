@@ -88,4 +88,4 @@ def gene_miss(value: str, subject: str, *, param: str = "gene_symbol") -> Except
     NCBI Gene or RefSeq identifier (or a bare number) was not looked up at all, so it is
     ``invalid_input`` naming the converter instead (genefoundry-router#343).
     """
-    return foreign_gene(value.strip(), param) or GeneNotCuratedError(subject)
+    return foreign_gene(value, param) or GeneNotCuratedError(subject)

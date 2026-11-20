@@ -26,8 +26,10 @@ All notable changes to clingen-link are documented here.
   number states that it was read as an NCBI Gene id and offers the `HGNC:n` reading. The absence
   message is kept for a symbol or HGNC id that was understood (Response-Envelope Standard v1 §2b,
   genefoundry-router#343).
-- An Ensembl transcript id (`ENST…`) in a gene parameter returns the same frame saying the tool
-  takes a gene, with no converter call (hgnc_resolve_symbol does not resolve transcript ids).
+- An Ensembl transcript or protein id (`ENST…`, `ENSP…`) in a gene parameter returns the same frame saying the tool
+  takes a gene, with no converter call (hgnc_resolve_symbol resolves neither).
+- `search_dosage(query=…)` with an Ensembl gene id, RefSeq accession or NCBI Gene id that matches
+  nothing returns that frame instead of `success: true` with zero records.
 - A disease id from another ontology (`OMIM:`, `ORPHA:`, `DOID:`) in `mondo` / `disease` returns
   the same frame with a `mondo_resolve_disease` call, instead of a bare "does not match the
   required format" or a snapshot `not_found`.
@@ -36,6 +38,12 @@ All notable changes to clingen-link are documented here.
 ### Changed
 
 - `list_cspecs(gene_symbol=…)` accepts an HGNC id like the other gene-keyed tools.
+- Gene parameters accept the `HGNC:` prefix in any case (`hgnc:1100`), as the resolver already did.
+
+### Release notes
+
+- Deploy after hgnc-link 2.5.0 (the converter calls rely on it resolving Ensembl gene ids and
+  RefSeq accessions).
 
 ## [4.1.5] - 2026-11-19
 

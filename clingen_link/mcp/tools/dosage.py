@@ -19,8 +19,9 @@ from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
 from clingen_link.mcp.envelope import build_meta, data_version_for, pagination
 from clingen_link.mcp.errors import McpErrorContext, ToolReturn, run_mcp_tool
 from clingen_link.mcp.filters import Identifier, ensure_identifier, gene_miss
+from clingen_link.mcp.foreign_ids import foreign_gene
 from clingen_link.mcp.next_commands import cmd
-from clingen_link.mcp.patterns import GENE_SYMBOL_PATTERN
+from clingen_link.mcp.patterns import GENE_ARG_PATTERN
 from clingen_link.mcp.service_adapters import ClingenServices
 from clingen_link.mcp.shaping import (
     collect_fenced_objects,
@@ -122,7 +123,7 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
                 description="Gene symbol or HGNC id (resolve with search_genes first).",
                 min_length=1,
                 max_length=64,
-                pattern=GENE_SYMBOL_PATTERN + r"|^HGNC:\d+$",
+                pattern=GENE_ARG_PATTERN,
                 examples=["BRCA1", "AAGAB"],
             ),
         ],
@@ -243,6 +244,9 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
                 page=page,
                 size=size,
             )
+            if not total and query and (foreign := foreign_gene(query, "query")):
+                # Zero rows for an id this snapshot cannot hold is not "no dosage record".
+                raise foreign
             records = _shape_dosage(models, response_mode)
             # List-bearing (page size up to 100); v1.1 limit backstop over the fenced text.
             enforce_untrusted_text_limits(collect_fenced_objects(records), max_objects=10000)

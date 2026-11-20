@@ -28,14 +28,16 @@ GENE_FORMS = ["gene symbol (e.g. BRCA1)", "HGNC id (e.g. HGNC:1100)"]
 MONDO_FORMS = ["MONDO id (e.g. MONDO:0007254)"]
 DISEASE_FORMS = ["disease name text (e.g. cardiomyopathy)", *MONDO_FORMS]
 
-_NCBI_GENE = re.compile(r"(?:(?:NCBIGene|NCBI_Gene|Entrez|GeneID):)?(\d+)", re.IGNORECASE)
-_VIA_HGNC = (
-    ("Ensembl gene id", re.compile(r"ENSG\d{11}(\.\d+)?", re.IGNORECASE)),
-    ("RefSeq accession", re.compile(r"[NX][MRP]_\d+(\.\d+)?", re.IGNORECASE)),
+_NCBI_GENE = re.compile(
+    r"(?:(?:NCBIGene|NCBI_Gene|Entrez|GeneID):)?(\d+)", re.IGNORECASE | re.ASCII
 )
-# No converter is named for a transcript id: hgnc_resolve_symbol does not resolve ENST ids.
-_TRANSCRIPT = re.compile(r"ENST\d{11}(\.\d+)?", re.IGNORECASE)
-_FOREIGN_DISEASE = re.compile(r"(OMIM|MIM|ORPHA|Orphanet|DOID):\d+", re.IGNORECASE)
+_VIA_HGNC = (
+    ("Ensembl gene id", re.compile(r"ENSG\d{11}(\.\d+)?", re.IGNORECASE | re.ASCII)),
+    ("RefSeq accession", re.compile(r"[NX][MRP]_\d+(\.\d+)?", re.IGNORECASE | re.ASCII)),
+)
+# No converter is named for a transcript/protein id: hgnc_resolve_symbol resolves neither.
+_TRANSCRIPT = re.compile(r"ENS[TP]\d{11}(\.\d+)?", re.IGNORECASE | re.ASCII)
+_FOREIGN_DISEASE = re.compile(r"(OMIM|MIM|ORPHA|Orphanet|DOID):\d+", re.IGNORECASE | re.ASCII)
 
 
 class ForeignIdentifierError(ValueError):
@@ -68,6 +70,7 @@ class ForeignIdentifierError(ValueError):
 
 def foreign_gene(value: str, field: str) -> ForeignIdentifierError | None:
     """The error for a gene given in a foreign namespace, or ``None`` if it is not one."""
+    value = value.strip()
     for form, pattern in _VIA_HGNC:
         if pattern.fullmatch(value):
             return ForeignIdentifierError(
@@ -80,16 +83,16 @@ def foreign_gene(value: str, field: str) -> ForeignIdentifierError | None:
     if _TRANSCRIPT.fullmatch(value):
         return ForeignIdentifierError(
             field=field,
-            form="an Ensembl transcript id (this tool takes a gene: symbol or HGNC id)",
+            form="an Ensembl transcript or protein id (this tool takes a gene: symbol or HGNC id)",
             allowed_values=GENE_FORMS,
-            hint="Pass the approved symbol or HGNC id of the transcript's gene instead.",
+            hint="Pass the approved symbol or HGNC id of its gene instead.",
             next_commands=[],
         )
     match = _NCBI_GENE.fullmatch(value)
     if match is None:
         return None
-    number = match.group(1)
-    bare = value == number
+    bare = value == match.group(1)
+    number = match.group(1).lstrip("0") or "0"  # the xref tool misses a zero-padded id
     return ForeignIdentifierError(
         field=field,
         form="an NCBI Gene id (a bare number is not a gene symbol)" if bare else "an NCBI Gene id",
@@ -107,6 +110,7 @@ def foreign_disease(
     value: str, field: str, allowed_values: list[str]
 ) -> ForeignIdentifierError | None:
     """The error for a disease id from another ontology, or ``None`` if it is not one."""
+    value = value.strip()
     if not _FOREIGN_DISEASE.fullmatch(value):
         return None
     return ForeignIdentifierError(

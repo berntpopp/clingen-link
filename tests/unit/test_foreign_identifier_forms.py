@@ -30,6 +30,8 @@ GENE_KEYED = {
 HGNC = {"tool": "hgnc_resolve_symbol", "arguments": {"query": "ENSG00000133703"}}
 XREF = {"tool": "hgnc_resolve_gene_by_xref", "arguments": {"source": "entrez_id", "value": "3845"}}
 FOREIGN = [
+    (" ENSG00000133703 ", HGNC),  # padded: stripped once, still names the converter
+    ("entrez:0003845", XREF),  # leading zeros dropped; the xref tool misses a padded id
     ("ENSG00000133703", HGNC),
     ("3845", XREF),
     ("NCBIGene:3845", XREF),  # rejected by the schema pattern where one is declared
@@ -61,13 +63,15 @@ async def test_foreign_gene_form_names_the_converter(
 
 
 @pytest.mark.parametrize("tool", GENE_KEYED)
+@pytest.mark.parametrize("value", ["ENST00000311936", "ENSP00000256078"])
 async def test_transcript_id_gets_no_converter_it_cannot_guarantee(
-    tool_mcp: FastMCP, tool: str
+    tool_mcp: FastMCP, tool: str, value: str
 ) -> None:
-    env, is_error = await _call(tool_mcp, tool, {GENE_KEYED[tool]: "ENST00000311936"})
+    env, is_error = await _call(tool_mcp, tool, {GENE_KEYED[tool]: value})
     assert is_error and env["error_code"] == "invalid_input"
     assert env["field"] == GENE_KEYED[tool]
-    assert "transcript id" in env["message"] and "takes a gene" in env["message"]
+    assert "transcript or protein id" in env["message"] and "takes a gene" in env["message"]
+    assert env["fallback_tool"] in {c["tool"] for c in env["_meta"]["next_commands"]}
     assert "no ClinGen curation" not in env["message"]
     called = {c["tool"] for c in env["_meta"]["next_commands"]}
     assert not called & {"hgnc_resolve_symbol", "hgnc_resolve_gene_by_xref", tool}
@@ -120,3 +124,42 @@ async def test_pattern_mismatch_states_the_accepted_format(tool_mcp: FastMCP) ->
     assert "MONDO:0007254" in reason and "mondo_resolve_disease" in reason
     # Free text is not a recognised id form, so it is never echoed into a command.
     assert env["_meta"]["next_commands"] == [{"tool": "get_diagnostics", "arguments": {}}]
+
+
+# Arabic-indic digits, fullwidth digits, a long s (casefolds to "s"), mixed: written as
+# escapes so the source stays unambiguous.
+@pytest.mark.parametrize(
+    "value",
+    [
+        "\u0661\u0662\u0663",
+        "\uff11\uff12\uff13",
+        "EN\u017fG00000133703",
+        "ENSG\u0660\u0660\u0660\u0660\u0660\u0661\u0663\u0663\u0667\u0660\u0663",
+    ],
+)
+async def test_non_ascii_lookalikes_are_never_echoed(tool_mcp: FastMCP, value: str) -> None:
+    assert foreign_gene(value, "gene_symbol") is None
+    env, _ = await _call(tool_mcp, "search_validity", {"gene_symbol": value})  # no schema pattern
+    assert value not in str(env)
+
+
+@pytest.mark.parametrize(("query", "converter"), [("ENSG00000133703", HGNC), ("3845", XREF)])
+async def test_search_dosage_does_not_answer_a_foreign_gene_with_zero_rows(
+    tool_mcp: FastMCP, query: str, converter: dict[str, object]
+) -> None:
+    env, is_error = await _call(tool_mcp, "search_dosage", {"query": query})
+    assert is_error and env["error_code"] == "invalid_input" and env["field"] == "query"
+    assert env["_meta"]["next_commands"][0] == converter
+
+
+async def test_padded_foreign_disease_id_still_names_mondo(tool_mcp: FastMCP) -> None:
+    env, _ = await _call(tool_mcp, "search_validity", {"disease": "OMIM:163950 "})
+    assert env["error_code"] == "invalid_input"
+    assert env["_meta"]["next_commands"][0]["arguments"] == {"query": "OMIM:163950"}
+
+
+@pytest.mark.parametrize("tool", GENE_KEYED)
+async def test_lower_case_hgnc_prefix_is_accepted(tool_mcp: FastMCP, tool: str) -> None:
+    upper, _ = await _call(tool_mcp, tool, {GENE_KEYED[tool]: "HGNC:20"})
+    lower, is_error = await _call(tool_mcp, tool, {GENE_KEYED[tool]: "hgnc:20"})
+    assert upper["success"] is True and not is_error and lower["success"] is True
