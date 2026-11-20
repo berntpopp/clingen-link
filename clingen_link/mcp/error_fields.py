@@ -14,6 +14,14 @@ from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
 
+from clingen_link.mcp.foreign_ids import (
+    MONDO_FORMS,
+    ForeignIdentifierError,
+    foreign_disease,
+    foreign_gene,
+)
+from clingen_link.mcp.patterns import GENE_SYMBOL_PATTERN, MONDO_PATTERN
+
 # Fixed, caller-safe reason per validation-error `type`. Unknown types fall back to a generic
 # fixed reason; no branch ever surfaces the raw Pydantic/FastMCP `msg`.
 _FIXED_FIELD_REASON: dict[str, str] = {
@@ -81,3 +89,40 @@ def pydantic_cause(exc: BaseException) -> PydanticValidationError | None:
             return current
         current = current.__cause__ or current.__context__
     return None
+
+
+def describe_pattern_mismatches(
+    field_errors: list[dict[str, str]], schema: Any, arguments: dict[str, Any]
+) -> ForeignIdentifierError | None:
+    """State the accepted format on each pattern mismatch; spot a foreign identifier form.
+
+    "Does not match the required format" alone leaves the model guessing the format, so the
+    reason gains the tool's OWN declared pattern and examples (server-authored, safe). When
+    the rejected value is a well-formed gene/disease id from another namespace, the matching
+    :class:`ForeignIdentifierError` is returned so the envelope names the converter call.
+    """
+    properties = schema.get("properties", {}) if isinstance(schema, dict) else {}
+    foreign: ForeignIdentifierError | None = None
+    for err in field_errors:
+        prop = properties.get(err["field"])
+        if err["reason"] != _FIXED_FIELD_REASON["string_pattern_mismatch"] or not prop:
+            continue
+        pattern = next(
+            (v["pattern"] for v in (prop, *prop.get("anyOf", ())) if "pattern" in v), None
+        )
+        if pattern is None:
+            continue
+        examples = ", ".join(str(e) for e in prop.get("examples", ()))
+        err["reason"] += f" Accepted pattern: {pattern}" + (
+            f" (e.g. {examples})." if examples else "."
+        )
+        value = arguments.get(err["field"])
+        if pattern == MONDO_PATTERN:
+            err["reason"] += (
+                " Convert a disease name or another ontology's id with mondo_resolve_disease."
+            )
+            if isinstance(value, str):
+                foreign = foreign or foreign_disease(value, err["field"], MONDO_FORMS)
+        elif pattern.startswith(GENE_SYMBOL_PATTERN) and isinstance(value, str):
+            foreign = foreign or foreign_gene(value, err["field"])
+    return foreign

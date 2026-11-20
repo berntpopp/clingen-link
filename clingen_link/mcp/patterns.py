@@ -6,7 +6,11 @@ from __future__ import annotations
 GENE_SYMBOL_PATTERN = r"^[A-Za-z0-9._-]{1,32}$"
 
 # HGNC gene identifier, e.g. HGNC:1100.
-HGNC_ID_PATTERN = r"^HGNC:\d+$"
+HGNC_ID_PATTERN = r"^[Hh][Gg][Nn][Cc]:\d+$"
+
+# What a gene argument accepts: a symbol/alias or an HGNC id (prefix in any case, as the
+# resolver is case-insensitive).
+GENE_ARG_PATTERN = GENE_SYMBOL_PATTERN + "|" + HGNC_ID_PATTERN
 
 # MONDO disease identifier, e.g. MONDO:0007254.
 MONDO_PATTERN = r"^MONDO:\d+$"

@@ -13,13 +13,12 @@ from typing import Annotated, Any, Literal
 from fastmcp import FastMCP
 from pydantic import Field
 
-from clingen_link.exceptions import GeneNotCuratedError
 from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
 from clingen_link.mcp.envelope import build_meta, data_version_for, pagination
 from clingen_link.mcp.errors import McpErrorContext, ToolReturn, run_mcp_tool
-from clingen_link.mcp.filters import Identifier, ensure_gene, ensure_identifier
+from clingen_link.mcp.filters import Identifier, ensure_gene, ensure_identifier, gene_miss
 from clingen_link.mcp.next_commands import cmd
-from clingen_link.mcp.patterns import GENE_SYMBOL_PATTERN, MONDO_PATTERN
+from clingen_link.mcp.patterns import GENE_ARG_PATTERN, MONDO_PATTERN
 from clingen_link.mcp.service_adapters import ClingenServices
 from clingen_link.mcp.shaping import collect_fenced_objects, shape_records, truncated_block
 from clingen_link.mcp.untrusted_content import enforce_untrusted_text_limits
@@ -90,7 +89,7 @@ def register_validity_tools(
                 description="Gene symbol or HGNC id (resolve with search_genes first).",
                 min_length=1,
                 max_length=64,
-                pattern=GENE_SYMBOL_PATTERN + r"|^HGNC:\d+$",
+                pattern=GENE_ARG_PATTERN,
                 examples=["BRCA1", "AARS1"],
             ),
         ],
@@ -116,7 +115,7 @@ def register_validity_tools(
             services = service_factory()
             symbol = services.gene.resolve(gene_symbol)
             if symbol is None:
-                raise GeneNotCuratedError(f"Gene '{gene_symbol}'")
+                raise gene_miss(gene_symbol, f"Gene '{gene_symbol}'")
             models = await services.validity.for_gene(
                 symbol, classification=classification, moi=moi
             )

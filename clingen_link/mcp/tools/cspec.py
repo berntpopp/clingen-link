@@ -29,7 +29,7 @@ from clingen_link.mcp.envelope import build_meta, data_version_for, pagination
 from clingen_link.mcp.errors import McpErrorContext, ToolReturn, run_mcp_tool
 from clingen_link.mcp.filters import Identifier, ensure_gene, ensure_identifier
 from clingen_link.mcp.next_commands import cmd
-from clingen_link.mcp.patterns import ACMG_CODE_PATTERN, GENE_SYMBOL_PATTERN, GN_ID_PATTERN
+from clingen_link.mcp.patterns import ACMG_CODE_PATTERN, GENE_ARG_PATTERN, GN_ID_PATTERN
 from clingen_link.mcp.service_adapters import ClingenServices, get_services
 from clingen_link.mcp.shaping import (
     collect_fenced_objects,
@@ -70,8 +70,8 @@ def register_cspec_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
         gene_symbol: Annotated[
             str | None,
             Field(
-                description="Gene symbol covered by the spec (resolve with search_genes first).",
-                pattern=GENE_SYMBOL_PATTERN,
+                description="Gene symbol or HGNC id covered by the spec.",
+                pattern=GENE_ARG_PATTERN,
                 examples=["BRCA1"],
             ),
         ] = None,

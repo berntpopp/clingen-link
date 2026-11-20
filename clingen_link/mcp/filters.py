@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from clingen_link.exceptions import DataNotFoundError, GeneNotCuratedError
+from clingen_link.mcp.foreign_ids import DISEASE_FORMS, foreign_disease, foreign_gene
 from clingen_link.store import queries
 from clingen_link.store.db import Store
 
@@ -56,6 +57,8 @@ def ensure_identifier(store: Store, spec: Identifier, value: str | None) -> None
     with store.connection() as conn:
         if queries.value_exists(conn, spec.table, spec.column, value, match=spec.match):
             return
+    if spec.param == "disease" and (foreign := foreign_disease(value, spec.param, DISEASE_FORMS)):
+        raise foreign
     raise DataNotFoundError(
         f"The {spec.param} you supplied is not in the ClinGen snapshot, so no record can "
         f"match it. Do not retry unchanged: resolve it with {spec.resolver} first, or drop "
@@ -74,5 +77,15 @@ def ensure_gene(store: Store, symbol: str | None, *, param: str = "gene_symbol")
         return None
     canonical = store.resolve_gene(symbol)
     if canonical is None:
-        raise GeneNotCuratedError(f"The {param} you supplied")
+        raise gene_miss(symbol, f"The {param} you supplied", param=param)
     return canonical
+
+
+def gene_miss(value: str, subject: str, *, param: str = "gene_symbol") -> Exception:
+    """The error for a gene the index did not resolve — the one place a gene miss is worded.
+
+    "No ClinGen curation" is only true of a symbol or HGNC id that was understood. An Ensembl,
+    NCBI Gene or RefSeq identifier (or a bare number) was not looked up at all, so it is
+    ``invalid_input`` naming the converter instead (genefoundry-router#343).
+    """
+    return foreign_gene(value, param) or GeneNotCuratedError(subject)
