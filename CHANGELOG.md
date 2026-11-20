@@ -15,7 +15,7 @@ All notable changes to clingen-link are documented here.
 
 ### Fixed
 
-- A gene given as an Ensembl gene/transcript id, a RefSeq accession, an NCBI Gene id or a bare
+- A gene given as an Ensembl gene id, a RefSeq accession, an NCBI Gene id or a bare
   number is no longer answered `not_found` "has no ClinGen curation… an honest absence"
   (`get_gene_validity(gene_symbol="ENSG00000133703")` said so although KRAS is curated). The
   snapshot holds no such cross-reference, so every gene-keyed tool (`search_genes`,
@@ -26,6 +26,8 @@ All notable changes to clingen-link are documented here.
   number states that it was read as an NCBI Gene id and offers the `HGNC:n` reading. The absence
   message is kept for a symbol or HGNC id that was understood (Response-Envelope Standard v1 §2b,
   genefoundry-router#343).
+- An Ensembl transcript id (`ENST…`) in a gene parameter returns the same frame saying the tool
+  takes a gene, with no converter call (hgnc_resolve_symbol does not resolve transcript ids).
 - A disease id from another ontology (`OMIM:`, `ORPHA:`, `DOID:`) in `mondo` / `disease` returns
   the same frame with a `mondo_resolve_disease` call, instead of a bare "does not match the
   required format" or a snapshot `not_found`.

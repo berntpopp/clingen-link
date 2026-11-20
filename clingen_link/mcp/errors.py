@@ -350,6 +350,8 @@ def mcp_validation_tool_error(
 def _apply_foreign(payload: dict[str, Any], exc: ForeignIdentifierError) -> None:
     """Name the field, the accepted forms and the converter call (envelope standard §2b)."""
     payload.update(exc.frame, message=_safe_message(exc), recovery=exc.frame["hint"])
+    if not exc.next_commands:
+        return
     payload["fallback_tool"] = exc.next_commands[0]["tool"]
     payload["fallback_args"] = exc.next_commands[0]["arguments"]
     payload["_meta"]["next_commands"] = [*exc.next_commands, *payload["_meta"]["next_commands"]]

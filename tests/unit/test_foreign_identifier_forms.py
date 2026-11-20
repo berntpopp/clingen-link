@@ -60,6 +60,19 @@ async def test_foreign_gene_form_names_the_converter(
     assert "no ClinGen curation" not in text and "honest absence" not in text
 
 
+@pytest.mark.parametrize("tool", GENE_KEYED)
+async def test_transcript_id_gets_no_converter_it_cannot_guarantee(
+    tool_mcp: FastMCP, tool: str
+) -> None:
+    env, is_error = await _call(tool_mcp, tool, {GENE_KEYED[tool]: "ENST00000311936"})
+    assert is_error and env["error_code"] == "invalid_input"
+    assert env["field"] == GENE_KEYED[tool]
+    assert "transcript id" in env["message"] and "takes a gene" in env["message"]
+    assert "no ClinGen curation" not in env["message"]
+    called = {c["tool"] for c in env["_meta"]["next_commands"]}
+    assert not called & {"hgnc_resolve_symbol", "hgnc_resolve_gene_by_xref", tool}
+
+
 async def test_bare_number_states_how_it_was_read(tool_mcp: FastMCP) -> None:
     env, _ = await _call(tool_mcp, "get_gene_validity", {"gene_symbol": "3845"})
     assert "NCBI Gene id" in env["message"]

@@ -31,9 +31,10 @@ DISEASE_FORMS = ["disease name text (e.g. cardiomyopathy)", *MONDO_FORMS]
 _NCBI_GENE = re.compile(r"(?:(?:NCBIGene|NCBI_Gene|Entrez|GeneID):)?(\d+)", re.IGNORECASE)
 _VIA_HGNC = (
     ("Ensembl gene id", re.compile(r"ENSG\d{11}(\.\d+)?", re.IGNORECASE)),
-    ("Ensembl transcript id", re.compile(r"ENST\d{11}(\.\d+)?", re.IGNORECASE)),
     ("RefSeq accession", re.compile(r"[NX][MRP]_\d+(\.\d+)?", re.IGNORECASE)),
 )
+# No converter is named for a transcript id: hgnc_resolve_symbol does not resolve ENST ids.
+_TRANSCRIPT = re.compile(r"ENST\d{11}(\.\d+)?", re.IGNORECASE)
 _FOREIGN_DISEASE = re.compile(r"(OMIM|MIM|ORPHA|Orphanet|DOID):\d+", re.IGNORECASE)
 
 
@@ -76,6 +77,14 @@ def foreign_gene(value: str, field: str) -> ForeignIdentifierError | None:
                 hint="Convert it to the approved symbol with hgnc_resolve_symbol, then re-call.",
                 next_commands=[cmd("hgnc_resolve_symbol", query=value)],
             )
+    if _TRANSCRIPT.fullmatch(value):
+        return ForeignIdentifierError(
+            field=field,
+            form="an Ensembl transcript id (this tool takes a gene: symbol or HGNC id)",
+            allowed_values=GENE_FORMS,
+            hint="Pass the approved symbol or HGNC id of the transcript's gene instead.",
+            next_commands=[],
+        )
     match = _NCBI_GENE.fullmatch(value)
     if match is None:
         return None
