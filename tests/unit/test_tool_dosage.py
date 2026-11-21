@@ -64,3 +64,46 @@ class TestSearchDosage:
         for c in payload["_meta"]["next_commands"]:
             assert c["tool"]
             assert c["arguments"]
+
+
+class TestSearchDosageQueryForms:
+    """Issue #157: ``query`` never answers an input it cannot match with an empty success."""
+
+    async def test_cytoband_in_query_finds_the_region(self, tool_mcp: FastMCP) -> None:
+        by_filter = await _call(tool_mcp, "search_dosage", {"cytoband": "15q13"})
+        by_query = await _call(tool_mcp, "search_dosage", {"query": "15q13"})
+        assert by_query["success"] is True
+        assert by_query["total"] == by_filter["total"] >= 1
+        assert {r["isca_id"] for r in by_query["records"]} >= {"ISCA-46753"}
+
+    @pytest.mark.parametrize("query", ["Williams syndrome", "Williams", "zzznosuchterm"])
+    async def test_unindexed_text_is_invalid_input_not_empty(
+        self, tool_mcp: FastMCP, query: str
+    ) -> None:
+        payload = await _call(tool_mcp, "search_dosage", {"query": query})
+        assert payload["success"] is False
+        assert payload["error_code"] == "invalid_input"
+        assert payload["field"] == "query"
+        assert "mondo_search_diseases" in payload["recovery"]
+        assert query not in str(payload)  # free text is never echoed
+
+    async def test_curated_gene_by_hgnc_id_is_found(self, tool_mcp: FastMCP) -> None:
+        # The index holds the symbol only; an HGNC id / alias must resolve, not read as absent.
+        payload = await _call(tool_mcp, "search_dosage", {"query": "HGNC:20"})
+        assert payload["success"] is True
+        assert payload["total"] >= 1
+        assert payload["_meta"]["next_commands"][0]["arguments"] == {"gene_symbol": "AARS1"}
+
+    async def test_known_gene_without_dosage_is_honest_empty(self, tool_mcp: FastMCP) -> None:
+        payload = await _call(tool_mcp, "search_dosage", {"query": "ABCA3"})
+        assert payload["success"] is True
+        assert payload["total"] == 0
+
+    async def test_a_direct_hit_is_not_rerouted_through_the_alias_resolver(
+        self, tool_mcp: FastMCP, tool_services, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The resolver ranks a casefolded alias over a symbol (real data: "ar" -> FDXR), so it
+        # may only rescue a zero-hit query, never replace one that already matched.
+        monkeypatch.setattr(tool_services.store, "resolve_gene", lambda _q: "AARS1")
+        payload = await _call(tool_mcp, "search_dosage", {"query": "aagab"})
+        assert payload["_meta"]["next_commands"][0]["arguments"] == {"gene_symbol": "AAGAB"}

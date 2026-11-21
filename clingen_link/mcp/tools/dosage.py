@@ -9,6 +9,8 @@ verbatim ``recommended_citation``.
 
 from __future__ import annotations
 
+import functools
+import re
 from collections.abc import Callable
 from typing import Annotated, Any, Literal
 
@@ -19,7 +21,7 @@ from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
 from clingen_link.mcp.envelope import build_meta, data_version_for, pagination
 from clingen_link.mcp.errors import McpErrorContext, ToolReturn, run_mcp_tool
 from clingen_link.mcp.filters import Identifier, ensure_identifier, gene_miss
-from clingen_link.mcp.foreign_ids import foreign_gene
+from clingen_link.mcp.foreign_ids import ForeignIdentifierError, foreign_gene
 from clingen_link.mcp.next_commands import cmd
 from clingen_link.mcp.patterns import GENE_ARG_PATTERN
 from clingen_link.mcp.service_adapters import ClingenServices
@@ -30,6 +32,7 @@ from clingen_link.mcp.shaping import (
 )
 from clingen_link.mcp.untrusted_content import enforce_untrusted_text_limits
 from clingen_link.models.models import DosageRecord
+from clingen_link.store.search import CYTOBAND_RE
 from clingen_link.vocab import DOSAGE_NOT_EVALUATED, DOSAGE_SCORE_TEXT, DosageScoreCode
 
 _RESPONSE_MODE = Literal["minimal", "compact", "standard", "full"]
@@ -56,6 +59,39 @@ _CYTOBAND = Identifier(
     match="prefix",
     resolver="search_dosage (query=...)",
 )
+
+
+# What `query` can match: the FTS index (symbol, ISCA id, MONDO ids) plus the cytoband prefix.
+_QUERY_FORMS = [
+    "gene symbol or HGNC id (e.g. PMP22)",
+    "ISCA region id (e.g. ISCA-37392)",
+    "MONDO id (e.g. MONDO:0008678)",
+    "cytoband prefix (e.g. 7q11.23)",
+]
+_INDEXED_ID = re.compile(r"(?:ISCA-|MONDO:)\d+", re.IGNORECASE | re.ASCII)
+
+
+def _unindexed_query(query: str) -> ForeignIdentifierError | None:
+    """The error for a zero-hit ``query`` in a form nothing here indexes (issue #157).
+
+    Disease / syndrome / region NAMES are not in the snapshot, so zero rows for one is not
+    "ClinGen has no curated region" — it was never searchable. Called only for a query that
+    did not resolve as a gene; the value is free text, so it is never echoed.
+    """
+    value = query.strip()
+    if _INDEXED_ID.fullmatch(value) or CYTOBAND_RE.fullmatch(value):
+        return None  # a well-formed id or cytoband that matches nothing is an honest absence
+    return ForeignIdentifierError(
+        field="query",
+        form="text that is not a gene, ISCA region id, MONDO id or cytoband (disease and "
+        "syndrome names are not indexed)",
+        allowed_values=_QUERY_FORMS,
+        hint=(
+            "Resolve a disease or syndrome name to its MONDO id with mondo_search_diseases and "
+            "pass query=<MONDO id>, or pass the region's cytoband (e.g. query=7q11.23)."
+        ),
+        next_commands=[],
+    )
 
 
 def _interpret(score: str | None, description: str | None) -> str | None:
@@ -178,7 +214,13 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
     async def search_dosage(
         query: Annotated[
             str | None,
-            Field(description="Free-text gene / disease / ISCA text (FTS).", examples=["1p36"]),
+            Field(
+                description=(
+                    "Gene symbol / HGNC id, ISCA region id, MONDO id, or cytoband prefix. "
+                    "Disease and syndrome names are not indexed: pass their MONDO id."
+                ),
+                examples=["1p36"],
+            ),
         ] = None,
         region: Annotated[
             str | None,
@@ -222,7 +264,7 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
             Field(description="compact (default) trims verbose fields; full keeps the PMID lists."),
         ] = "compact",
     ) -> ToolReturn:
-        """Search ClinGen dosage-sensitivity curations of genes and recurrent CNV regions (ISCA) by text, ISCA region id, cytoband, or haplo/triplo score; returns per record its haploinsufficiency + triplosensitivity scores with interpretation, cytoband, GRCh37/GRCh38 coordinates and permalink. Optionally restrict to gene or region records. Paginated; a `truncated` block appears when more matches exist. Returns ~2-10kB."""
+        """Search ClinGen dosage-sensitivity curations of genes and recurrent CNV regions (ISCA) by gene, ISCA region id, MONDO id, cytoband, or haplo/triplo score; returns per record its haploinsufficiency + triplosensitivity scores with interpretation, cytoband, GRCh37/GRCh38 coordinates and permalink. Optionally restrict to gene or region records. Paginated; a `truncated` block appears when more matches exist. Returns ~2-10kB."""
 
         async def call() -> dict[str, Any]:
             services = service_factory()
@@ -234,8 +276,8 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
                 (_CYTOBAND, cytoband),
             ):
                 ensure_identifier(services.store, spec, value)
-            models, total = await services.dosage.search(
-                text=query,
+            search = functools.partial(
+                services.dosage.search,
                 isca_id=region,
                 cytoband=cytoband,
                 haplo_score=haplo_score,
@@ -244,9 +286,17 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
                 page=page,
                 size=size,
             )
+            models, total = await search(text=query)
+            gene = None
+            if not total and query and (gene := services.store.resolve_gene(query)):
+                # The FTS index holds the approved symbol only: retry an alias / HGNC id as it.
+                # Not first — the resolver ranks a casefolded alias over a symbol ("ar" -> FDXR).
+                models, total = await search(text=gene)
             if not total and query and (foreign := foreign_gene(query, "query")):
                 # Zero rows for an id this snapshot cannot hold is not "no dosage record".
                 raise foreign
+            if not total and query and not gene and (unindexed := _unindexed_query(query)):
+                raise unindexed
             records = _shape_dosage(models, response_mode)
             # List-bearing (page size up to 100); v1.1 limit backstop over the fenced text.
             enforce_untrusted_text_limits(collect_fenced_objects(records), max_objects=10000)
