@@ -35,7 +35,7 @@ from pathlib import Path
 from typing import Any
 
 from ..config import DataRequirement
-from ..exceptions import SnapshotUnavailableError
+from ..exceptions import AmbiguousQueryError, SnapshotUnavailableError
 from ..runtime_data_identity import (
     build_identity_manifest,
     canonical_json_bytes,
@@ -503,9 +503,11 @@ class Store:
     def resolve_gene(self, query: str) -> str | None:
         """Resolve free-text input to a canonical gene symbol, or ``None``.
 
-        Priority: exact symbol → exact ``HGNC:n`` (alias) → exact alias →
-        case-insensitive symbol → case-insensitive alias. The first hit wins so a
-        real symbol is never shadowed by an alias that happens to case-match.
+        Priority: exact symbol → case-insensitive symbol → exact alias (covers ``HGNC:n`` and
+        previous symbols) → case-insensitive alias. Every symbol form is tried before ANY alias,
+        so an approved symbol in another case never resolves to the gene whose alias it is
+        (``ar`` → AR, not FDXR; issue #159). An alias shared by several genes raises
+        :class:`AmbiguousQueryError` instead of silently picking one.
         """
         raw = query.strip()
         if not raw:
@@ -516,38 +518,26 @@ class Store:
     @staticmethod
     def _resolve_with(conn: sqlite3.Connection, raw: str) -> str | None:
         """Run the ordered resolution lookups on an open connection."""
-        # 1. Exact canonical symbol (case-sensitive).
-        row = conn.execute("SELECT symbol FROM gene WHERE symbol = ?", (raw,)).fetchone()
-        if row is not None:
-            return str(row["symbol"])
-        # 2/3. Exact alias (covers HGNC:n and prev-symbol forms, case-sensitive).
-        row = conn.execute(
-            "SELECT symbol FROM gene_alias WHERE alias = ? ORDER BY symbol LIMIT 1",
-            (raw,),
-        ).fetchone()
-        if row is not None:
-            return str(row["symbol"])
-        # 4. Case-insensitive canonical symbol.
-        row = conn.execute(
-            "SELECT symbol FROM gene WHERE symbol = ? COLLATE NOCASE LIMIT 1",
-            (raw,),
-        ).fetchone()
-        if row is not None:
-            return str(row["symbol"])
-        # 5. Case-insensitive alias (alias table also stores casefolded forms).
         folded = raw.casefold()
-        row = conn.execute(
-            "SELECT symbol FROM gene_alias WHERE alias = ? ORDER BY symbol LIMIT 1",
-            (folded,),
-        ).fetchone()
-        if row is not None:
-            return str(row["symbol"])
-        row = conn.execute(
-            "SELECT symbol FROM gene_alias WHERE alias = ? COLLATE NOCASE ORDER BY symbol LIMIT 1",
-            (raw,),
-        ).fetchone()
-        if row is not None:
-            return str(row["symbol"])
+        for sql, args in (
+            ("SELECT symbol FROM gene WHERE symbol = ?", (raw,)),
+            ("SELECT symbol FROM gene WHERE symbol = ? COLLATE NOCASE", (raw,)),
+            ("SELECT DISTINCT symbol FROM gene_alias WHERE alias = ?", (raw,)),
+            # The alias table also stores casefolded forms; NOCASE covers the rest.
+            (
+                "SELECT DISTINCT symbol FROM gene_alias WHERE alias COLLATE NOCASE IN (?, ?)",
+                (raw, folded),
+            ),
+        ):
+            symbols = sorted(str(r["symbol"]) for r in conn.execute(f"{sql} LIMIT 5", args))
+            if len(symbols) == 1:
+                return symbols[0]
+            if symbols:
+                raise AmbiguousQueryError(
+                    f"That gene name matches several ClinGen genes ({', '.join(symbols)}). "
+                    "Pass the approved symbol or HGNC id of the one you mean; search_genes "
+                    "lists the candidates."
+                )
         return None
 
     # ------------------------------------------------------------------

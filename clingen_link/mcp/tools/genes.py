@@ -15,7 +15,7 @@ from typing import Annotated, Any, Literal
 from fastmcp import FastMCP
 from pydantic import Field
 
-from clingen_link.exceptions import DataNotFoundError
+from clingen_link.exceptions import AmbiguousQueryError, DataNotFoundError
 from clingen_link.mcp.annotations import READ_ONLY_OPEN_WORLD
 from clingen_link.mcp.envelope import build_meta, cross_domain_version, pagination
 from clingen_link.mcp.errors import McpErrorContext, ToolReturn, run_mcp_tool
@@ -93,7 +93,10 @@ def register_gene_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenSe
 
         async def call() -> dict[str, Any]:
             services = service_factory()
-            resolved = services.gene.resolve(query)
+            try:
+                resolved = services.gene.resolve(query)
+            except AmbiguousQueryError:
+                resolved = None  # a shared alias: the candidate list below IS the answer
             rows, total = services.gene.search(query, limit=_CANDIDATE_LIMIT)
             candidates = [_availability(r) for r in rows]
             meta = services.meta()
