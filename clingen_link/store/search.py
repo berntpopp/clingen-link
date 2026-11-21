@@ -22,6 +22,9 @@ from dataclasses import dataclass
 _TOKEN_RE = re.compile(r"[A-Za-z0-9_\-]+")
 # An internal exact-column filter, e.g. ``gene:"BRCA1"`` or ``hgvs:"NM_..."``.
 _COLUMN_FILTER_RE = re.compile(r'^(?P<col>[a-z_]+):"(?P<val>[^"]+)"$')
+# A cytoband (prefix), e.g. ``7q11.23``, ``1p36``, ``Xp22.31``, ``15q13.3-q14``. No HGNC symbol,
+# ISCA id or MONDO id has this shape, so it never shadows another form.
+CYTOBAND_RE = re.compile(r"(?:[1-9]|1\d|2[0-2]|X|Y)[pq][0-9.]*(?:-[pq]?[0-9.]*)?", re.I | re.A)
 
 # Pagination bounds (mirrors settings.MAX_PAGE_SIZE without importing settings so
 # the helper stays pure/testable). The service layer may pass its own size.

@@ -21,7 +21,7 @@ import re
 import sqlite3
 from typing import Any
 
-from .search import Page, fts_match, paginate
+from .search import CYTOBAND_RE, Page, fts_match, paginate
 
 # HGNC ids are unique keys, so an ``HGNC:n`` input must be matched by equality, never by a LIKE
 # prefix (which would let ``HGNC:1100`` also match ``HGNC:11005`` and ``HGNC:11`` match dozens).
@@ -157,7 +157,11 @@ def search_dosage(
     """Search dosage (gene + region) by text/region/score filters; paginated."""
     where: list[str] = []
     params: list[Any] = []
-    if text:
+    if text and CYTOBAND_RE.fullmatch(text.strip()):
+        # The FTS index holds no cytoband column; match it as the cytoband filter does (#157).
+        where.append("cytoband LIKE ?")
+        params.append(f"{text.strip()}%")
+    elif text:
         ids = _fts_rowids(conn, "dosage_fts", text)
         if not ids:
             return [], 0

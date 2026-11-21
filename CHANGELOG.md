@@ -11,6 +11,20 @@ All notable changes to clingen-link are documented here.
 
 ## [Unreleased]
 
+## [4.2.1] - 2026-11-21
+
+### Fixed
+
+- `search_dosage(query=…)` no longer returns `success: true` with zero records for a curated
+  region (issue #157). A cytoband in `query` (`7q11.23`, `17q12`, `1p36`, `15q13.3-q14`) now
+  prefix-matches the cytoband as the `cytoband` filter does; an HGNC id or alias (`HGNC:9118`,
+  `ERBB1`) resolves to the approved symbol before the search. Text the snapshot does not index
+  (a disease or syndrome name such as `Williams syndrome`) returns `invalid_input` with `field`,
+  `allowed_values` and a hint to resolve the name to a MONDO id with `mondo_search_diseases`,
+  instead of an empty success. A well-formed gene, ISCA id, MONDO id or cytoband that matches
+  nothing is still an honest empty result. The `query` description and examples now name the
+  accepted forms.
+
 ## [4.2.0] - 2026-11-20
 
 ### Fixed

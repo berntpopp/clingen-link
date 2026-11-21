@@ -141,13 +141,13 @@ class TestLegitimateEmptyResultsStillSucceed:
 
 @pytest.mark.asyncio
 class TestFreeTextSearchIsNotAFilter:
-    async def test_a_nonsense_query_is_a_legitimate_empty_result(self, tool_mcp: FastMCP) -> None:
-        """A search box may legitimately find nothing; only VALUE filters are validated."""
+    async def test_an_unindexed_query_is_invalid_input_not_empty(self, tool_mcp: FastMCP) -> None:
+        """search_dosage's index holds ids only, so zero hits for prose is not an absence (#157)."""
         envelope, is_error = await _call(tool_mcp, "search_dosage", {"query": SENTINEL})
 
-        assert envelope["success"] is True
-        assert is_error is False
-        assert envelope["total"] == 0
+        assert is_error is True
+        assert envelope["error_code"] == "invalid_input"
+        assert SENTINEL not in str(envelope)
 
 
 @pytest.mark.asyncio
