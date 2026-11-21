@@ -9,6 +9,7 @@ verbatim ``recommended_citation``.
 
 from __future__ import annotations
 
+import functools
 import re
 from collections.abc import Callable
 from typing import Annotated, Any, Literal
@@ -275,10 +276,8 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
                 (_CYTOBAND, cytoband),
             ):
                 ensure_identifier(services.store, spec, value)
-            # The FTS index holds the approved symbol only; an alias / HGNC id resolves first.
-            gene = services.store.resolve_gene(query) if query else None
-            models, total = await services.dosage.search(
-                text=gene or query,
+            search = functools.partial(
+                services.dosage.search,
                 isca_id=region,
                 cytoband=cytoband,
                 haplo_score=haplo_score,
@@ -287,6 +286,12 @@ def register_dosage_tools(mcp: FastMCP, *, service_factory: Callable[[], Clingen
                 page=page,
                 size=size,
             )
+            models, total = await search(text=query)
+            gene = None
+            if not total and query and (gene := services.store.resolve_gene(query)):
+                # The FTS index holds the approved symbol only: retry an alias / HGNC id as it.
+                # Not first — the resolver ranks a casefolded alias over a symbol ("ar" -> FDXR).
+                models, total = await search(text=gene)
             if not total and query and (foreign := foreign_gene(query, "query")):
                 # Zero rows for an id this snapshot cannot hold is not "no dosage record".
                 raise foreign

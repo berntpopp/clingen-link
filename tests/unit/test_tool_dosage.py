@@ -98,3 +98,12 @@ class TestSearchDosageQueryForms:
         payload = await _call(tool_mcp, "search_dosage", {"query": "ABCA3"})
         assert payload["success"] is True
         assert payload["total"] == 0
+
+    async def test_a_direct_hit_is_not_rerouted_through_the_alias_resolver(
+        self, tool_mcp: FastMCP, tool_services, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The resolver ranks a casefolded alias over a symbol (real data: "ar" -> FDXR), so it
+        # may only rescue a zero-hit query, never replace one that already matched.
+        monkeypatch.setattr(tool_services.store, "resolve_gene", lambda _q: "AARS1")
+        payload = await _call(tool_mcp, "search_dosage", {"query": "aagab"})
+        assert payload["_meta"]["next_commands"][0]["arguments"] == {"gene_symbol": "AAGAB"}
