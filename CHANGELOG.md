@@ -11,6 +11,19 @@ All notable changes to clingen-link are documented here.
 
 ## [Unreleased]
 
+## [4.2.2] - 2026-11-21
+
+### Fixed
+
+- A lower-case approved symbol no longer resolves to a different gene (issue #159).
+  The gene resolver tried an exact alias before a case-insensitive symbol, and the alias table
+  also stores casefolded aliases, so `ar` resolved to FDXR, `agt` to AGXT, `dsc2` to DSC3 and
+  `c8orf37` to CFAP418 — `get_gene_dosage(gene_symbol="agt")` returned AGXT's scores. Every
+  symbol form is now tried before any alias, in every gene-keyed tool.
+- An alias shared by several genes (329 in the current snapshot, e.g. `ALK1` → ACVRL1 / ALK)
+  is no longer silently resolved to the alphabetically first gene. Gene-keyed tools return
+  `ambiguous_query` naming the candidates; `search_genes` lists them with `resolved_symbol: null`.
+
 ## [4.2.1] - 2026-11-21
 
 ### Fixed
