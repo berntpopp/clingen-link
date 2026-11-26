@@ -35,6 +35,11 @@ All notable changes to clingen-link are documented here.
 
 - `_meta.fetched_at`: use `_meta.retrieved_at`. It is removed in the next minor release.
 
+### Removed
+
+- **Breaking:** `response_mode` on `search_genes` and `list_expert_panels`. Both tools ignored
+  it and returned the same payload in every mode; the re-vendored behaviour gate rejects that.
+
 ## [4.2.2] - 2026-11-21
 
 ### Fixed
