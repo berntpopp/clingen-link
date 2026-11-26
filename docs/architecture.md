@@ -1,8 +1,9 @@
 # Architecture
 
 clingen-link is a hand-authored FastMCP v3 facade over a **snapshot + live
-hybrid** data layer. The bundled, read-only SQLite snapshot backs fast offline
-search and retrieval across all five ClinGen domains; a thin live `httpx` layer
+hybrid** data layer. A read-only SQLite snapshot, materialized from the pinned,
+digest-verified data release (the package and image ship code-only; locally
+`make dev-data`), backs fast offline search and retrieval across all five ClinGen domains; a thin live `httpx` layer
 adds single-record drill-down. Snapshot building is an **offline** concern and
 is never done in the request path.
 
@@ -31,13 +32,15 @@ is never done in the request path.
   │        │                                                               │
   │        ▼  etl/build.py        (create schema → write tables + FTS5 →   │
   │                                meta rows → PRAGMA optimize → os.replace)│
-  │   clingen.sqlite  ──compress──▶  data/clingen.sqlite.zst  (+ .sha256)  │
+  │   clingen.sqlite  ──compress──▶  clingen.sqlite.zst  (+ SHA256SUMS)    │
   └──────────────────────────────────────────────────────────────────────┘
-                                   │  shipped in the package / image
+                                   │  published as the pinned data release;
+                                   │  `clingen-link materialize-data` verifies
+                                   │  and expands it (locally: `make dev-data`)
                                    ▼
                           SERVE TIME (read-only)
   ┌──────────────────────────────────────────────────────────────────────┐
-  │  store/db.py        opens the .zst → temp .sqlite, read-only           │
+  │  store/db.py        opens the materialized .sqlite, read-only          │
   │   • resolve_gene(symbol | HGNC | alias) → canonical symbol             │
   │   • meta() → per-domain freshness                                     │
   │  store/queries.py   per-domain SELECTs + FTS5 search                   │
@@ -74,7 +77,7 @@ is never done in the request path.
 | Layer | Module(s) | Responsibility |
 |---|---|---|
 | ETL (offline) | `clingen_link/etl/{fetch,parse,hgnc,sanitize,freshness,build,refresh}.py` (+ `cspec_fetch,cspec_parse`) | Fetch ClinGen bulk sources (+ HGNC complete-set for names/aliases, + GRCh37 dosage coords), sanitize HTML in labels, parse to normalized rows, compute freshness signals, build the SQLite snapshot atomically. The cspec domain uses a two-source fetch (per-spec JSON-LD + doc-page HTML scrape; see below). Entry: `clingen-link refresh`. |
-| Store (read) | `clingen_link/store/{db,queries}.py` | Open the bundled snapshot read-only; gene resolution + alias; per-domain SELECTs and FTS5 search. |
+| Store (read) | `clingen_link/store/{db,queries}.py` | Open the materialized snapshot read-only; gene resolution + alias; per-domain SELECTs and FTS5 search. |
 | Live API | `clingen_link/api/{base_client,clingen_client}.py` | `httpx.AsyncClient` for ERepo/actionability SEPIO drill-down with bounded concurrency, jittered retry, queue-wait → `rate_limited`, typed fault taxonomy. |
 | Services | `clingen_link/services/*.py` | Merge store rows (+ live drill-down) into Pydantic models; `async-lru` caching; build `recommended_citation`. |
 | Models | `clingen_link/models/*.py` | Pydantic response models per domain. |
@@ -152,8 +155,8 @@ fetches only the cheap signal for each domain and compares `content_sha256` to
 the snapshot's `meta`, reporting `up to date` / `STALE` / `UNKNOWN (source
 unreachable)`. Provenance surfaces in `get_server_capabilities`, every tool's
 `_meta`, and the `clingen://freshness` resource. The weekly
-`.github/workflows/data-refresh.yml` Action automates the check and opens a PR
-with a rebuilt bundle when a domain drifts.
+`.github/workflows/data-refresh.yml` Action builds the snapshot and, after
+approval, publishes it as an immutable data release (see [data.md](data.md)).
 
 ## Degraded mode
 
