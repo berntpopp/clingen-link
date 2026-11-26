@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 
 from fastmcp import FastMCP
 from pydantic import Field
@@ -13,8 +13,6 @@ from clingen_link.mcp.envelope import build_meta, cross_domain_version
 from clingen_link.mcp.errors import McpErrorContext, ToolReturn, run_mcp_tool
 from clingen_link.mcp.next_commands import cmd
 from clingen_link.mcp.service_adapters import ClingenServices
-
-_RESPONSE_MODE = Literal["minimal", "compact", "standard", "full"]
 
 # TOOL-SURFACE-BUDGET v1 (B1/B2): outputSchema is suppressed on every tool. It was 60% of
 # this server's 14,519-token surface — a per-request tax on a field the MCP spec makes
@@ -42,10 +40,6 @@ def register_reference_tools(
                 examples=["cardiomyopathy", "RASopathy"],
             ),
         ] = None,
-        response_mode: Annotated[
-            _RESPONSE_MODE,
-            Field(description="compact (default) is the same compact list; full is identical."),
-        ] = "compact",
     ) -> ToolReturn:
         """Use this to list ClinGen GCEP/VCEP expert panels (affiliates) with their curation counts, optionally filtered by label text. Useful to resolve an expert-panel name before filtering validity or variant interpretations. Returns ~1-5kB."""
 

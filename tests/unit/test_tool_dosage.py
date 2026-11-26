@@ -17,7 +17,7 @@ class TestGetGeneDosage:
     async def test_haplo_triplo_interpretation(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "get_gene_dosage", {"gene_symbol": "AAGAB"})
         assert payload["success"] is True
-        rec = payload["records"][0]
+        rec = payload["results"][0]
         assert rec["record_type"] == "gene"
         assert rec["haplo_score"] == "3"
         assert rec["haplo_interpretation"] == "Sufficient evidence for dosage pathogenicity"
@@ -31,7 +31,7 @@ class TestGetGeneDosage:
         payload = await _call(tool_mcp, "get_gene_dosage", {"gene_symbol": "ABCA3"})
         assert payload["success"] is True
         assert payload["total"] == 0
-        assert payload["records"] == []
+        assert payload["results"] == []
 
     async def test_unknown_gene_not_found(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "get_gene_dosage", {"gene_symbol": "ZZZNOPE"})
@@ -45,11 +45,11 @@ class TestSearchDosage:
         payload = await _call(tool_mcp, "search_dosage", {"record_type": "region", "size": 100})
         assert payload["success"] is True
         assert payload["total"] >= 1
-        assert all(r["record_type"] == "region" for r in payload["records"])
+        assert all(r["record_type"] == "region" for r in payload["results"])
 
     async def test_haplo_score_filter(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "search_dosage", {"haplo_score": "3", "size": 100})
-        assert all(r["haplo_score"] == "3" for r in payload["records"])
+        assert all(r["haplo_score"] == "3" for r in payload["results"])
 
     async def test_pagination_truncated(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "search_dosage", {"size": 1})
@@ -74,7 +74,7 @@ class TestSearchDosageQueryForms:
         by_query = await _call(tool_mcp, "search_dosage", {"query": "15q13"})
         assert by_query["success"] is True
         assert by_query["total"] == by_filter["total"] >= 1
-        assert {r["isca_id"] for r in by_query["records"]} >= {"ISCA-46753"}
+        assert {r["isca_id"] for r in by_query["results"]} >= {"ISCA-46753"}
 
     @pytest.mark.parametrize("query", ["Williams syndrome", "Williams", "zzznosuchterm"])
     async def test_unindexed_text_is_invalid_input_not_empty(

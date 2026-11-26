@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 import pytest
 import respx
@@ -22,7 +24,7 @@ class TestGetVariantInterpretations:
         payload = await _call(tool_mcp, "get_variant_interpretations", {"gene_symbol": "BRAF"})
         assert payload["success"] is True
         assert payload["total"] == 1
-        rec = payload["records"][0]
+        rec = payload["results"][0]
         assert rec["caid"] == "CA281951"
         assert rec["assertion"] == "Likely Pathogenic"
         assert rec["recommended_citation"].startswith("ClinGen Variant Pathogenicity")
@@ -38,7 +40,7 @@ class TestGetVariantInterpretations:
             {"gene_symbol": "PAH", "classification": "Pathogenic"},
         )
         assert payload["success"] is True
-        assert all(r["assertion"] == "Pathogenic" for r in payload["records"])
+        assert all(r["assertion"] == "Pathogenic" for r in payload["results"])
 
     async def test_pagination_truncated(self, tool_mcp: FastMCP) -> None:
         payload = await _call(
@@ -85,21 +87,21 @@ class TestGetVariantInterpretation:
     async def test_by_caid_snapshot(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "get_variant_interpretation", {"variant_id": "CA281951"})
         assert payload["success"] is True
-        assert payload["source"] == "snapshot"
-        assert payload["interpretation"]["gene"] == "BRAF"
-        assert payload["recommended_citation"].startswith("ClinGen Variant Pathogenicity")
+        assert payload["result"]["source"] == "snapshot"
+        assert payload["result"]["interpretation"]["gene"] == "BRAF"
+        assert payload["result"]["recommended_citation"].startswith("ClinGen Variant Pathogenicity")
 
     async def test_by_hgvs_snapshot(self, tool_mcp: FastMCP) -> None:
         payload = await _call(
             tool_mcp, "get_variant_interpretation", {"variant_id": "NM_004333.4:c.740T>C"}
         )
         assert payload["success"] is True
-        assert payload["interpretation"]["caid"] == "CA281951"
+        assert payload["result"]["interpretation"]["caid"] == "CA281951"
 
     async def test_by_clinvar_id_snapshot(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "get_variant_interpretation", {"variant_id": "17000"})
         assert payload["success"] is True
-        assert payload["interpretation"]["gene"] == "GJB2"
+        assert payload["result"]["interpretation"]["gene"] == "GJB2"
 
     async def test_clinvar_id_with_refresh_serves_snapshot(self, tool_mcp: FastMCP) -> None:
         # #151: live ERepo has no ClinVar-id selector; refresh=true used to fail as
@@ -108,8 +110,8 @@ class TestGetVariantInterpretation:
             tool_mcp, "get_variant_interpretation", {"variant_id": "17000", "refresh": True}
         )
         assert payload["success"] is True
-        assert payload["source"] == "snapshot"
-        assert "refresh ignored" in payload["notice"]
+        assert payload["result"]["source"] == "snapshot"
+        assert "refresh ignored" in payload["result"]["notice"]
 
     async def test_evidence_codes_in_full(self, tool_mcp: FastMCP) -> None:
         payload = await _call(
@@ -117,7 +119,7 @@ class TestGetVariantInterpretation:
             "get_variant_interpretation",
             {"variant_id": "CA281951", "response_mode": "full"},
         )
-        interp = payload["interpretation"]
+        interp = payload["result"]["interpretation"]
         assert "evidence_codes_met" in interp
 
     async def test_multiple_selectors_invalid(self, tool_mcp: FastMCP) -> None:
@@ -143,9 +145,19 @@ class TestGetVariantInterpretation:
             tool_mcp, "get_variant_interpretation", {"variant_id": "CA281951", "refresh": True}
         )
         assert payload["success"] is True
-        assert payload["source"] == "live"
-        assert payload["interpretation"]["assertion"] == "Pathogenic"
+        assert payload["result"]["source"] == "live"
+        assert payload["result"]["interpretation"]["assertion"] == "Pathogenic"
         assert route.called
+        # v1.2: a live record is dated by its own fetch; the cached repeat keeps that time.
+        meta = payload["_meta"]
+        assert meta["data_version"] == "live" and meta["retrieved_at"].endswith("Z")
+        assert meta["retrieved_at"] > meta["source_versions"]["erepo"]["fetched_at"][:19]
+        await asyncio.sleep(1.1)
+        again = await _call(
+            tool_mcp, "get_variant_interpretation", {"variant_id": "CA281951", "refresh": True}
+        )
+        assert route.call_count == 1
+        assert again["_meta"]["retrieved_at"] == meta["retrieved_at"]
 
     @respx.mock
     async def test_refresh_dict_gene_shape_no_validation_failed(self, tool_mcp: FastMCP) -> None:
@@ -173,8 +185,8 @@ class TestGetVariantInterpretation:
         )
         assert payload["success"] is True
         assert payload.get("error_code") != "validation_failed"
-        assert payload["source"] == "live"
-        assert payload["interpretation"]["gene"] == "BRAF"
+        assert payload["result"]["source"] == "live"
+        assert payload["result"]["interpretation"]["gene"] == "BRAF"
 
     @respx.mock
     async def test_refresh_degrades_to_snapshot_not_validation_failed(
@@ -190,6 +202,6 @@ class TestGetVariantInterpretation:
         )
         assert payload["success"] is True
         assert payload.get("error_code") != "validation_failed"
-        assert payload["source"] == "snapshot"
-        assert payload["notice"]
-        assert payload["interpretation"]["gene"] == "BRAF"
+        assert payload["result"]["source"] == "snapshot"
+        assert payload["result"]["notice"]
+        assert payload["result"]["interpretation"]["gene"] == "BRAF"

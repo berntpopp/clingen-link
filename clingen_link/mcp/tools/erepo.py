@@ -268,7 +268,7 @@ def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
             # refresh=true used to send an empty selector and fail as upstream_unavailable (#151).
             if clinvar_variation_id:
                 model = _by_clinvar(services, clinvar_variation_id)
-                source = "snapshot"
+                source, live_fetched_at = "snapshot", None
                 notice = (
                     "refresh ignored: live ERepo keys on CAID/HGVS, not ClinVar VariationID; "
                     "served snapshot record"
@@ -276,7 +276,7 @@ def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
                     else None
                 )
             else:
-                model, source, notice = await services.erepo.get_interpretation(
+                model, source, notice, live_fetched_at = await services.erepo.get_interpretation(
                     caid=caid, hgvs=hgvs, refresh=refresh
                 )
             # Every tier keeps the record: `minimal` narrows it to identifiers, it does not
@@ -300,6 +300,8 @@ def register_erepo_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenS
             meta_block = build_meta(
                 data_version=data_version_for(services.meta(), "erepo"),
                 next_commands=next_cmds,
+                fetched_at=live_fetched_at,
+                live=source == "live",
             )
             if notice:
                 meta_block["notice"] = notice

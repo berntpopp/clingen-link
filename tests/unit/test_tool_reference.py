@@ -18,17 +18,17 @@ class TestListExpertPanels:
         payload = await _call(tool_mcp, "list_expert_panels", {})
         assert payload["success"] is True
         assert payload["total"] >= 1
-        panel = payload["expert_panels"][0]
+        panel = payload["results"][0]
         assert "affiliate_id" in panel
         assert "total_curations" in panel
         # Sorted by curation count, descending.
-        counts = [p["total_curations"] for p in payload["expert_panels"]]
+        counts = [p["total_curations"] for p in payload["results"]]
         assert counts == sorted(counts, reverse=True)
 
     async def test_query_filter(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "list_expert_panels", {"query": "Cancer"})
         assert payload["success"] is True
-        assert all("cancer" in (p["label"] or "").lower() for p in payload["expert_panels"])
+        assert all("cancer" in (p["label"] or "").lower() for p in payload["results"])
 
     async def test_next_commands_non_empty(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "list_expert_panels", {})

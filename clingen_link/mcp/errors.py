@@ -9,11 +9,15 @@ from __future__ import annotations
 
 import json
 import logging
+import time
+import uuid
 from collections import deque
 from collections.abc import Awaitable, Callable
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
+from asgi_correlation_id import correlation_id
 from fastmcp.exceptions import ValidationError as FastMCPValidationError
 from fastmcp.tools.base import ToolResult
 from pydantic import ValidationError as PydanticValidationError
@@ -28,6 +32,7 @@ from clingen_link.exceptions import (
     SnapshotUnavailableError,
     UpstreamInputError,
 )
+from clingen_link.mcp.envelope import primary_payload
 from clingen_link.mcp.error_fields import (
     describe_pattern_mismatches,
     extract_field_errors,
@@ -72,6 +77,8 @@ _BASE_META: dict[str, Any] = {
     "unsafe_for_clinical_use": True,
 }
 
+# Start of the current tool call, for `_meta.elapsed_ms` (Response-Envelope v1 section 4).
+_STARTED: ContextVar[float | None] = ContextVar("clingen_tool_started", default=None)
 # Fallback tool used in validation and output-validation error envelopes.
 # Points to get_diagnostics for rich health context on error recovery.
 _FALLBACK_TOOL = "get_diagnostics"
@@ -116,8 +123,12 @@ def _provenance_meta(context: McpErrorContext | None = None) -> dict[str, Any]:
     Always carries the research-use flag. Later phases extend this with the
     snapshot data version once the store is wired in.
     """
-    meta: dict[str, Any] = dict(_BASE_META)
-    return meta
+    started = _STARTED.get()
+    return {
+        **_BASE_META,
+        "request_id": correlation_id.get() or uuid.uuid4().hex,
+        "elapsed_ms": 0.0 if started is None else round((time.monotonic() - started) * 1e3, 1),
+    }
 
 
 def _safe_message(exc: BaseException) -> str:
@@ -548,6 +559,7 @@ async def run_mcp_tool(
     envelope away.
     """
     ctx = context or McpErrorContext(tool_name=tool_name)
+    _STARTED.set(time.monotonic())
     try:
         result = await call()
         # Inject research-use meta into every successful dict response unless the
@@ -555,6 +567,7 @@ async def run_mcp_tool(
         # branch on `success` instead of special-casing `is False`.
         if isinstance(result, dict):
             result.setdefault("success", True)
+            primary_payload(result)
             existing_meta: dict[str, Any] = result.get("_meta") or {}
             result["_meta"] = {**existing_meta, **_provenance_meta(ctx)}
         return result

@@ -186,7 +186,7 @@ async def test_get_diagnostics_detail_is_fixed_not_exc_text(
         await services.aclose()
 
     for payload in (structured, mirror):
-        assert payload["snapshot"]["detail"] == "Snapshot unavailable."
+        assert payload["result"]["snapshot"]["detail"] == "Snapshot unavailable."
         blob = json.dumps(payload, ensure_ascii=False)
         # Neither the local filesystem path nor the hostile prose reaches the caller.
         assert "/srv/secret/path" not in blob

@@ -13,10 +13,10 @@ async def test_capabilities_tool_callable(mcp: FastMCP) -> None:
     payload = result.structured_content or {}
 
     assert payload.get("success") is True, payload
-    assert payload["server"] == "clingen-link"
-    assert isinstance(payload["tools"], list) and payload["tools"], payload
-    assert "get_server_capabilities" in payload["tools"]
-    assert payload["research_use_only"] is True
+    assert payload["result"]["server"] == "clingen-link"
+    assert isinstance(payload["result"]["tools"], list) and payload["result"]["tools"], payload
+    assert "get_server_capabilities" in payload["result"]["tools"]
+    assert payload["result"]["research_use_only"] is True
 
     meta = payload.get("_meta") or {}
     assert meta.get("unsafe_for_clinical_use") is True
@@ -29,6 +29,7 @@ async def test_diagnostics_tool_callable(mcp: FastMCP) -> None:
     payload = result.structured_content or {}
 
     assert payload.get("success") is True, payload
+    payload = payload["result"]
     assert "recent_errors" in payload
     assert payload["recent_error_count"] == len(payload["recent_errors"])
     # With the default services the bundled snapshot loads; if it is missing the

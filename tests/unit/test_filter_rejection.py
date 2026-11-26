@@ -154,7 +154,7 @@ class TestFreeTextSearchIsNotAFilter:
 class TestReturnedValuesRoundTrip:
     async def test_an_expert_panel_from_a_record_is_a_valid_filter(self, tool_mcp: FastMCP) -> None:
         listed, _ = await _call(tool_mcp, "search_validity", {"size": 1})
-        panel = listed["records"][0]["expert_panel"]
+        panel = listed["results"][0]["expert_panel"]
 
         envelope, _ = await _call(tool_mcp, "search_validity", {"expert_panel": panel})
 

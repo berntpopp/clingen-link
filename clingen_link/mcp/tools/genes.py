@@ -84,10 +84,6 @@ def register_gene_tools(mcp: FastMCP, *, service_factory: Callable[[], ClingenSe
     )
     async def search_genes(
         query: _GENE_QUERY,
-        response_mode: Annotated[
-            _RESPONSE_MODE,
-            Field(description="compact (default) trims null fields; full keeps everything."),
-        ] = "compact",
     ) -> ToolReturn:
         """Resolve a free-text gene (symbol / HGNC id / alias) to its canonical ClinGen gene; returns resolved_symbol plus candidates with per-domain availability and record counts. Use this FIRST, before any gene-keyed tool. Follow the _meta.next_commands into get_gene_summary. Unknown input returns a not_found envelope with a fallback. Returns ~1-3kB."""
 
