@@ -38,19 +38,21 @@ The server is hosted — no install, no data build:
 claude mcp add --transport http clingen https://clingen-link.genefoundry.org/mcp
 ```
 
-To run it yourself (Python 3.14+, [uv](https://docs.astral.sh/uv/) — never `pip`), build a
-snapshot first. **The application ships code-only and has no data until you do**:
+To run it yourself (Python 3.14+, [uv](https://docs.astral.sh/uv/) — never `pip`), fetch the
+data first. **The application ships code-only and has no data until you do**:
 
 ```bash
 uv sync --group dev
-uv run clingen-link refresh --out data/clingen.sqlite    # required: builds from ClinGen
-CLINGEN_LINK_SNAPSHOT_PATH=data/clingen.sqlite make dev  # FastAPI /health + MCP /mcp on :8000
+make dev-data   # downloads the pinned data release, verifies its digests, materializes it under data/dev/
+make dev        # FastAPI /health + MCP /mcp on 127.0.0.1:8000
 curl http://127.0.0.1:8000/health
 ```
 
-Streamable HTTP is the **only** transport — there is no stdio entry point. In production,
-an operator pins a reviewed, digest-verified bundle instead of building one; see
-[deployment](docker/README.md) and the [data-bundle contract](docs/data.md).
+`make dev-data` needs `curl`, `jq` and `sha256sum`. The server only opens a bundle whose
+digests match the pinned data release; a raw snapshot built with `clingen-link refresh` is
+ETL output and is not served directly. Streamable HTTP is the **only** transport — there is
+no stdio entry point. See [deployment](docker/README.md) and the
+[data-bundle contract](docs/data.md).
 
 ## Tools
 

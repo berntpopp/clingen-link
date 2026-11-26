@@ -51,6 +51,12 @@ Materialize a bundle by hand with:
 uv run clingen-link materialize-data --root /data
 ```
 
+For a local run, `make dev-data` does all of this outside Docker: it downloads the data
+release pinned in `container-release.json`, checks the compressed digest, materializes the
+bundle under `data/dev/reference/` and writes the matching `CLINGEN_LINK_DATA_*` settings to
+`data/dev/env`, which `make dev` reads. A raw snapshot built with `clingen-link refresh` has
+no reviewed identity and is not served directly.
+
 ## Refresh & freshness
 
 ```bash
