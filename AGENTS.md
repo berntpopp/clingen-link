@@ -11,8 +11,8 @@ gene-disease validity, gene dosage, clinical actionability, and variant
 pathogenicity (ERepo). It is built on the `gnomad-link` house style: a
 hand-authored FastMCP v4 facade with the full canonical response envelope and
 Streamable-HTTP transport (unified / http). Data is served from a self-contained,
-read-only SQLite snapshot (bundled in the package), with a thin live HTTP layer
-for single-record drill-down.
+read-only SQLite snapshot (a pinned, digest-verified data release — the package
+ships code-only), with a thin live HTTP layer for single-record drill-down.
 
 Primary areas (under `clingen_link/`):
 
@@ -20,7 +20,7 @@ Primary areas (under `clingen_link/`):
   in the request path. Entry: `clingen-link refresh` (or `python -m
   clingen_link.etl refresh`).
 - `store/` — read-only SQLite query layer (gene resolution/alias, per-domain
-  queries). Opens the bundled snapshot read-only.
+  queries). Opens the materialized snapshot read-only.
 - `api/` — live HTTP layer (`httpx.AsyncClient`) for ERepo / actionability SEPIO
   drill-down: semaphore concurrency + jittered retry + queue-wait → `rate_limited`
   + typed fault taxonomy.
@@ -38,8 +38,8 @@ JSON in prod / console in `--dev`, with `asgi-correlation-id`). Other areas:
 
 - `tests/` — `unit/` (default fast path) and `integration/` (live drift tests,
   `@pytest.mark.integration`, excluded from the default path).
-- `docker/` — Dockerfile + Compose overlays + README. The bundled snapshot
-  `.zst` is shipped in the image.
+- `docker/` — Dockerfile + Compose overlays + README. The image is code-only;
+  the snapshot is materialized into a reference volume from the data release.
 - `docs/` — `architecture.md`, `usage.md`, and design specs/plans under
   `docs/superpowers/`.
 
@@ -54,18 +54,23 @@ JSON in prod / console in `--dev`, with `asgi-correlation-id`). Other areas:
 
 ## Snapshot / refresh workflow
 
-- The server reads `clingen_link/data/clingen.sqlite.zst` (read-only). Snapshot
-  building is **never** done at request time.
+- The package ships **code-only**: there is no snapshot in the repository or the
+  image. The server opens (read-only) the snapshot that `clingen-link
+  materialize-data` expands from the pinned data release named in
+  `container-release.json` (`data.release_tag`), and only when its digests match.
+  Locally: `make dev-data` (download, verify, materialize under `data/dev/`), then
+  `make dev`. Contract: `docs/data.md`. Snapshot building is **never** done at
+  request time.
 - `uv run clingen-link refresh --check` — fetch only cheap freshness signals,
   compare to the snapshot `meta`, print a staleness report, write nothing, exit
   non-zero if stale.
 - `uv run clingen-link refresh [--out PATH]` — fetch all domains, build a new
   snapshot atomically, print row counts.
-- After a real rebuild, re-compress to `clingen.sqlite.zst` + regenerate
-  `clingen.sqlite.sha256`; the raw `.sqlite` is gitignored, the `.zst` bundle is
-  committed. A weekly `data-refresh.yml` Action automates the check + rebuild
-  PR.
-- **Do not** hand-edit the snapshot bundle or `tests/fixtures/`.
+- A raw snapshot built with `refresh` is ETL output and is not served directly.
+  The weekly `data-refresh.yml` Action builds, attests and publishes the immutable
+  `data-clingen-*` release (`clingen.sqlite.zst`, `data-release-manifest.json`,
+  `SHA256SUMS`); nothing is committed.
+- **Do not** hand-edit a snapshot bundle or `tests/fixtures/`.
 - **Rights notice, not a per-release sign-off.** ClinGen data is CC BY 4.0, so
   redistribution needs honest attribution, not a human legal decision per release.
   `data/RIGHTS.json` is the committed, versioned notice (licence name/SPDX/URL,
