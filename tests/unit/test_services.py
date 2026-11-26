@@ -141,13 +141,13 @@ class TestErepoService:
 
     async def test_get_interpretation_prefers_snapshot(self, services: ClingenServices) -> None:
         # No respx mock — must be served from the snapshot without any live call.
-        result, source, notice = await services.erepo.get_interpretation(caid="CA281951")
+        result, source, notice, _ = await services.erepo.get_interpretation(caid="CA281951")
         assert result.gene == "BRAF"
         assert source == "snapshot"
         assert notice is None
 
     async def test_get_interpretation_by_hgvs_snapshot(self, services: ClingenServices) -> None:
-        result, source, _ = await services.erepo.get_interpretation(hgvs="NM_004333.4:c.740T>C")
+        result, source, _, _ = await services.erepo.get_interpretation(hgvs="NM_004333.4:c.740T>C")
         assert result.caid == "CA281951"
         assert source == "snapshot"
 
@@ -162,7 +162,7 @@ class TestErepoService:
                 200, json=[{"caid": "CA999999", "gene": "TP53", "assertion": "Pathogenic"}]
             )
         )
-        result, source, _ = await services.erepo.get_interpretation(caid="CA999999")
+        result, source, _, _ = await services.erepo.get_interpretation(caid="CA999999")
         assert result.gene == "TP53"
         assert source == "live"
         assert route.called
@@ -178,7 +178,9 @@ class TestErepoService:
             )
         )
         # CA281951 IS in the snapshot, but refresh=True must bypass it and call live.
-        result, source, _ = await services.erepo.get_interpretation(caid="CA281951", refresh=True)
+        result, source, _, _ = await services.erepo.get_interpretation(
+            caid="CA281951", refresh=True
+        )
         assert result.assertion == "Pathogenic"
         assert source == "live"
         assert route.called
@@ -205,7 +207,9 @@ class TestErepoService:
                 },
             )
         )
-        result, source, _ = await services.erepo.get_interpretation(caid="CA281951", refresh=True)
+        result, source, _, _ = await services.erepo.get_interpretation(
+            caid="CA281951", refresh=True
+        )
         assert result.gene == "BRAF"  # dict normalized to label — no ValidationError
         assert source == "live"
 
@@ -218,7 +222,7 @@ class TestErepoService:
         )
         # A non-retryable upstream 4xx is a server-side fault, not bad input.
         respx.get(f"{_EREPO}/api/classifications").mock(return_value=httpx.Response(400))
-        result, source, notice = await services.erepo.get_interpretation(
+        result, source, notice, _ = await services.erepo.get_interpretation(
             caid="CA281951", refresh=True
         )
         # CA281951 is in the snapshot → degrade rather than fail.

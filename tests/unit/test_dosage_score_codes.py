@@ -120,7 +120,7 @@ async def test_negative_one_round_trips_from_etl_through_search_with_interpretat
             payload = result.structured_content or {}
             assert payload["success"] is True
             assert payload["total"] == 1
-            record = payload["records"][0]
+            record = payload["results"][0]
             assert record[f"{axis}_score"] == "-1"
             assert record[f"{axis}_interpretation"] == "Will not be evaluated"
     finally:
@@ -148,7 +148,7 @@ class TestSearchDosageFindsTheDocumentedCodes:
 
         assert payload["success"] is True
         assert payload["total"] > 0, "code 30 returned 0 rows — the silently-empty filter"
-        assert all(r["haplo_score"] == "30" for r in payload["records"])
+        assert all(r["haplo_score"] == "30" for r in payload["results"])
 
     async def test_an_unrecognised_code_is_rejected_not_silently_empty(
         self, tool_mcp: FastMCP
@@ -173,7 +173,7 @@ class TestGetGeneDosageScoreIsNumeric:
         result = await tool_mcp.call_tool(
             "get_gene_dosage", {"gene_symbol": "A4GALT", "response_mode": "full"}
         )
-        record = (result.structured_content or {})["records"][0]
+        record = (result.structured_content or {})["results"][0]
 
         assert record["haplo_score"] == "30"
         assert record["haplo_interpretation"] == (
@@ -182,7 +182,7 @@ class TestGetGeneDosageScoreIsNumeric:
 
     async def test_no_score_field_ever_holds_a_non_code(self, tool_mcp: FastMCP) -> None:
         result = await tool_mcp.call_tool("search_dosage", {"size": 100, "response_mode": "full"})
-        records = (result.structured_content or {})["records"]
+        records = (result.structured_content or {})["results"]
 
         for record in records:
             for field in ("haplo_score", "triplo_score"):
@@ -199,7 +199,7 @@ class TestScoreRoundTrips:
     ) -> None:
         """The audit's core complaint: the value returned could not be fed back in."""
         detail = await tool_mcp.call_tool("get_gene_dosage", {"gene_symbol": "A4GALT"})
-        score = (detail.structured_content or {})["records"][0]["haplo_score"]
+        score = (detail.structured_content or {})["results"][0]["haplo_score"]
 
         result = await tool_mcp.call_tool("search_dosage", {"haplo_score": score, "size": 100})
         payload = result.structured_content or {}

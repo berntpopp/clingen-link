@@ -18,16 +18,16 @@ class TestCapabilities:
         payload = await _call(tool_mcp, "get_server_capabilities", {})
         assert payload["success"] is True
         registered = {t.name for t in await tool_mcp.list_tools()}
-        listed = set(payload["tools"])
+        listed = set(payload["result"]["tools"])
         assert registered == listed, registered ^ listed
 
     async def test_token_cost_hints_cover_tools(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "get_server_capabilities", {})
-        assert set(payload["token_cost_hints"]) == set(payload["tools"])
+        assert set(payload["result"]["token_cost_hints"]) == set(payload["result"]["tools"])
 
     async def test_datasets_have_freshness(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "get_server_capabilities", {})
-        ds = payload["datasets"]
+        ds = payload["result"]["datasets"]
         assert {"validity", "dosage", "actionability", "erepo"} <= set(ds)
         # Freshness folded in from the snapshot meta rows.
         assert ds["validity"]["version"]
@@ -37,25 +37,25 @@ class TestCapabilities:
         """cspec must surface in the rendered payload, not just the private dict."""
         payload = await _call(tool_mcp, "get_server_capabilities", {})
         # Datasets section carries the cspec domain with its labelled name.
-        datasets = payload["datasets"]
+        datasets = payload["result"]["datasets"]
         assert "cspec" in datasets
         assert "Criteria Specification" in datasets["cspec"]["label"]
         # Tools list + token-cost section expose all four cspec tools.
         cspec_tools = {"list_cspecs", "get_cspec", "get_cspec_criterion", "search_cspec"}
-        assert cspec_tools <= set(payload["tools"])
-        assert cspec_tools <= set(payload["token_cost_hints"])
+        assert cspec_tools <= set(payload["result"]["tools"])
+        assert cspec_tools <= set(payload["result"]["token_cost_hints"])
 
     async def test_error_codes_and_conventions(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "get_server_capabilities", {})
-        assert "upstream_unavailable" in payload["error_codes"]
-        assert "response_mode" in payload["parameter_conventions"]
-        assert payload["resources"]["clingen://citations"]
+        assert "upstream_unavailable" in payload["result"]["error_codes"]
+        assert "response_mode" in payload["result"]["parameter_conventions"]
+        assert payload["result"]["resources"]["clingen://citations"]
 
     async def test_capabilities_version_stable(self, tool_mcp: FastMCP) -> None:
         first = await _call(tool_mcp, "get_server_capabilities", {})
         second = await _call(tool_mcp, "get_server_capabilities", {})
-        assert first["capabilities_version"]
-        assert first["capabilities_version"] == second["capabilities_version"]
+        assert first["result"]["capabilities_version"]
+        assert first["result"]["capabilities_version"] == second["result"]["capabilities_version"]
 
 
 class TestResources:

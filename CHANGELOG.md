@@ -11,6 +11,30 @@ All notable changes to clingen-link are documented here.
 
 ## [Unreleased]
 
+## [5.0.0] - 2026-11-26
+
+### Changed
+
+- **Breaking:** the primary payload key follows Response-Envelope Standard v1: a list result is
+  `results` (was `records`, `candidates` or `expert_panels`), with `headline`, `total` and the
+  other siblings beside it; a single-record result is one object under `result`.
+- **Breaking:** `_meta.data_version` is a string (Response-Envelope Standard v1.2): the tag of
+  the snapshot served, or `live` for a live ERepo record. The per-domain freshness rows that
+  were under `_meta.data_version` are under `_meta.source_versions`, keyed by domain.
+
+### Added
+
+- Provenance on every successful data result: `_meta.source` (`clingen`), `_meta.data_version`
+  and `_meta.retrieved_at` (UTC; the snapshot download time, or the time of the live fetch,
+  which a cached live record keeps).
+- `_meta.request_id` and `_meta.elapsed_ms` on every result.
+- The vendored envelope JSON Schema (genefoundry-envelope v1.2.0) validates every data tool's
+  result in the test suite.
+
+### Deprecated
+
+- `_meta.fetched_at`: use `_meta.retrieved_at`. It is removed in the next minor release.
+
 ## [4.2.2] - 2026-11-21
 
 ### Fixed

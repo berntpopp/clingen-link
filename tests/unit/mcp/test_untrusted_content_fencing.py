@@ -149,9 +149,9 @@ async def test_get_gene_validity_disease_name_fenced(tool_mcp, monkeypatch) -> N
     )
     _assert_ok(structured, mirror)
     for payload in (structured, mirror):
-        _assert_fenced(payload["records"][0]["disease_name"], record_id="CGGV:assertion_x")
+        _assert_fenced(payload["results"][0]["disease_name"], record_id="CGGV:assertion_x")
     # The citation references the disease by its curated MONDO id, never the raw name.
-    citation = structured["records"][0]["recommended_citation"]
+    citation = structured["results"][0]["recommended_citation"]
     assert "MONDO:0007254" in citation
     assert _INJECTION not in citation
     assert _INJECTION not in (structured.get("recommended_citation") or "")
@@ -181,7 +181,7 @@ async def test_get_gene_dosage_haplo_triplo_fenced(tool_mcp, monkeypatch) -> Non
     )
     _assert_ok(structured, mirror)
     for payload in (structured, mirror):
-        rec = payload["records"][0]
+        rec = payload["results"][0]
         _assert_fenced(rec["haplo_description"], record_id="BRCA1")
         _assert_fenced(rec["triplo_description"], record_id="BRCA1")
 
@@ -195,7 +195,7 @@ async def test_get_variant_interpretation_summary_fenced(tool_mcp, monkeypatch) 
     )
 
     async def _get_interp(*, caid=None, hgvs=None, refresh=False):
-        return hostile, "snapshot", None
+        return hostile, "snapshot", None, None
 
     monkeypatch.setattr(services.erepo, "get_interpretation", _get_interp)
 
@@ -204,7 +204,7 @@ async def test_get_variant_interpretation_summary_fenced(tool_mcp, monkeypatch) 
     )
     _assert_ok(structured, mirror)
     for payload in (structured, mirror):
-        _assert_fenced(payload["interpretation"]["summary"], record_id="CA000001")
+        _assert_fenced(payload["result"]["interpretation"]["summary"], record_id="CA000001")
 
 
 async def test_get_cspec_criterion_description_and_strength_fenced(tool_mcp, monkeypatch) -> None:
@@ -244,7 +244,7 @@ async def test_get_cspec_criterion_description_and_strength_fenced(tool_mcp, mon
     )
     _assert_ok(structured, mirror)
     for payload in (structured, mirror):
-        rec = payload["record"]
+        rec = payload["result"]["record"]
         _assert_fenced(rec["description"], record_id="9:PVS1")
         _assert_fenced(rec["strengths"][0]["description"], record_id="9:PVS1")
 
@@ -292,7 +292,7 @@ async def test_get_cspec_criteria_description_fenced(tool_mcp, monkeypatch) -> N
     )
     _assert_ok(structured, mirror)
     for payload in (structured, mirror):
-        crit = payload["record"]["criteria"][0]
+        crit = payload["result"]["record"]["criteria"][0]
         _assert_fenced(crit["description"], record_id="9:PVS1")
         _assert_fenced(crit["strengths"][0]["description"], record_id="9:PVS1")
 
@@ -330,7 +330,7 @@ async def test_get_gene_actionability_sepio_detail_fenced(tool_mcp, monkeypatch)
         default=str,
     )
     for payload in (structured, mirror):
-        sepio = payload["records"][0]["sepio_detail"]
+        sepio = payload["results"][0]["sepio_detail"]
         # The whole SEPIO blob is fenced as ONE opaque untrusted_text object.
         assert sepio["kind"] == "untrusted_text"
         assert sepio["raw_sha256"] == hashlib.sha256(expected_blob.encode("utf-8")).hexdigest()
@@ -369,4 +369,4 @@ async def test_large_result_does_not_raise_limit(tool_mcp, monkeypatch) -> None:
     )
     assert structured["success"] is True
     assert structured["total"] == 200
-    assert structured["records"][0]["disease_name"]["kind"] == "untrusted_text"
+    assert structured["results"][0]["disease_name"]["kind"] == "untrusted_text"

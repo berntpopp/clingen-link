@@ -53,7 +53,7 @@ async def test_success_envelope_adds_success_and_meta() -> None:
     result = await run_mcp_tool("get_server_capabilities", call)
     assert result["success"] is True
     assert result["_meta"]["unsafe_for_clinical_use"] is True
-    assert result["value"] == 1
+    assert result["result"] == {"headline": "ok", "value": 1}
 
 
 async def test_success_preserves_existing_meta() -> None:
@@ -183,7 +183,7 @@ async def test_diagnostics_ring_excludes_caller_free_text(mcp: FastMCP) -> None:
 
     result = await mcp.call_tool("get_diagnostics", {})
     payload = result.structured_content or {}
-    assert payload["recent_error_count"] >= 1
+    assert payload["result"]["recent_error_count"] >= 1
     # The sentinel appears NOWHERE in the diagnostics output.
     assert sentinel not in json.dumps(payload)
 
@@ -211,8 +211,8 @@ async def test_schema_drift_ring_excludes_raw_sdk_message(mcp: FastMCP) -> None:
 
     result = await mcp.call_tool("get_diagnostics", {})
     payload = result.structured_content or {}
-    assert payload["recent_schema_drift_count"] >= 1
+    assert payload["result"]["recent_schema_drift_count"] >= 1
     # The parsed, safe schema field survives...
-    assert payload["recent_schema_drift"][-1]["error_field"] == "classification"
+    assert payload["result"]["recent_schema_drift"][-1]["error_field"] == "classification"
     # ...but the free-text sentinel appears NOWHERE in the diagnostics output.
     assert sentinel not in json.dumps(payload)

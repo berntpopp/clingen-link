@@ -11,6 +11,7 @@ from clingen_link.etl import build, cspec_parse, schema
 from clingen_link.mcp.service_adapters import ClingenServices, reset_services, set_services
 from clingen_link.mcp.tools import cspec as cspec_tools
 from clingen_link.store.db import Store
+from tests.conformance.envelope_schema import assert_data_envelope
 
 
 @pytest.fixture(autouse=True)
@@ -213,7 +214,7 @@ async def test_list_cspecs_returns_catalog() -> None:
     )
     assert out["success"] is True
     assert out["total"] >= 1
-    assert out["records"][0]["gn_id"] == "GN092"
+    assert out["results"][0]["gn_id"] == "GN092"
     assert out["_meta"]["unsafe_for_clinical_use"] is True
     nxt = out["_meta"]["next_commands"][0]
     assert nxt["tool"] == "get_cspec"
@@ -223,7 +224,8 @@ async def test_list_cspecs_returns_catalog() -> None:
 async def test_get_cspec_returns_detail() -> None:
     out = await cspec_tools._get_cspec_impl(gn_id="GN092", response_mode="compact")
     assert out["success"] is True
-    assert out["record"]["criteria"][0]["code"] == "PVS1"
+    assert out["result"]["record"]["criteria"][0]["code"] == "PVS1"
+    assert_data_envelope(out)
     assert out["_meta"]["unsafe_for_clinical_use"] is True
     nxt = out["_meta"]["next_commands"][0]
     assert nxt["tool"] == "get_cspec_criterion"
@@ -241,7 +243,8 @@ async def test_get_cspec_criterion_by_code() -> None:
         assert out.is_error is True
         out = out.structured_content or {}
     assert out["success"] is True
-    assert out["record"]["code"] == "PVS1"
+    assert out["result"]["record"]["code"] == "PVS1"
+    assert_data_envelope(out)
     nxt = out["_meta"]["next_commands"][0]
     assert nxt["tool"] == "get_cspec"
 
@@ -277,11 +280,11 @@ async def test_an_affiliation_covering_several_specs_is_resolved_by_list_cspecs(
         gene=None, affiliation="50087", status=None, page=1, size=10, response_mode="compact"
     )
     assert listed["success"] is True
-    assert {r["gn_id"] for r in listed["records"]} >= {"GN092", "GN093"}
+    assert {r["gn_id"] for r in listed["results"]} >= {"GN092", "GN093"}
 
     out = await cspec_tools._get_cspec_impl(gn_id="GN093", response_mode="compact")
     assert out["success"] is True
-    assert out["record"]["gn_id"] == "GN093"
+    assert out["result"]["record"]["gn_id"] == "GN093"
 
 
 @pytest.mark.asyncio
@@ -310,8 +313,8 @@ async def test_get_cspec_criterion_ambiguous_returns_error(_multi_services) -> N
         response_mode="compact",
     )
     assert resolved["success"] is True
-    assert resolved["record"]["code"] == "PM2"
-    assert resolved["record"]["criteria_id"] == "100"
+    assert resolved["result"]["record"]["code"] == "PM2"
+    assert resolved["result"]["record"]["criteria_id"] == "100"
 
 
 @pytest.mark.asyncio
@@ -320,7 +323,7 @@ async def test_search_cspec_pagination_truncated(_multi_services) -> None:
     out = await cspec_tools._search_cspec_impl(query="population", page=1, size=1)
     assert out["success"] is True
     assert out["total"] > 1
-    assert len(out["records"]) == 1
+    assert len(out["results"]) == 1
     # Dropped rows surface as _meta["truncated"] (the canonical truncated_block).
     trunc = out["_meta"].get("truncated")
     assert trunc is not None
@@ -336,11 +339,11 @@ async def test_get_cspec_compact_trims_verbose_fields(_multi_services) -> None:
     both compact and standard); only ``full`` returns them, so ``full`` is asserted here.
     """
     compact = await cspec_tools._get_cspec_impl(gn_id="GN092", response_mode="compact")
-    record_compact = compact["record"]
+    record_compact = compact["result"]["record"]
     assert "current_status" not in record_compact
     assert "affiliation_id" not in record_compact
 
     full = await cspec_tools._get_cspec_impl(gn_id="GN092", response_mode="full")
-    record_full = full["record"]
+    record_full = full["result"]["record"]
     assert "current_status" in record_full
     assert "affiliation_id" in record_full

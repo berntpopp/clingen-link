@@ -91,4 +91,4 @@ async def test_search_genes_lists_candidates_for_an_ambiguous_alias(
     payload = result.structured_content or {}
     assert payload["success"] is True
     assert payload["resolved_symbol"] is None
-    assert {c["symbol"] for c in payload["candidates"]} >= {"AARS1", "AARS2"}
+    assert {c["symbol"] for c in payload["results"]} >= {"AARS1", "AARS2"}

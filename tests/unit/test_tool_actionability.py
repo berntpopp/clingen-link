@@ -22,7 +22,7 @@ class TestGetGeneActionability:
         payload = await _call(tool_mcp, "get_gene_actionability", {"gene_symbol": "SCN1A"})
         assert payload["success"] is True
         assert payload["context"] == "Adult"
-        rec = payload["records"][0]
+        rec = payload["results"][0]
         assert rec["doc_id"] == "AC1034"
         assert rec["recommended_citation"].startswith("ClinGen Clinical Actionability")
         assert "sepio_detail" not in rec
@@ -33,7 +33,7 @@ class TestGetGeneActionability:
             tool_mcp, "get_gene_actionability", {"gene_symbol": "SCN1A", "context": "Pediatric"}
         )
         assert payload["context"] == "Pediatric"
-        assert "Pediatric:" in payload["records"][0]["recommended_citation"]
+        assert "Pediatric:" in payload["results"][0]["recommended_citation"]
 
     @respx.mock
     async def test_include_detail_live(self, tool_mcp: FastMCP) -> None:
@@ -46,7 +46,7 @@ class TestGetGeneActionability:
         assert payload["success"] is True
         # The raw live SEPIO blob is fenced as one v1.1 untrusted_text object, not passed
         # through raw: its docId now lives inside the fenced .text, not as a sibling key.
-        sepio = payload["records"][0]["sepio_detail"]
+        sepio = payload["results"][0]["sepio_detail"]
         assert sepio["kind"] == "untrusted_text"
         assert "AC1034" in sepio["text"]
         assert "docId" not in sepio
@@ -66,7 +66,7 @@ class TestGetGeneActionability:
         )
         assert payload["success"] is True
         assert payload["total"] >= 1
-        records = payload["records"]
+        records = payload["results"]
         assert records and all("doc_id" in r for r in records)
         assert all("sepio_detail" not in r for r in records)
         # minimal carries no per-record bodies, so no live SEPIO fetch is made.
@@ -77,7 +77,7 @@ class TestGetGeneActionability:
         payload = await _call(tool_mcp, "get_gene_actionability", {"gene_symbol": "AARS1"})
         assert payload["success"] is True
         assert payload["total"] == 0
-        assert payload["records"] == []
+        assert payload["results"] == []
 
     async def test_unknown_gene_not_found(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "get_gene_actionability", {"gene_symbol": "ZZZNOPE"})
@@ -90,12 +90,12 @@ class TestSearchActionability:
         payload = await _call(tool_mcp, "search_actionability", {"disease": "melanoma"})
         assert payload["success"] is True
         assert payload["total"] == 1
-        assert payload["records"][0]["doc_id"] == "AC1060"
+        assert payload["results"][0]["doc_id"] == "AC1060"
 
     async def test_gene_search(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "search_actionability", {"gene_symbol": "SCN1A"})
         assert payload["total"] >= 1
-        assert any("SCN1A" in r["genes"] for r in payload["records"])
+        assert any("SCN1A" in r["genes"] for r in payload["results"])
 
     async def test_next_commands_non_empty(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "search_actionability", {"gene_symbol": "SCN1A"})

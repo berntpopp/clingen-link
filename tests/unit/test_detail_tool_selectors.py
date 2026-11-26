@@ -73,7 +73,7 @@ class TestGetVariantInterpretationTakesOneVariantId:
         envelope = result.structured_content or {}
 
         assert envelope["success"] is True
-        assert envelope["interpretation"]["caid"] == "CA281951"
+        assert envelope["result"]["interpretation"]["caid"] == "CA281951"
 
     async def test_a_clinvar_variation_id(self, tool_mcp: FastMCP) -> None:
         result = await tool_mcp.call_tool("get_variant_interpretation", {"variant_id": "17000"})
@@ -101,7 +101,7 @@ class TestGetVariantInterpretationTakesOneVariantId:
         envelope = result.structured_content or {}
 
         assert envelope["success"] is True
-        assert envelope["interpretation"]["caid"] == "CA281951"
+        assert envelope["result"]["interpretation"]["caid"] == "CA281951"
 
 
 class TestGetCspecCriterionTakesItsNaturalKey:

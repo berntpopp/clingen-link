@@ -18,8 +18,8 @@ class TestSearchGenes:
         payload = await _call(tool_mcp, "search_genes", {"query": "AARS1"})
         assert payload["success"] is True
         assert payload["resolved_symbol"] == "AARS1"
-        assert payload["candidates"]
-        cand = payload["candidates"][0]
+        assert payload["results"]
+        cand = payload["results"][0]
         assert {"has_validity", "has_dosage", "has_actionability", "erepo_variant_count"} <= set(
             cand
         )
@@ -34,8 +34,9 @@ class TestSearchGenes:
 
     async def test_data_version_present(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "search_genes", {"query": "AARS1"})
-        dv = payload["_meta"]["data_version"]
+        dv = payload["_meta"]["source_versions"]
         assert "validity" in dv and dv["validity"]["version"]
+        assert isinstance(payload["_meta"]["data_version"], str)
 
     async def test_unknown_returns_not_found(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "search_genes", {"query": "ZZZNOPE"})
@@ -57,20 +58,20 @@ class TestGeneSummary:
     async def test_returns_all_sections(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "get_gene_summary", {"gene_symbol": "AARS1"})
         assert payload["success"] is True
-        assert payload["symbol"] == "AARS1"
-        assert payload["counts"]["validity"] == 1
-        assert isinstance(payload["validity"], list) and payload["validity"]
-        assert payload["validity"][0]["recommended_citation"].startswith("ClinGen")
+        assert payload["result"]["symbol"] == "AARS1"
+        assert payload["result"]["counts"]["validity"] == 1
+        assert isinstance(payload["result"]["validity"], list) and payload["result"]["validity"]
+        assert payload["result"]["validity"][0]["recommended_citation"].startswith("ClinGen")
         # recommended_citation surfaced on the summary + in _meta.
-        assert "ClinGen gene summary for AARS1" in payload["recommended_citation"]
+        assert "ClinGen gene summary for AARS1" in payload["result"]["recommended_citation"]
         # M4: citation kept top-level + per-record; not duplicated into _meta.
         assert "recommended_citation" not in payload["_meta"]
-        assert payload["recommended_citation"]
+        assert payload["result"]["recommended_citation"]
 
     async def test_summary_citation_permalink_is_gene_specific(self, tool_mcp: FastMCP) -> None:
         # L4: the summary permalink targets the gene, not a bare /kb/genes/ landing page.
         payload = await _call(tool_mcp, "get_gene_summary", {"gene_symbol": "AARS1"})
-        assert "/kb/genes/?search=AARS1" in payload["recommended_citation"]
+        assert "/kb/genes/?search=AARS1" in payload["result"]["recommended_citation"]
 
     async def test_next_commands_into_domains(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "get_gene_summary", {"gene_symbol": "AARS1"})
@@ -90,7 +91,7 @@ class TestGeneSummary:
         )
         assert payload["success"] is True
         assert "validity" not in payload
-        assert payload["counts"]["validity"] == 1
+        assert payload["result"]["counts"]["validity"] == 1
 
     async def test_unknown_gene_not_found(self, tool_mcp: FastMCP) -> None:
         payload = await _call(tool_mcp, "get_gene_summary", {"gene_symbol": "ZZZNOPE"})

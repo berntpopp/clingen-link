@@ -10,6 +10,7 @@ upstream version bump transparently invalidates stale entries.
 from __future__ import annotations
 
 import time
+from datetime import UTC, datetime
 from typing import Any
 
 from async_lru import alru_cache
@@ -92,8 +93,11 @@ class ErepoService:
         caid: str | None = None,
         hgvs: str | None = None,
         refresh: bool = False,
-    ) -> tuple[VariantInterpretation, str, str | None]:
-        """Return ``(interpretation, source, notice)`` for one variant, preferring the snapshot.
+    ) -> tuple[VariantInterpretation, str, str | None, str | None]:
+        """Return ``(interpretation, source, notice, fetched_at)``, preferring the snapshot.
+
+        ``fetched_at`` is the UTC time of the live fetch for ``source="live"`` (a cached live
+        record keeps its original time) and ``None`` for a snapshot record.
 
         ``refresh=True`` forces the live ERepo path (newest evidence-code SEPIO). The live payload
         is normalized by :func:`erepo_live_to_row` before model construction, so a valid CAID/HGVS
@@ -108,17 +112,18 @@ class ErepoService:
         """
         snapshot = self._snapshot_lookup(caid=caid, hgvs=hgvs)
         if not refresh and snapshot is not None:
-            return snapshot, "snapshot", None
+            return snapshot, "snapshot", None, None
         try:
             version = await self._current_version()
-            row = await self._live_cached(caid or "", hgvs or "", version)
-            return VariantInterpretation.from_row(row), "live", None
+            row, fetched_at = await self._live_cached(caid or "", hgvs or "", version)
+            return VariantInterpretation.from_row(row), "live", None, fetched_at
         except DataNotFoundError:
             if snapshot is not None:
                 return (
                     snapshot,
                     "snapshot",
                     "live ERepo lookup found nothing; served snapshot record",
+                    None,
                 )
             raise
         except Exception as exc:  # upstream/parse fault -> degrade or surface upstream_unavailable
@@ -127,6 +132,7 @@ class ErepoService:
                     snapshot,
                     "snapshot",
                     f"live ERepo fetch degraded ({exc.__class__.__name__}); served snapshot record",
+                    None,
                 )
             raise ClingenApiError(f"live ERepo fetch failed: {exc.__class__.__name__}") from exc
 
@@ -142,7 +148,7 @@ class ErepoService:
                 row = queries.erepo_by_hgvs(conn, hgvs)
         return VariantInterpretation.from_row(row) if row is not None else None
 
-    async def _live_impl(self, caid: str, hgvs: str, _version: str) -> dict[str, Any]:
+    async def _live_impl(self, caid: str, hgvs: str, _version: str) -> tuple[dict[str, Any], str]:
         """Fetch + normalize one live interpretation (``_version`` is a cache-key salt only).
 
         Fetches the classifications summary, then best-effort enriches it with the full SEPIO
@@ -157,7 +163,7 @@ class ErepoService:
                 sepio = await self._client.erepo_interpretation(uuid=str(uuid))
             except Exception:  # SEPIO enrichment is best-effort; the summary still answers
                 sepio = None
-        return erepo_live_to_row(summary, sepio=sepio)
+        return erepo_live_to_row(summary, sepio=sepio), datetime.now(UTC).isoformat()
 
     async def _current_version(self) -> str:
         """Return the current ERepo ``news`` version, re-polled at most per TTL."""
