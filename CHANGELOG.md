@@ -11,6 +11,15 @@ All notable changes to clingen-link are documented here.
 
 ## [Unreleased]
 
+## [5.0.1] - 2026-11-26
+
+### Fixed
+
+- The documented local run starts again. `make dev-data` downloads the pinned data release,
+  verifies its digests and materializes it under `data/dev/`; `make dev` then serves it. The
+  README no longer tells the reader to serve a raw `clingen-link refresh` snapshot, which the
+  server refuses because it has no reviewed identity.
+
 ## [5.0.0] - 2026-11-26
 
 ### Changed

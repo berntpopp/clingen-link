@@ -1,4 +1,4 @@
-.PHONY: help install lock upgrade sync format format-check lint lint-ci lint-fix lint-loc lint-readme typecheck typecheck-fast typecheck-stop typecheck-fresh test test-fast test-unit test-contract-truth test-integration test-cov test-all check ci-local precommit clean dev run-dev run-prod vendor-check docker-build docker-up docker-down docker-logs docker-prod-config docker-npm-config
+.PHONY: help install lock upgrade sync format format-check lint lint-ci lint-fix lint-loc lint-readme typecheck typecheck-fast typecheck-stop typecheck-fresh test test-fast test-unit test-contract-truth test-integration test-cov test-all check ci-local precommit clean dev dev-data run-dev run-prod vendor-check docker-build docker-up docker-down docker-logs docker-prod-config docker-npm-config
 
 .DEFAULT_GOAL := help
 
@@ -100,7 +100,19 @@ precommit: ci-local ## Run checks expected before commit
 clean: ## Remove local caches and generated reports
 	rm -rf .pytest_cache .ruff_cache .mypy_cache htmlcov .coverage coverage.xml
 
+DEV_DATA := $(CURDIR)/data/dev
+
+dev-data: ## Download, verify and materialize the pinned ClinGen data release for `make dev`
+	rm -f $(DEV_DATA)/env && mkdir -p $(DEV_DATA)/reference
+	GF_SMOKE_FIXTURE_DIR=$(DEV_DATA) GF_SMOKE_ENV_FILE=$(DEV_DATA)/env docker/ci-prepare-smoke.sh
+	@{ echo "CLINGEN_LINK_DATA_BUNDLE_PATH=$(DEV_DATA)/clingen-seed/clingen.sqlite.zst"; \
+	   echo "CLINGEN_LINK_DATA_ROOT=$(DEV_DATA)/reference"; \
+	   echo "CLINGEN_LINK_SNAPSHOT_PATH=$(DEV_DATA)/reference/current/clingen.sqlite"; } >> $(DEV_DATA)/env
+	set -a && . $(DEV_DATA)/env && uv run clingen-link materialize-data
+
+# The data settings written by `make dev-data` apply when that target has been run.
 dev: ## Run FastAPI host (/health) + mounted MCP HTTP locally (console logs)
+	set -a; [ ! -f $(DEV_DATA)/env ] || . $(DEV_DATA)/env; set +a; \
 	uv run clingen-link serve --transport unified --host 127.0.0.1 --port 8000 --dev
 
 run-dev: dev ## Alias for dev
